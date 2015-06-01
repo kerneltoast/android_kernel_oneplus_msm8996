@@ -19,9 +19,8 @@
 	.pushsection .altinstr_replacement, "ax"
 663:	\insn2
 664:	.popsection
-	.if ((664b-663b) != (662b-661b))
-		.error "Alternatives instruction length mismatch"
-	.endif
+	.org	. - (664b-663b) + (662b-661b)
+	.org	. - (662b-661b) + (664b-663b)
 .endm
 
 #endif  /*  __ASSEMBLY__  */
