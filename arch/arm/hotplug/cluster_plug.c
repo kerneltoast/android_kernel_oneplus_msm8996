@@ -106,15 +106,28 @@ static unsigned int calculate_loaded_cpus(void)
 static void plug_clusters(bool enable_little)
 {
 	unsigned int cpu;
+	int ret;
+	bool powerhal_override = false;
+
 #ifdef DEBUG_CLUSTER_PLUG
 	if (enable_little) pr_info("enabling little cluster\n");
 	else pr_info("disabling little cluster\n");
 #endif
+
 	for_each_present_cpu(cpu) {
-		if (cpu < 4 || enable_little)
-			cpu_up(cpu);
-		else
+		if (cpu < 4 || enable_little) {
+			if (cpu_online(cpu)) continue;
+			if (powerhal_override && cpu < 4) continue;
+			ret = cpu_up(cpu);
+
+			/* PowerHAL may force big cores offline */
+			if (ret == -EPERM && cpu < 4) {
+				enable_little = true;
+				powerhal_override = true;
+			}
+		} else {
 			cpu_down(cpu);
+		}
 	}
 }
 
@@ -142,7 +155,7 @@ static void __ref cluster_plug_work_fn(struct work_struct *work)
 		}
 	}
 
-	queue_delayed_work_on(0, clusterplug_wq, &cluster_plug_work,
+	queue_delayed_work(clusterplug_wq, &cluster_plug_work,
 		msecs_to_jiffies(sampling_time));
 }
 
