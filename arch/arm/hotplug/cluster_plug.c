@@ -103,7 +103,7 @@ static unsigned int calculate_loaded_cpus(void)
 	return loaded_cpus;
 }
 
-static void plug_clusters(bool enable_little)
+static void __ref plug_clusters(bool enable_little)
 {
 	unsigned int cpu;
 	int ret;
