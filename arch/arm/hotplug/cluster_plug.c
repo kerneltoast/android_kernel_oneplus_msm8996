@@ -45,7 +45,7 @@ static DEFINE_MUTEX(cluster_plug_mutex);
 static struct delayed_work cluster_plug_work;
 static struct workqueue_struct *clusterplug_wq;
 
-static unsigned int cluster_plug_active = 1;
+static unsigned int cluster_plug_active = 0;
 module_param(cluster_plug_active, uint, 0664);
 
 static unsigned int hysteresis = DEF_HYSTERESIS;
