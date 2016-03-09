@@ -64,6 +64,7 @@
 #define RES_UHD			(3840*2160)
 
 struct mdss_data_type *mdss_res;
+static u32 mem_protect_sd_ctrl_id;
 
 static int mdss_fb_mem_get_iommu_domain(void)
 {
@@ -1293,6 +1294,7 @@ static void mdss_mdp_hw_rev_caps_init(struct mdss_data_type *mdata)
 	/* clock gating feature is disabled by default */
 	mdata->enable_gate = true;
 	mdata->pixel_ram_size = 0;
+	mem_protect_sd_ctrl_id = MEM_PROTECT_SD_CTRL_FLAT;
 
 	mdss_mdp_hw_rev_debug_caps_init(mdata);
 
@@ -1357,14 +1359,11 @@ static void mdss_mdp_hw_rev_caps_init(struct mdss_data_type *mdata)
 		mdata->max_target_zorder = 4; /* excluding base layer */
 		mdata->max_cursor_size = 128;
 		mdata->min_prefill_lines = 14;
-		mdata->has_ubwc =
-			(mdata->mdp_rev == MDSS_MDP_HW_REV_115) ?
-			false : true;
-		mdata->pixel_ram_size =
-			(mdata->mdp_rev == MDSS_MDP_HW_REV_115) ?
-			(16 * 1024) : (40 * 1024);
+		mdata->has_ubwc = true;
+		mdata->pixel_ram_size = 40 * 1024;
 		mdata->apply_post_scale_bytes = false;
 		mdata->hflip_buffer_reused = false;
+		mem_protect_sd_ctrl_id = MEM_PROTECT_SD_CTRL;
 		set_bit(MDSS_QOS_OVERHEAD_FACTOR, mdata->mdss_qos_map);
 		set_bit(MDSS_QOS_CDP, mdata->mdss_qos_map);
 		set_bit(MDSS_QOS_PER_PIPE_LUT, mdata->mdss_qos_map);
@@ -1374,6 +1373,7 @@ static void mdss_mdp_hw_rev_caps_init(struct mdss_data_type *mdata)
 		set_bit(MDSS_QOS_OTLIM, mdata->mdss_qos_map);
 		mdss_set_quirk(mdata, MDSS_QUIRK_DMA_BI_DIR);
 		mdss_set_quirk(mdata, MDSS_QUIRK_MIN_BUS_VOTE);
+		mdss_set_quirk(mdata, MDSS_QUIRK_NEED_SECURE_MAP);
 		break;
 	default:
 		mdata->max_target_zorder = 4; /* excluding base layer */
@@ -4151,7 +4151,7 @@ int mdss_mdp_secure_display_ctrl(unsigned int enable)
 			&request, sizeof(request), &resp, sizeof(resp));
 	} else {
 		ret = scm_call2(SCM_SIP_FNID(SCM_SVC_MP,
-				MEM_PROTECT_SD_CTRL_FLAT), &desc);
+				mem_protect_sd_ctrl_id), &desc);
 		resp = desc.ret[0];
 	}
 
