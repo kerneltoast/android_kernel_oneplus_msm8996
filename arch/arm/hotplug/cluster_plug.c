@@ -31,6 +31,7 @@
 #define DEF_HYSTERESIS			(10)
 #define DEF_LOAD_THRESH			(70)
 #define DEF_SAMPLING_MS			(200)
+#define N_BIG_CPUS			4
 
 static struct delayed_work cluster_plug_work;
 static struct workqueue_struct *clusterplug_wq;
@@ -55,6 +56,11 @@ struct cp_cpu_info {
 };
 
 static DEFINE_PER_CPU(struct cp_cpu_info, cp_info);
+
+static bool is_big_cpu(unsigned int cpu)
+{
+	return cpu < N_BIG_CPUS;
+}
 
 static unsigned int calculate_loaded_cpus(void)
 {
@@ -103,13 +109,13 @@ static void __ref plug_clusters(bool enable_little)
 #endif
 
 	for_each_present_cpu(cpu) {
-		if (cpu < 4 || enable_little) {
+		if (is_big_cpu(cpu) || enable_little) {
 			if (cpu_online(cpu)) continue;
-			if (powerhal_override && cpu < 4) continue;
+			if (powerhal_override && is_big_cpu(cpu)) continue;
 			ret = cpu_up(cpu);
 
 			/* PowerHAL may force big cores offline */
-			if (ret == -EPERM && cpu < 4) {
+			if (ret == -EPERM && is_big_cpu(cpu)) {
 				enable_little = true;
 				powerhal_override = true;
 			}
@@ -130,9 +136,9 @@ static void __ref cluster_plug_work_fn(struct work_struct *work)
 		pr_info("loaded_cpus: %u\n", loaded_cpus);
 #endif
 
-		if (loaded_cpus >= 3) {
+		if (loaded_cpus >= N_BIG_CPUS-1) {
 			cur_hysteresis = hysteresis;
-			if (online_cpus <= 4)
+			if (online_cpus <= N_BIG_CPUS)
 				plug_clusters(true);
 		} else if (cur_hysteresis > 0) {
 			cur_hysteresis -= 1;
