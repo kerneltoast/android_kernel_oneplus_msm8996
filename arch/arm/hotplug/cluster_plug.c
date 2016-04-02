@@ -52,7 +52,11 @@ static unsigned int vote_threshold = DEF_VOTE_THRESHOLD;
 module_param(vote_threshold, uint, 0664);
 
 static ktime_t last_action;
+
+static bool big_cluster_enabled = true;
 static bool little_cluster_enabled = true;
+static bool low_power_mode = false;
+
 static unsigned int vote_up = 0;
 static unsigned int vote_down = 0;
 
@@ -129,7 +133,47 @@ static unsigned int get_num_unloaded_little_cpus(void)
 	return unloaded_cpus;
 }
 
-static void enable_little_cluster(void)
+static void __ref enable_big_cluster(void)
+{
+	unsigned int cpu;
+	unsigned int num_up = 0;
+
+	if (big_cluster_enabled)
+		return;
+
+	for_each_present_cpu(cpu) {
+		if (is_big_cpu(cpu) && !cpu_online(cpu)) {
+			cpu_up(cpu);
+			num_up++;
+		}
+	}
+
+	pr_info("cluster_plug: %d big cpus enabled\n", num_up);
+
+	big_cluster_enabled = true;
+}
+
+static void disable_big_cluster(void)
+{
+	unsigned int cpu;
+	unsigned int num_down = 0;
+
+	if (!big_cluster_enabled)
+		return;
+
+	for_each_present_cpu(cpu) {
+		if (is_big_cpu(cpu) && cpu_online(cpu)) {
+			cpu_down(cpu);
+			num_down++;
+		}
+	}
+
+	pr_info("cluster_plug: %d big cpus disabled\n", num_down);
+
+	big_cluster_enabled = false;
+}
+
+static void __ref enable_little_cluster(void)
 {
 	unsigned int cpu;
 	unsigned int num_up = 0;
@@ -169,8 +213,23 @@ static void disable_little_cluster(void)
 	little_cluster_enabled = false;
 }
 
+static void queue_clusterplug_work(unsigned ms)
+{
+	queue_delayed_work(clusterplug_wq, &cluster_plug_work, msecs_to_jiffies(ms));
+}
+
 static void __ref cluster_plug_work_fn(struct work_struct *work)
 {
+	if (low_power_mode) {
+		enable_little_cluster();
+		disable_big_cluster();
+		/* Do not schedule more work */
+		return;
+	}
+
+	if (!low_power_mode && !big_cluster_enabled)
+		enable_big_cluster();
+
 	if (cluster_plug_active) {
 		unsigned int loaded_cpus = get_num_loaded_big_cpus();
 		unsigned int unloaded_cpus = get_num_unloaded_little_cpus();
@@ -207,9 +266,35 @@ static void __ref cluster_plug_work_fn(struct work_struct *work)
 		last_action = now;
 	}
 
-	queue_delayed_work(clusterplug_wq, &cluster_plug_work,
-		msecs_to_jiffies(sampling_time));
+	queue_clusterplug_work(sampling_time);
 }
+
+static int __ref low_power_mode_show(char *buf,
+			const struct kernel_param *kp __attribute__ ((unused)))
+{
+	return snprintf(buf, PAGE_SIZE, "%d", low_power_mode);
+}
+
+static int __ref low_power_mode_store(const char *buf,
+			const struct kernel_param *kp __attribute__ ((unused)))
+{
+	int ret, value;
+
+	ret = kstrtoint(buf, 0, &value);
+	if (ret == 0) {
+		low_power_mode = (value != 0);
+		queue_clusterplug_work(1);
+	}
+
+	return ret;
+}
+
+static const struct kernel_param_ops param_ops_low_power_mode = {
+	.set = low_power_mode_store,
+	.get = low_power_mode_show
+};
+
+module_param_cb(low_power_mode, &param_ops_low_power_mode, &low_power_mode, 0664);
 
 int __init cluster_plug_init(void)
 {
@@ -220,8 +305,7 @@ int __init cluster_plug_init(void)
 	clusterplug_wq = alloc_workqueue("clusterplug",
 				WQ_HIGHPRI | WQ_UNBOUND, 1);
 	INIT_DELAYED_WORK(&cluster_plug_work, cluster_plug_work_fn);
-	queue_delayed_work_on(0, clusterplug_wq, &cluster_plug_work,
-		msecs_to_jiffies(10));
+	queue_clusterplug_work(10);
 
 	return 0;
 }
