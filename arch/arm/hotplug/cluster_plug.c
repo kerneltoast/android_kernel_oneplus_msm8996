@@ -36,9 +36,6 @@
 static struct delayed_work cluster_plug_work;
 static struct workqueue_struct *clusterplug_wq;
 
-static unsigned int cluster_plug_active = 0;
-module_param(cluster_plug_active, uint, 0664);
-
 static unsigned int load_threshold_down = DEF_LOAD_THRESH_DOWN;
 module_param(load_threshold_down, uint, 0664);
 
@@ -53,6 +50,7 @@ module_param(vote_threshold, uint, 0664);
 
 static ktime_t last_action;
 
+static bool active = false;
 static bool big_cluster_enabled = true;
 static bool little_cluster_enabled = true;
 static bool low_power_mode = false;
@@ -218,6 +216,43 @@ static void queue_clusterplug_work(unsigned ms)
 	queue_delayed_work(clusterplug_wq, &cluster_plug_work, msecs_to_jiffies(ms));
 }
 
+static void cluster_plug_perform(void)
+{
+	unsigned int loaded_cpus = get_num_loaded_big_cpus();
+	unsigned int unloaded_cpus = get_num_unloaded_little_cpus();
+	ktime_t now = ktime_get();
+
+	pr_debug("cluster-plug: loaded: %u unloaded: %u votes %d / %d\n",
+		loaded_cpus, unloaded_cpus, vote_up, vote_down);
+
+	if (ktime_to_ms(ktime_sub(now, last_action)) > 5*sampling_time) {
+		pr_info("cluster_plug: ignoring old ts %lld\n",
+			ktime_to_ms(ktime_sub(now, last_action)));
+		vote_up = vote_down = 0;
+	} else {
+		if (loaded_cpus >= N_BIG_CPUS-1)
+			vote_up++;
+		else if (vote_up > 0)
+			vote_up--;
+
+		if (unloaded_cpus >= N_LITTLE_CPUS-1)
+			vote_down++;
+		else if (vote_down > 0)
+			vote_down--;
+	}
+
+	if (vote_up > vote_threshold) {
+		enable_little_cluster();
+		vote_up = vote_threshold;
+		vote_down = 0;
+	} else if (!vote_up && vote_down > vote_threshold) {
+		disable_little_cluster();
+		vote_down = vote_threshold;
+	}
+
+	last_action = now;
+}
+
 static void __ref cluster_plug_work_fn(struct work_struct *work)
 {
 	if (low_power_mode) {
@@ -230,44 +265,38 @@ static void __ref cluster_plug_work_fn(struct work_struct *work)
 	if (!low_power_mode && !big_cluster_enabled)
 		enable_big_cluster();
 
-	if (cluster_plug_active) {
-		unsigned int loaded_cpus = get_num_loaded_big_cpus();
-		unsigned int unloaded_cpus = get_num_unloaded_little_cpus();
-		ktime_t now = ktime_get();
+	if (active) {
+		cluster_plug_perform();
+		queue_clusterplug_work(sampling_time);
+	}
+}
 
-		pr_debug("cluster-plug: loaded: %u unloaded: %u votes %d / %d\n",
-			loaded_cpus, unloaded_cpus, vote_up, vote_down);
+static int __ref active_show(char *buf,
+			const struct kernel_param *kp __attribute__ ((unused)))
+{
+	return snprintf(buf, PAGE_SIZE, "%d", active);
+}
 
-		if (ktime_to_ms(ktime_sub(now, last_action)) > 5*sampling_time) {
-			pr_info("cluster_plug: ignoring old ts %lld\n",
-				ktime_to_ms(ktime_sub(now, last_action)));
-			vote_up = vote_down = 0;
-		} else {
-			if (loaded_cpus >= N_BIG_CPUS-1)
-				vote_up++;
-			else if (vote_up > 0)
-				vote_up--;
+static int __ref active_store(const char *buf,
+			const struct kernel_param *kp __attribute__ ((unused)))
+{
+	int ret, value;
 
-			if (unloaded_cpus >= N_LITTLE_CPUS-1)
-				vote_down++;
-			else if (vote_down > 0)
-				vote_down--;
-		}
-
-		if (vote_up > vote_threshold) {
-			enable_little_cluster();
-			vote_up = vote_threshold;
-			vote_down = 0;
-		} else if (!vote_up && vote_down > vote_threshold) {
-			disable_little_cluster();
-			vote_down = vote_threshold;
-		}
-
-		last_action = now;
+	ret = kstrtoint(buf, 0, &value);
+	if (ret == 0) {
+		active = (value != 0);
+		queue_clusterplug_work(1);
 	}
 
-	queue_clusterplug_work(sampling_time);
+	return ret;
 }
+
+static const struct kernel_param_ops param_ops_active = {
+	.set = active_store,
+	.get = active_show
+};
+
+module_param_cb(active, &param_ops_active, &active, 0664);
 
 static int __ref low_power_mode_show(char *buf,
 			const struct kernel_param *kp __attribute__ ((unused)))
@@ -305,7 +334,6 @@ int __init cluster_plug_init(void)
 	clusterplug_wq = alloc_workqueue("clusterplug",
 				WQ_HIGHPRI | WQ_UNBOUND, 1);
 	INIT_DELAYED_WORK(&cluster_plug_work, cluster_plug_work_fn);
-	queue_clusterplug_work(10);
 
 	return 0;
 }
