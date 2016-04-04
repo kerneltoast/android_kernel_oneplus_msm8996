@@ -2675,10 +2675,6 @@ static int dsi_event_thread(void *data)
 				pr_debug("%s: Handling underflow event\n",
 							__func__);
 				__dsi_fifo_error_handler(ctrl, true);
-			} else {
-				MDSS_XLOG_TOUT_HANDLER("mdp", "dsi0_ctrl",
-				"dsi0_phy", "dsi1_ctrl", "dsi1_phy", "vbif",
-				"vbif_nrt", "dbg_bus", "vbif_dbg_bus", "panic");
 			}
 			mutex_unlock(&ctrl->mutex);
 		}
