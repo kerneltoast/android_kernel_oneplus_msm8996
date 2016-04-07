@@ -2,7 +2,7 @@
  * Cluster-plug CPU Hotplug Driver
  * Designed for homogeneous ARM big.LITTLE systems
  *
- * Copyright 2015 Sultan Qasim Khan
+ * Copyright (C) 2015-2016 Sultan Qasim Khan and Christopher R. Palmer
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -109,7 +109,7 @@ static unsigned int get_num_loaded_big_cpus(void)
 	unsigned int cpu;
 	unsigned int loaded_cpus = 0;
 
-	for_each_online_cpu(cpu) {
+	for_each_possible_cpu(cpu) {
 		if (is_big_cpu(cpu)) {
 			unsigned int cpu_load = get_delta_cpu_load_and_update(cpu);
 			/* If a cpu is offline, assume it was loaded and forced offline */
