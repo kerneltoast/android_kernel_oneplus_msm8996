@@ -182,9 +182,6 @@ static void __ref enable_little_cluster(void)
 	unsigned int cpu;
 	unsigned int num_up = 0;
 
-	if (little_cluster_enabled)
-		return;
-
 	for_each_present_cpu(cpu) {
 		if (is_little_cpu(cpu) && !cpu_online(cpu)) {
 			cpu_up(cpu);
@@ -192,7 +189,8 @@ static void __ref enable_little_cluster(void)
 		}
 	}
 
-	pr_info("cluster_plug: %d little cpus enabled\n", num_up);
+	if (!little_cluster_enabled)
+		pr_info("cluster_plug: %d little cpus enabled\n", num_up);
 
 	little_cluster_enabled = true;
 }
