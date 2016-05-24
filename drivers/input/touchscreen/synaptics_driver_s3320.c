@@ -1201,10 +1201,6 @@ static unsigned char pres_value = 1;
 #endif
 #ifdef SUPPORT_VIRTUAL_KEY //WayneChang, 2015/12/02, add for key to abs, simulate key in abs through virtual key system
 extern struct completion key_cm;
-extern bool key_back_pressed;
-extern bool key_appselect_pressed;
-extern bool key_home_pressed;
-extern bool virtual_key_enable;
 #endif
 void int_touch(void)
 {
@@ -1216,12 +1212,6 @@ void int_touch(void)
 	uint32_t finger_info = 0;
 	static uint8_t current_status = 0;
 	uint8_t last_status = 0 ;
-#ifdef SUPPORT_VIRTUAL_KEY //WayneChang, 2015/12/02, add for key to abs, simulate key in abs through virtual key system
-	bool key_appselect_check = false;
-	bool key_back_check = false;
-	bool key_home_check = false;
-	bool key_pressed = key_appselect_pressed || key_back_pressed;// || key_home_pressed;
-#endif
 	struct synaptics_ts_data *ts = ts_g;
 
 	memset(buf, 0, sizeof(buf));
@@ -1267,52 +1257,6 @@ void int_touch(void)
 		points.z = buf[i*8+5];
 		finger_info <<= 1;
 		finger_status =  points.status & 0x03;
-#ifdef SUPPORT_VIRTUAL_KEY //WayneChang, 2015/12/02, add for key to abs, simulate key in abs through virtual key system
-            if(virtual_key_enable){
-                if(points.y > 0x780 && key_pressed){
-                        TPD_DEBUG("Drop TP event due to key pressed\n");
-                        finger_status = 0;
-                }else{
-                    finger_status =  points.status & 0x03;
-                }
-            }else{
-                finger_status =  points.status & 0x03;
-            }
-            if(virtual_key_enable){
-                    if (!finger_status){
-                        if (key_appselect_pressed && !key_appselect_check){
-                            points.x = 0xb4;
-                            points.y = 0x7e2;
-                            points.z = 0x33;
-                            points.raw_x = 4;
-                            points.raw_y = 6;
-                            key_appselect_check = true;
-                            points.status = 1;
-                            finger_status =  points.status & 0x03;
-                        }else if (key_back_pressed && !key_back_check){
-                            points.x = 0x384;
-                            points.y = 0x7e2;
-                            points.z = 0x33;
-                            points.raw_x = 4;
-                            points.raw_y = 6;
-                            key_back_check = true;
-                            points.status = 1;
-                            finger_status =  points.status & 0x03;
-                        }else if(key_home_pressed && !key_home_check){
-                            points.x = 0x21c;
-                            points.y = 0x7e2;
-                            points.z = 0x33;
-                            points.raw_x = 4;
-                            points.raw_y = 6;
-                            key_home_check = true;
-                            points.status = 1;
-                            finger_status =  points.status & 0x03;
-                    }else{
-                            //TPD_DEBUG(" finger %d with !finger_statue and no key match\n",i);
-                        }
-                    }
-            }
-#endif
 		if (finger_status) {
 			input_mt_slot(ts->input_dev, i);
 			input_mt_report_slot_state(ts->input_dev, MT_TOOL_FINGER, finger_status);
@@ -1332,11 +1276,7 @@ void int_touch(void)
 #ifndef TYPE_B_PROTOCOL
 			input_mt_sync(ts->input_dev);
 #endif
-#ifdef SUPPORT_VIRTUAL_KEY //WayneChang, 2015/12/02, add for key to abs, simulate key in abs through virtual key system
-            if(virtual_key_enable){
-                complete(&key_cm);
-            }
-#endif
+            complete(&key_cm);
 			finger_num++;
 			finger_info |= 1 ;
 			//TPD_DEBUG("%s: Finger %d: status = 0x%02x "
@@ -3537,9 +3477,6 @@ static int synaptics_ts_probe(struct i2c_client *client, const struct i2c_device
 	if( ret < 0 ) {
 		ret = synaptics_rmi4_i2c_read_byte(client, 0x13);
 		if( ret < 0 ) {
-		#ifdef SUPPORT_VIRTUAL_KEY
-                        virtual_key_enable = 0;//if touch is no valid report key
-                #endif
                         TPD_ERR("tp is no exist!\n");
 			goto err_check_functionality_failed;
 		}

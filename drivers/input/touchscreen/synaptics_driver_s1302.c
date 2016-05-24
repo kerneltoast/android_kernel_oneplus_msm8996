@@ -70,6 +70,7 @@ enum oem_boot_mode{
 
 /*------------------------------------------------Global Define--------------------------------------------*/
 #define TP_TEST_ENABLE 1
+#define TPD_NAME "synaptics"
 #define TPD_DEVICE "synaptics,s1302"
 #define LOG_TAG		"touchkey,s1302"
 
@@ -662,85 +663,14 @@ static int synaptics_rmi4_i2c_write_word(struct i2c_client* client,
 
 static char log_count = 0;
 static bool is_report_key = true;
-#define REP_KEY_BACK (key_reverse?(KEY_BACK):(KEY_APPSELECT))
-#define REP_KEY_MENU (key_reverse?(KEY_APPSELECT):(KEY_BACK))
+#define REP_KEY_BACK (key_reverse?(KEY_APPSELECT):(KEY_BACK))
+#define REP_KEY_MENU (key_reverse?(KEY_BACK):(KEY_APPSELECT))
 
 #ifdef SUPPORT_VIRTUAL_KEY //WayneChang, 2015/12/29, add flag to enable virtual key
-bool virtual_key_enable = false;
+bool virtual_key_enable;
 EXPORT_SYMBOL(virtual_key_enable);
 struct completion key_cm;
-bool key_appselect_pressed = false;
-bool key_back_pressed = false;
-bool check_key_down= false;
-EXPORT_SYMBOL(key_appselect_pressed);
-EXPORT_SYMBOL(key_back_pressed);
 EXPORT_SYMBOL(key_cm);
-EXPORT_SYMBOL(check_key_down);
-
-extern void int_touch(void);
-
-static void int_virtual_key(struct synaptics_ts_data *ts )
-{
-
-    int ret;
-    int button_key;
-    long time =0 ;
-    bool key_up_report = false;
-
-    ret = synaptics_rmi4_i2c_write_byte(ts->client, 0xff, 0x02 );
-    if (ret < 0) {
-        TPD_ERR("%s: Failed to change page 2!!\n",
-                __func__);
-        return;
-    }
-
-    button_key = synaptics_rmi4_i2c_read_byte(ts->client,0x00);
-    if (6 == (++log_count % 12))
-        printk("%s	button_key:%d   pre_btn_state:%d\n",__func__,button_key,ts->pre_btn_state);
-    if((button_key & 0x01) && !(ts->pre_btn_state & 0x01))//back
-    {
-	key_appselect_pressed = true;
-    }else if(!(button_key & 0x01) && (ts->pre_btn_state & 0x01)){
-	key_appselect_pressed = false;
-	key_up_report = true;
-    }
-
-    if((button_key & 0x02) && !(ts->pre_btn_state & 0x02))//menu
-    {
-	key_back_pressed = true;
-    }else if(!(button_key & 0x02) && (ts->pre_btn_state & 0x02)){
-	key_back_pressed = false;
-	key_up_report = true;
-    }
-
-    if((button_key & 0x04) && !(ts->pre_btn_state & 0x04))//home
-    {
-        input_report_key(ts->input_dev, KEY_HOMEPAGE, 1);//KEY_HOMEPAGE
-        input_sync(ts->input_dev);
-    }else if(!(button_key & 0x04) && (ts->pre_btn_state & 0x04)){
-        input_report_key(ts->input_dev, KEY_HOMEPAGE, 0);
-        input_sync(ts->input_dev);
-    }
-    if(key_up_report){
-        reinit_completion(&key_cm);
-        time = wait_for_completion_timeout(&key_cm,msecs_to_jiffies(touchkey_wait_time));
-        if (!time){
-		check_key_down = false;
-		int_touch();
-	}
-    }else{
-        check_key_down = true;
-        int_touch();
-    }
-    ts->pre_btn_state = button_key & 0x07;
-    ret = synaptics_rmi4_i2c_write_byte(ts->client, 0xff, 0x00);
-    if (ret < 0) {
-        TPD_ERR("%s: Failed to change page 2!!\n",
-                __func__);
-        return;
-    }
-    return;
-}
 #endif
 static void int_key(struct synaptics_ts_data *ts )
 {
@@ -912,11 +842,10 @@ static void synaptics_ts_report(struct synaptics_ts_data *ts )
             int_key_cover(ts);
         else
             int_key(ts);
-#elif (defined SUPPORT_VIRTUAL_KEY)
-        if (virtual_key_enable)
-            int_virtual_key(ts);
-        else
+#else
+        if (!virtual_key_enable) {
             int_key(ts);
+        }
 #endif
     }
 END:
@@ -942,7 +871,7 @@ static int	synaptics_input_init(struct synaptics_ts_data *ts)
 		TPD_ERR("synaptics_ts_probe: Failed to allocate input device\n");
 		return ret;
 	}
-    ts->input_dev->name = TPD_DEVICE;;
+    ts->input_dev->name = TPD_NAME;
     ts->input_dev->dev.parent = &ts->client->dev;
 	set_bit(EV_SYN, ts->input_dev->evbit);
 	set_bit(EV_KEY, ts->input_dev->evbit);
@@ -1078,7 +1007,7 @@ static ssize_t synaptics_s1302_key_reverse_write(struct file *file, const char _
 }
 static int synaptics_s1302_key_reverse_show(struct seq_file *seq, void *offset)
 {
-    seq_printf(seq, "s1302 menu key in %s\n",key_reverse?("right"):("left"));
+    seq_printf(seq, "%d\n", key_reverse ? 1 : 0);
     return 0 ;
 }
 static int synaptics_s1302_key_reverse_open(struct inode *inode, struct file *file)
@@ -1503,7 +1432,7 @@ static ssize_t synaptics_s1302_virtual_key_enable_write(struct file *file, const
 }
 static int synaptics_s1302_virtual_key_enable_show(struct seq_file *seq, void *offset)
 {
-    seq_printf(seq, "s1302 virtual key %s\n",virtual_key_enable?("enabled"):("disabled"));
+    seq_printf(seq, "%d\n", virtual_key_enable ? 1 : 0);
     return 0 ;
 }
 static int synaptics_s1302_virtual_key_enable_open(struct inode *inode, struct file *file)
