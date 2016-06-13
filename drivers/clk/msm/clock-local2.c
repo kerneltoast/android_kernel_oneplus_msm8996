@@ -36,6 +36,8 @@
 /* For clock without halt checking, wait this long after enables/disables. */
 #define HALT_CHECK_DELAY_US	500
 
+#define RCG_FORCE_DISABLE_DELAY_US	100
+
 /*
  * When updating an RCG configuration, check the update bit up to this number
  * number of times (with a 1 us delay in between) before continuing.
@@ -105,14 +107,18 @@ struct div_map {
  */
 static void rcg_update_config(struct rcg_clk *rcg)
 {
-	u32 cmd_rcgr_regval, count;
+	u32 cmd_rcgr_regval;
+	int count = UPDATE_CHECK_MAX_LOOPS;
+
+	if (rcg->non_local_control_timeout)
+		count = rcg->non_local_control_timeout;
 
 	cmd_rcgr_regval = readl_relaxed(CMD_RCGR_REG(rcg));
 	cmd_rcgr_regval |= CMD_RCGR_CONFIG_UPDATE_BIT;
 	writel_relaxed(cmd_rcgr_regval, CMD_RCGR_REG(rcg));
 
 	/* Wait for update to take effect */
-	for (count = UPDATE_CHECK_MAX_LOOPS; count > 0; count--) {
+	for (; count > 0; count--) {
 		if (!(readl_relaxed(CMD_RCGR_REG(rcg)) &
 				CMD_RCGR_CONFIG_UPDATE_BIT))
 			return;
@@ -124,10 +130,13 @@ static void rcg_update_config(struct rcg_clk *rcg)
 
 static void rcg_on_check(struct rcg_clk *rcg)
 {
-	int count;
+	int count = UPDATE_CHECK_MAX_LOOPS;
+
+	if (rcg->non_local_control_timeout)
+		count = rcg->non_local_control_timeout;
 
 	/* Wait for RCG to turn on */
-	for (count = UPDATE_CHECK_MAX_LOOPS; count > 0; count--) {
+	for (; count > 0; count--) {
 		if (!(readl_relaxed(CMD_RCGR_REG(rcg)) &
 				CMD_RCGR_ROOT_STATUS_BIT))
 			return;
@@ -211,6 +220,8 @@ static void rcg_clear_force_enable(struct rcg_clk *rcg)
 	cmd_rcgr_regval &= ~CMD_RCGR_ROOT_ENABLE_BIT;
 	writel_relaxed(cmd_rcgr_regval, CMD_RCGR_REG(rcg));
 	spin_unlock_irqrestore(&local_clock_reg_lock, flags);
+	/* Add a delay of 100usecs to let the RCG disable */
+	udelay(RCG_FORCE_DISABLE_DELAY_US);
 }
 
 static int rcg_clk_enable(struct clk *c)
@@ -264,6 +275,77 @@ static void rcg_clk_disable(struct clk *c)
 	rcg_clear_force_enable(rcg);
 }
 
+static int prepare_enable_rcg_srcs(struct clk *c, struct clk *curr,
+					struct clk *new, unsigned long *flags)
+{
+	int rc;
+
+	rc = clk_prepare(curr);
+	if (rc)
+		return rc;
+
+	if (c->prepare_count) {
+		rc = clk_prepare(new);
+		if (rc)
+			goto err_new_src_prepare;
+	}
+
+	rc = clk_prepare(new);
+	if (rc)
+		goto err_new_src_prepare2;
+
+	spin_lock_irqsave(&c->lock, *flags);
+	rc = clk_enable(curr);
+	if (rc) {
+		spin_unlock_irqrestore(&c->lock, *flags);
+		goto err_curr_src_enable;
+	}
+
+	if (c->count) {
+		rc = clk_enable(new);
+		if (rc) {
+			spin_unlock_irqrestore(&c->lock, *flags);
+			goto err_new_src_enable;
+		}
+	}
+
+	rc = clk_enable(new);
+	if (rc) {
+		spin_unlock_irqrestore(&c->lock, *flags);
+		goto err_new_src_enable2;
+	}
+	return 0;
+
+err_new_src_enable2:
+	if (c->count)
+		clk_disable(new);
+err_new_src_enable:
+	clk_disable(curr);
+err_curr_src_enable:
+	clk_unprepare(new);
+err_new_src_prepare2:
+	if (c->prepare_count)
+		clk_unprepare(new);
+err_new_src_prepare:
+	clk_unprepare(curr);
+	return rc;
+}
+
+static void disable_unprepare_rcg_srcs(struct clk *c, struct clk *curr,
+					struct clk *new, unsigned long *flags)
+{
+	clk_disable(new);
+	clk_disable(curr);
+	if (c->count)
+		clk_disable(curr);
+	spin_unlock_irqrestore(&c->lock, *flags);
+
+	clk_unprepare(new);
+	clk_unprepare(curr);
+	if (c->prepare_count)
+		clk_unprepare(curr);
+}
+
 static int rcg_clk_set_rate(struct clk *c, unsigned long rate)
 {
 	struct clk_freq_tbl *cf, *nf;
@@ -285,31 +367,38 @@ static int rcg_clk_set_rate(struct clk *c, unsigned long rate)
 			return rc;
 	}
 
-	rc = __clk_pre_reparent(c, nf->src_clk, &flags);
+	if (rcg->non_local_control_timeout) {
+		/*
+		 * __clk_pre_reparent only enables the RCG source if the SW
+		 * count for the RCG is non-zero. We need to make sure that
+		 * both PLL sources are ON before force turning on the RCG.
+		 */
+		rc = prepare_enable_rcg_srcs(c, cf->src_clk, nf->src_clk,
+								&flags);
+	} else
+		rc = __clk_pre_reparent(c, nf->src_clk, &flags);
+
 	if (rc)
 		return rc;
 
 	BUG_ON(!rcg->set_rate);
 
-	/*
-	 * Perform clock-specific frequency switch operations.
-	 *
-	 * For RCGs with non_local_children set to true:
-	 * If this RCG has at least one branch that is controlled by another
-	 * execution entity, ensure that the enable/disable and mux switch
-	 * are staggered.
-	 */
-	if (!rcg->non_local_children) {
-		rcg->set_rate(rcg, nf);
-	} else if (c->count) {
+	/* Perform clock-specific frequency switch operations. */
+	if ((rcg->non_local_children && c->count) ||
+			rcg->non_local_control_timeout) {
 		/*
-		 * Force enable the RCG here since there could be a disable
-		 * call happening between pre_reparent and set_rate.
+		 * Force enable the RCG before updating the RCG configuration
+		 * since the downstream clock/s can be disabled at around the
+		 * same time causing the feedback from the CBCR to turn off
+		 * the RCG.
 		 */
 		rcg_set_force_enable(rcg);
 		rcg->set_rate(rcg, nf);
 		rcg_clear_force_enable(rcg);
+	} else if (!rcg->non_local_children) {
+		rcg->set_rate(rcg, nf);
 	}
+
 	/*
 	 * If non_local_children is set and the RCG is not enabled,
 	 * the following operations switch parent in software and cache
@@ -318,7 +407,11 @@ static int rcg_clk_set_rate(struct clk *c, unsigned long rate)
 	rcg->current_freq = nf;
 	c->parent = nf->src_clk;
 
-	__clk_post_reparent(c, cf->src_clk, &flags);
+	if (rcg->non_local_control_timeout)
+		disable_unprepare_rcg_srcs(c, cf->src_clk, nf->src_clk,
+								&flags);
+	else
+		__clk_post_reparent(c, cf->src_clk, &flags);
 
 	return 0;
 }
