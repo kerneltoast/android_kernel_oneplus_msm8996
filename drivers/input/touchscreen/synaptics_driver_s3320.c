@@ -72,6 +72,7 @@
 #define PAGESIZE 512
 #define TPD_USE_EINT
 
+#define TPD_NAME "synaptics"
 #define TPD_DEVICE "synaptics,s3320"
 
 //#define SUPPORT_SLEEP_POWEROFF
@@ -131,6 +132,13 @@ struct test_header {
 #define Down2UpSwip         11  // |^
 #define Mgestrue            12  // M
 #define Wgestrue            13  // W
+
+#define KEY_DOUBLE_TAP          KEY_WAKEUP // double tap to wake
+#define KEY_GESTURE_CIRCLE      250 // draw circle to lunch camera
+#define KEY_GESTURE_TWO_SWIPE	251 // swipe two finger vertically to play/pause
+#define KEY_GESTURE_V           252 // draw v to toggle flashlight
+#define KEY_GESTURE_LEFT_V      253 // draw left arrow for previous track
+#define KEY_GESTURE_RIGHT_V     254 // draw right arrow for next track
 
 #define BIT0 (0x1 << 0)
 #define BIT1 (0x1 << 1)
@@ -1153,6 +1161,33 @@ static void gesture_judge(struct synaptics_ts_data *ts)
 				UnkownGestrue;
 	}
 
+	keyCode = UnkownGestrue;
+	// Get key code based on registered gesture.
+	switch (gesture) {
+		case DouTap:
+			keyCode = KEY_DOUBLE_TAP;
+			break;
+		case UpVee:
+			keyCode = KEY_GESTURE_V;
+			break;
+		case DownVee:
+			keyCode = KEY_GESTURE_V;
+			break;
+		case LeftVee:
+			keyCode = KEY_GESTURE_RIGHT_V;
+			break;
+		case RightVee:
+			keyCode = KEY_GESTURE_LEFT_V;
+			break;
+		case Circle:
+			keyCode = KEY_GESTURE_CIRCLE;
+			break;
+		case DouSwip:
+			keyCode = KEY_GESTURE_TWO_SWIPE;
+			break;
+		default:
+			break;
+	}
 
 	TPD_ERR("detect %s gesture\n", gesture == DouTap ? "(double tap)" :
 			gesture == UpVee ? "(V)" :
@@ -1496,6 +1531,109 @@ static ssize_t coordinate_proc_read_func(struct file *file, char __user *user_bu
 	return ret;
 }
 
+static void gesture_enable(struct synaptics_ts_data *ts)
+{
+	ts->gesture_enable = DouTap_gesture || Circle_gesture || UpVee_gesture ||
+                (LeftVee_gesture && RightVee_gesture && DouSwip_gesture) ? 1 : 0;
+}
+
+static ssize_t double_tap_enable_read_func(struct file *file, char __user *user_buf, size_t count, loff_t *ppos)
+{
+	int ret = 0;
+	char page[PAGESIZE];
+
+	ret = sprintf(page, "%d\n", DouTap_gesture);
+	ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page));
+
+	return ret;
+}
+
+static ssize_t double_tap_enable_write_func(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
+{
+	int ret = 0;
+	struct synaptics_ts_data *ts = ts_g;
+
+	sscanf(buf, "%d", &ret);
+
+	DouTap_gesture = ret;
+	gesture_enable(ts);
+
+	return count;
+}
+
+static ssize_t camera_enable_read_func(struct file *file, char __user *user_buf, size_t count, loff_t *ppos)
+{
+	int ret = 0;
+	char page[PAGESIZE];
+
+	ret = sprintf(page, "%d\n", Circle_gesture);
+	ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page));
+
+	return ret;
+}
+
+static ssize_t camera_enable_write_func(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
+{
+	int ret = 0;
+	struct synaptics_ts_data *ts = ts_g;
+
+	sscanf(buf, "%d", &ret);
+
+	Circle_gesture = ret;
+	gesture_enable(ts);
+
+	return count;
+}
+
+static ssize_t music_enable_read_func(struct file *file, char __user *user_buf, size_t count, loff_t *ppos)
+{
+	int ret = 0;
+	char page[PAGESIZE];
+
+	ret = sprintf(page, "%d\n", LeftVee_gesture && RightVee_gesture && DouSwip_gesture);
+	ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page));
+
+	return ret;
+}
+
+static ssize_t music_enable_write_func(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
+{
+	int ret = 0;
+	struct synaptics_ts_data *ts = ts_g;
+
+	sscanf(buf, "%d", &ret);
+
+	DouSwip_gesture = ret;
+	LeftVee_gesture = ret;
+	RightVee_gesture = ret;
+	gesture_enable(ts);
+
+	return count;
+}
+
+static ssize_t flashlight_enable_read_func(struct file *file, char __user *user_buf, size_t count, loff_t *ppos)
+{
+	int ret = 0;
+	char page[PAGESIZE];
+
+	ret = sprintf(page, "%d\n", UpVee_gesture);
+	ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page));
+
+	return ret;
+}
+
+static ssize_t flashlight_enable_write_func(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
+{
+	int ret = 0;
+	struct synaptics_ts_data *ts = ts_g;
+
+	sscanf(buf, "%d", &ret);
+
+	UpVee_gesture = ret;
+	gesture_enable(ts);
+
+	return count;
+}
 
 // chenggang.li@BSP.TP modified for oem 2014-08-08 create node
 /******************************start****************************/
@@ -1508,6 +1646,34 @@ static const struct file_operations tp_gesture_proc_fops = {
 
 static const struct file_operations coordinate_proc_fops = {
 	.read =  coordinate_proc_read_func,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+};
+
+static const struct file_operations double_tap_enable_proc_fops = {
+	.write = double_tap_enable_write_func,
+	.read =  double_tap_enable_read_func,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+};
+
+static const struct file_operations camera_enable_proc_fops = {
+	.write = camera_enable_write_func,
+	.read =  camera_enable_read_func,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+};
+
+static const struct file_operations music_enable_proc_fops = {
+	.write = music_enable_write_func,
+	.read =  music_enable_read_func,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+};
+
+static const struct file_operations flashlight_enable_proc_fops = {
+	.write = flashlight_enable_write_func,
+	.read =  flashlight_enable_read_func,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 };
@@ -2228,7 +2394,7 @@ static int	synaptics_input_init(struct synaptics_ts_data *ts)
 		TPD_ERR("synaptics_ts_probe: Failed to allocate input device\n");
 		return ret;
 	}
-    ts->input_dev->name = TPD_DEVICE;;
+    ts->input_dev->name = TPD_NAME;
     ts->input_dev->dev.parent = &ts->client->dev;
 	set_bit(EV_SYN, ts->input_dev->evbit);
 	set_bit(EV_ABS, ts->input_dev->evbit);
@@ -2241,6 +2407,12 @@ static int	synaptics_input_init(struct synaptics_ts_data *ts)
 
 #ifdef SUPPORT_GESTURE
 	set_bit(KEY_F4 , ts->input_dev->keybit);//doulbe-tap resume
+	set_bit(KEY_DOUBLE_TAP, ts->input_dev->keybit);
+	set_bit(KEY_GESTURE_CIRCLE, ts->input_dev->keybit);
+	set_bit(KEY_GESTURE_V, ts->input_dev->keybit);
+	set_bit(KEY_GESTURE_TWO_SWIPE, ts->input_dev->keybit);
+	set_bit(KEY_GESTURE_LEFT_V, ts->input_dev->keybit);
+	set_bit(KEY_GESTURE_RIGHT_V, ts->input_dev->keybit);
 #endif
 	/* For multi touch */
 	input_set_abs_params(ts->input_dev, ABS_MT_TOUCH_MAJOR, 0, 255, 0, 0);
@@ -2792,6 +2964,30 @@ static int init_synaptics_proc(void)
 	if(prEntry_tmp == NULL){
 		ret = -ENOMEM;
         TPD_ERR("Couldn't create coordinate\n");
+	}
+
+	prEntry_tmp = proc_create("double_tap_enable", 0666, prEntry_tp, &double_tap_enable_proc_fops);
+	if(prEntry_tmp == NULL){
+		ret = -ENOMEM;
+		TPD_ERR("Couldn't create double_tap_enable\n");
+	}
+
+	prEntry_tmp = proc_create("camera_enable", 0666, prEntry_tp, &camera_enable_proc_fops);
+	if(prEntry_tmp == NULL){
+		ret = -ENOMEM;
+		TPD_ERR("Couldn't create camera_enable\n");
+	}
+
+	prEntry_tmp = proc_create("music_enable", 0666, prEntry_tp, &music_enable_proc_fops);
+	if(prEntry_tmp == NULL){
+		ret = -ENOMEM;
+		TPD_ERR("Couldn't create music_enable\n");
+	}
+
+	prEntry_tmp = proc_create("flashlight_enable", 0666, prEntry_tp, &flashlight_enable_proc_fops);
+	if(prEntry_tmp == NULL){
+		ret = -ENOMEM;
+		TPD_ERR("Couldn't create flashlight_enable\n");
 	}
 #endif
 
