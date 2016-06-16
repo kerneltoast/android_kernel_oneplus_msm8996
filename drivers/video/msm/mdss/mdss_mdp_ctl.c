@@ -2439,12 +2439,10 @@ int mdss_mdp_display_wakeup_time(struct mdss_mdp_ctl *ctl,
 		pinfo->lcdc.v_pulse_width +
 		pinfo->yres;
 
-	if (current_line > total_line)
+	if (current_line >= total_line)
 		time_to_vsync = time_of_line * total_line;
 	else
 		time_to_vsync = time_of_line * (total_line - current_line);
-
-	time_to_vsync = time_of_line * (total_line - current_line);
 
 	if (pinfo->adjust_timer_delay_ms) {
 		adjust_line_ns = pinfo->adjust_timer_delay_ms
