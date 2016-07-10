@@ -603,6 +603,8 @@
 			label = "rgb";
 			status = "okay";
 
+			qcom,rgb-sync;
+
 			red_led: qcom,rgb_0 {
 				label = "rgb";
 				qcom,id = <3>;
