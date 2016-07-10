@@ -32,13 +32,11 @@
 #include <sound/pcm_params.h>
 #include <sound/info.h>
 #include "device_event.h"
-#include <sound/sounddebug.h>
 #include "qdsp6v2/msm-pcm-routing-v2.h"
 #include "../codecs/wcd9xxx-common.h"
 #include "../codecs/wcd9330.h"
 #include "../codecs/wcd9335.h"
 #include "../codecs/wsa881x.h"
-#include <sound/sounddebug.h>
 
 #define DRV_NAME "msm8996-asoc-snd"
 
@@ -160,15 +158,6 @@ static int msm_tert_mi2s_tx_ch = 2;
 
 //static int msm_quat_mi2s_rx_ch = 6;
 static int msm_quat_mi2s_rx_ch = 2;
-
-/* Maintain struct aligned with the one from msm-dai-q6-v2.h */
-struct msm_mi2s_pdata {
-	u16 rx_sd_lines;
-	u16 tx_sd_lines;
-	u16 intf_id;
-	u16 slave;
-	u32 ext_mclk_rate;
-};
 
 struct msm_mi2s_data {
 	struct afe_clk_set mi2s_clk;
@@ -706,10 +695,8 @@ static const struct snd_soc_dapm_widget msm8996_dapm_widgets[] = {
 	SND_SOC_DAPM_SPK("hifi amp", msm_hifi_ctrl_event),
 	SND_SOC_DAPM_MIC("Handset Mic", NULL),
 	SND_SOC_DAPM_MIC("Headset Mic", NULL),
-//su
 	SND_SOC_DAPM_MIC("Primary Mic", NULL),
 	SND_SOC_DAPM_MIC("Noise Mic", NULL),
-
 	SND_SOC_DAPM_MIC("Analog Mic6", NULL),
 	SND_SOC_DAPM_MIC("Analog Mic7", NULL),
 	SND_SOC_DAPM_MIC("Analog Mic8", NULL),
@@ -1812,13 +1799,10 @@ static int msm8996_mi2s_snd_startup(struct snd_pcm_substream *substream,
 	u32 dai_format = 0;
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
-	struct msm_mi2s_pdata *mi2s_pdata =
-			(struct msm_mi2s_pdata *) cpu_dai->dev->platform_data;
-	u32 ext_mclk_rate = (u32) mi2s_pdata->ext_mclk_rate;
 
-	pr_debug("%s: dai name %s %p substream = %s  stream = %d port_id = %d slave %d ext_mclk_rate %u\n",
+	pr_debug("%s: dai name %s %p substream = %s  stream = %d port_id = %d\n",
 		 __func__, cpu_dai->name, cpu_dai->dev, substream->name,
-		 substream->stream, port_id, mi2s_pdata->slave, ext_mclk_rate);
+		 substream->stream, port_id);
 
 
 	if (atomic_inc_return(&msm_mi2s_data->mi2s_rsc_ref) == 1) {
@@ -1828,35 +1812,8 @@ static int msm8996_mi2s_snd_startup(struct snd_pcm_substream *substream,
 		msm_mi2s_data->mi2s_clk.clk_freq_in_hz = bit_clk;
 
 
-		if (!mi2s_pdata->slave) {
-			dai_format = SND_SOC_DAIFMT_CBS_CFS;
+		dai_format = SND_SOC_DAIFMT_CBS_CFS;
 
-
-
-			if (ext_mclk_rate) {
-
-				/* TBD: Need confirmation from HW team */
-				msm_mi2s_data->mi2s_mclk.enable = 1;
-				msm_mi2s_data->mi2s_mclk.clk_freq_in_hz = ext_mclk_rate;
-
-				pr_debug("%s: Enabling mclk, clk_freq_in_hz = %u\n",
-					__func__, msm_mi2s_data->mi2s_mclk.clk_freq_in_hz);
-
-				ret = afe_set_lpass_clock_v2(port_id,
-						    &msm_mi2s_data->mi2s_mclk);
-				if (ret < 0) {
-					pr_err("%s: afe lpass mclk failed, err:%d\n",
-						__func__, ret);
-					goto err;
-				}
-			}
-		} else {
-			/* Adding plus 1 will change Q6AFE_LPASS_CLK_ID_xxx_MI2S_IBIT
-			 * to Q6AFE_LPASS_CLK_ID_xxx_MI2S_EBIT */
-			msm_mi2s_data->mi2s_clk.clk_id += 1;
-			dai_format = SND_SOC_DAIFMT_CBM_CFM;
-
-		}
 		pr_debug("%s: Enabling bit-clock, clk_freq_in_hz = %u\n",
 				__func__, msm_mi2s_data->mi2s_clk.clk_freq_in_hz);
 
@@ -1889,8 +1846,6 @@ static void msm8996_mi2s_snd_shutdown(struct snd_pcm_substream *substream,
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
-	struct msm_mi2s_pdata *mi2s_pdata =
-			(struct msm_mi2s_pdata *) cpu_dai->dev->platform_data;
 	int ret = 0;
 
 	pr_debug("%s: dai name %s %p  substream = %s  stream = %d port_id = %d\n",
@@ -1905,19 +1860,13 @@ static void msm8996_mi2s_snd_shutdown(struct snd_pcm_substream *substream,
 			pr_err("%s: afe lpass clock failed, err:%d\n",
 				__func__, ret);
 
-		/* Need to decrement it to restore original value */
-		if (mi2s_pdata->slave)
-			msm_mi2s_data->mi2s_clk.clk_id -= 1;
-
-		if (!mi2s_pdata->slave && mi2s_pdata->ext_mclk_rate) {
-			msm_mi2s_data->mi2s_mclk.enable = 0;
-			pr_debug("%s: Disabling mclk\n", __func__);
-			ret = afe_set_lpass_clock_v2(port_id,
-						  &msm_mi2s_data->mi2s_mclk);
-			if (ret < 0)
-				pr_err("%s: afe lpass clock failed, err:%d\n",
-					__func__, ret);
-		}
+		msm_mi2s_data->mi2s_mclk.enable = 0;
+		pr_debug("%s: Disabling mclk\n", __func__);
+		ret = afe_set_lpass_clock_v2(port_id,
+					  &msm_mi2s_data->mi2s_mclk);
+		if (ret < 0)
+			pr_err("%s: afe lpass clock failed, err:%d\n",
+				__func__, ret);
 	}
 }
 static void msm8996_quat_mi2s_snd_shutdown(struct snd_pcm_substream *substream)

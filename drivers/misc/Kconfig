@@ -561,6 +561,17 @@ config USB_EXT_TYPE_C_TI
 	  This adds support for detecting USB Type-C chargers that
 	  can supply upto 3A Vbus current for charging.
 
+config TI_DRV2667
+	tristate "TI's DRV2667 haptic controller support"
+	depends on I2C
+	help
+	  The DRV2667 is a piezo haptic controller chip. It can drive
+	  piezo haptics either in digital mode or analog mode. This chip
+	  can be used in variety of devices to provide haptic support.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called ti_drv2667.
+
 config TUSB320_TYPE_C
 	tristate "USB Type-C charger detection support using external chip"
 	depends on I2C && POWER_SUPPLY
@@ -591,30 +602,11 @@ config PTN5150_TYPE_C
 	  This adds support for detecting USB Type-C chargers that
 	  can supply upto 3A Vbus current for charging.
 
-config TI_DRV2667
-	tristate "TI's DRV2667 haptic controller support"
-	depends on I2C
-	help
-	  The DRV2667 is a piezo haptic controller chip. It can drive
-	  piezo haptics either in digital mode or analog mode. This chip
-	  can be used in variety of devices to provide haptic support.
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called ti_drv2667.
-
 config GPIO_SWITCH
 	tristate "use gpio swith"
 	default y
 	help
 	  we can use gpio switch set gpio out high or low
-
-#add by xcb
-config BOOTLOADER_LOG
-	tristate "show bootloader log"
-	depends on OF
-	default y
-	help
-	  show bootloader log in kernel
 
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"

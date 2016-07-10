@@ -78,7 +78,6 @@ spinlock_t msm_pid_lock;
 			__q->len--;				\
 			list_del_init(&node->member);		\
 			kzfree(node);				\
-			node = NULL;                \
 			break;					\
 		}						\
 	}							\
@@ -95,8 +94,7 @@ spinlock_t msm_pid_lock;
 		if (node == q_node) {				\
 			__q->len--;				\
 			list_del_init(&node->member);		\
-			kzfree(node);\
-			node = NULL;  \
+			kzfree(node);				\
 			break;					\
 		}						\
 	}							\
@@ -116,7 +114,6 @@ spinlock_t msm_pid_lock;
 			if (&node->member) \
 				list_del_init(&node->member);		\
 			kzfree(node);	\
-			node = NULL;	\
 		}	\
 	}	\
 	spin_unlock_irqrestore(&__q->lock, flags);		\

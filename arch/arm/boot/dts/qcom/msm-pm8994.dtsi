@@ -57,13 +57,14 @@
 				qcom,support-reset = <1>;
 				qcom,s1-timer = <10256>;
 				qcom,s2-timer = <2000>;
-				qcom,s2-type = <1>;
+				qcom,s2-type = <7>;
 			};
 
 			qcom,pon_2 {
 				qcom,pon-type = <1>;
 				qcom,pull-up = <1>;
 				linux,code = <114>;
+				status = "disabled";
 			};
 
 			qcom,pon_3 {
@@ -74,6 +75,7 @@
 				qcom,s2-timer = <2000>;
 				qcom,s2-type = <7>;
 				qcom,use-bark;
+				status = "disabled";
 			};
 		};
 
@@ -231,7 +233,10 @@
 			mpp@a100 {
 				reg = <0xa100 0x100>;
 				qcom,pin-num = <2>;
-				status = "disabled";
+				qcom,mode = <4>; /* AIN input */
+				qcom,ain-route = <1>; /* AMUX 6 ,QPNP_PIN_AIN_AMUX_CH6   = 1*/
+				qcom,master-en = <1>; /* Enable MPP */
+				qcom,src-sel = <0>; /* Function constant */
 			};
 
 			mpp@a200 {
@@ -249,7 +254,10 @@
 			mpp@a400 {
 				reg = <0xa400 0x100>;
 				qcom,pin-num = <5>;
-				status = "disabled";
+				qcom,mode = <4>; /* AIN input */
+				qcom,ain-route = <0>; /* AMUX 5 ,QPNP_PIN_AIN_AMUX_CH5   = 0*/
+				qcom,master-en = <1>; /* Enable MPP */
+				qcom,src-sel = <0>; /* Function constant */
 			};
 
 			mpp@a500 {
@@ -261,13 +269,19 @@
 			mpp@a600 {
 				reg = <0xa600 0x100>;
 				qcom,pin-num = <7>;
-				status = "disabled";
+				qcom,mode = <4>; /* AIN input */
+				qcom,ain-route = <2>; /* AMUX 7 ,QPNP_PIN_AIN_AMUX_CH7   = 2*/
+				qcom,master-en = <1>; /* Enable MPP */
+				qcom,src-sel = <0>; /* Function constant */
 			};
 
 			mpp@a700 {
 				reg = <0xa700 0x100>;
 				qcom,pin-num = <8>;
-				status = "disabled";
+				qcom,mode = <4>; /* AIN input */
+				qcom,ain-route = <3>; /* AMUX 6 ,QPNP_PIN_AIN_AMUX_CH8   = 3*/
+				qcom,master-en = <1>; /* Enable MPP */
+				qcom,src-sel = <0>; /* Function constant */
 			};
 		};
 
@@ -343,7 +357,7 @@
 			#address-cells = <1>;
 			#size-cells = <1>;
 			qcom,qpnp-rtc-write = <0>;
-			qcom,qpnp-rtc-alarm-pwrup = <0>;
+			qcom,qpnp-rtc-alarm-pwrup = <1>;
 
 			qcom,pm8994_rtc_rw@6000 {
 				reg = <0x6000 0x100>;

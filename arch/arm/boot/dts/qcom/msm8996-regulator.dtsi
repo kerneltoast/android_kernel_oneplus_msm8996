@@ -133,9 +133,9 @@
 	rpm-regulator-ldoa3 {
 		status = "okay";
 		pm8994_l3: regulator-l3 {
-			regulator-min-microvolt = <850000>;
-			regulator-max-microvolt = <850000>;
-			qcom,init-voltage = <850000>;
+			regulator-min-microvolt = <1100000>;
+			regulator-max-microvolt = <1100000>;
+			qcom,init-voltage = <1100000>;
 			status = "okay";
 		};
 	};
@@ -216,7 +216,7 @@
 	rpm-regulator-ldoa13 {
 		status = "okay";
 		pm8994_l13: regulator-l13 {
-			regulator-min-microvolt = <1800000>;
+			regulator-min-microvolt = <29500000>;
 			regulator-max-microvolt = <2950000>;
 			qcom,init-voltage = <2950000>;
 			status = "okay";
@@ -224,7 +224,7 @@
 	};
 
 	rpm-regulator-ldoa14 {
-		status = "okay";
+		status = "disabled";
 		pm8994_l14: regulator-l14 {
 			regulator-min-microvolt = <1800000>;
 			regulator-max-microvolt = <1800000>;
@@ -259,9 +259,9 @@
 	rpm-regulator-ldoa17 {
 		status = "okay";
 		pm8994_l17: regulator-l17 {
-			regulator-min-microvolt = <2500000>;
-			regulator-max-microvolt = <2500000>;
-			qcom,init-voltage = <2500000>;
+			regulator-min-microvolt = <2600000>;
+			regulator-max-microvolt = <2600000>;
+			qcom,init-voltage = <2600000>;
 			status = "okay";
 		};
 	};
@@ -269,9 +269,9 @@
 	rpm-regulator-ldoa18 {
 		status = "okay";
 		pm8994_l18: regulator-l18 {
-			regulator-min-microvolt = <2700000>;
-			regulator-max-microvolt = <2900000>;
-			qcom,init-voltage = <2700000>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			qcom,init-voltage = <3300000>;
 			status = "okay";
 		};
 
@@ -287,6 +287,7 @@
 			 * is driven high.
 			 */
 			qcom,enable-with-pin-ctrl = <0 4>;
+			status = "disabled";
 		};
 	};
 
@@ -323,9 +324,9 @@
 	rpm-regulator-ldoa22 {
 		status = "okay";
 		pm8994_l22: regulator-l22 {
-			regulator-min-microvolt = <3300000>;
+			regulator-min-microvolt = <3000000>;
 			regulator-max-microvolt = <3300000>;
-			qcom,init-voltage = <3300000>;
+			qcom,init-voltage = <3000000>;
 			status = "okay";
 		};
 	};
@@ -389,9 +390,9 @@
 	rpm-regulator-ldoa27 {
 		status = "okay";
 		pm8994_l27: regulator-l27 {
-			regulator-min-microvolt = <1000000>;
-			regulator-max-microvolt = <1000000>;
-			qcom,init-voltage = <1000000>;
+			regulator-min-microvolt = <1200000>;
+			regulator-max-microvolt = <1200000>;
+			qcom,init-voltage = <1200000>;
 			status = "okay";
 		};
 	};

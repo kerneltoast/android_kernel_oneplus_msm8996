@@ -12,7 +12,6 @@
  * GNU General Public License for more details.
  */
 
-#define DEBUG
 #define pr_fmt(fmt) "%s(): " fmt, __func__
 #include <linux/cdev.h>
 #include <linux/clk.h>
@@ -26,7 +25,6 @@
 #include <linux/pm.h>
 #include <linux/slab.h>
 #include <linux/crc32.h>
-#include <sound/sounddebug.h>
 #include "tfa98xx-core.h"
 #include "tfa98xx-regs.h"
 #include "tfa_container.h"

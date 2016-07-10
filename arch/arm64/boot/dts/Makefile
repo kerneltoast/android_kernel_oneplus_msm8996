@@ -1,7 +1,7 @@
-dts-dirs += 15801_EVT2
-dts-dirs += 15801_EVT3
-dts-dirs += 15801_DVT
-dts-dirs += 15801_PVT
+dts-dirs += apm
+dts-dirs += arm
+dts-dirs += cavium
+dts-dirs += qcom
 
 always		:= $(dtb-y)
 subdir-y	:= $(dts-dirs)

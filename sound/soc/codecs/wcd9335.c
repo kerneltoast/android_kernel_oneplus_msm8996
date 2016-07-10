@@ -38,7 +38,6 @@
 #include <sound/soc-dapm.h>
 #include <sound/tlv.h>
 #include <sound/info.h>
-#include <sound/sounddebug.h>
 #include "wcd9335.h"
 #include "wcd-mbhc-v2.h"
 #include "wcd9xxx-common-v2.h"
@@ -344,7 +343,7 @@ enum {
 	AIF4_SWITCH_VALUE,
 	AUDIO_NOMINAL,
 	CPE_NOMINAL,
-    HPH_PA_DELAY,
+	HPH_PA_DELAY,
 	SB_CLK_GEAR,
 };
 
@@ -789,8 +788,8 @@ struct tasha_priv {
 	int spkr_mode;
 	struct hpf_work tx_hpf_work[TASHA_NUM_DECIMATORS];
 	struct tx_mute_work tx_mute_dwork[TASHA_NUM_DECIMATORS];
-    int hph_l_gain;
-    int hph_r_gain;
+	int hph_l_gain;
+	int hph_r_gain;
 	int rx_7_count;
 	int rx_8_count;
 };
@@ -816,32 +815,28 @@ static const struct tasha_reg_mask_val tasha_spkr_mode1[] = {
 	{WCD9335_CDC_BOOST1_BOOST_CTL, 0x7C, 0x44},
 };
 
-enum
-{
+enum {
 	NO_DEVICE	= 0,
 	HS_WITH_MIC	= 1,
-	HS_WITHOUT_MIC = 2,
+	HS_WITHOUT_MIC	= 2,
 };
 
-struct tasha_priv *priv_headset_type;
+static struct tasha_priv *priv_headset_type;
 
 static ssize_t wcd9xxx_print_name(struct switch_dev *sdev, char *buf)
 {
-	switch (switch_get_state(sdev))
-	{
-		case NO_DEVICE:
-			return sprintf(buf, "No Device\n");
-		case HS_WITH_MIC:
-            if(priv_headset_type->mbhc.mbhc_cfg->headset_type == 1) {
+	switch (switch_get_state(sdev)) {
+	case NO_DEVICE:
+		return sprintf(buf, "No Device\n");
+	case HS_WITH_MIC:
+		if (priv_headset_type->mbhc.mbhc_cfg->headset_type == 1)
 		        return sprintf(buf, "American Headset\n");
-            } else {
-                return sprintf(buf, "Headset\n");
-            }
-
-		case HS_WITHOUT_MIC:
-			return sprintf(buf, "Handset\n");
-
+		else
+			return sprintf(buf, "Headset\n");
+	case HS_WITHOUT_MIC:
+		return sprintf(buf, "Handset\n");
 	}
+
 	return -EINVAL;
 }
 
@@ -3653,8 +3648,6 @@ err:
 	return ret;
 }
 
-
-
 static void tasha_codec_hph_post_pa_config(struct tasha_priv *tasha,
 					   int mode, int event)
 {
@@ -3704,32 +3697,32 @@ static void tasha_codec_hph_post_pa_config(struct tasha_priv *tasha,
 	}
 }
 
-
 static int tasha_codec_enable_hphr_pa(struct snd_soc_dapm_widget *w,
 				      struct snd_kcontrol *kcontrol,
 				      int event)
 {
 	struct snd_soc_codec *codec = w->codec;
 	struct tasha_priv *tasha = snd_soc_codec_get_drvdata(codec);
-    int hph_mode = tasha->hph_mode;
+	int hph_mode = tasha->hph_mode;
 	int ret = 0;
 
 	dev_dbg(codec->dev, "%s %s %d\n", __func__, w->name, event);
 
 	switch (event) {
-    case SND_SOC_DAPM_PRE_PMU:
-    	set_bit(HPH_PA_DELAY, &tasha->status_mask);
-	break;
+	case SND_SOC_DAPM_PRE_PMU:
+		set_bit(HPH_PA_DELAY, &tasha->status_mask);
+		break;
 	case SND_SOC_DAPM_POST_PMU:
-		/* 7ms sleep is required after PA is enabled as per
+		/*
+		 * 7ms sleep is required after PA is enabled as per
 		 * HW requirement
 		 */
-	if (test_bit(HPH_PA_DELAY, &tasha->status_mask)) {
-		usleep_range(7000, 7100);
-		clear_bit(HPH_PA_DELAY, &tasha->status_mask);
-	}
-	tasha_codec_hph_post_pa_config(tasha, hph_mode, event);
-	snd_soc_update_bits(codec, WCD9335_CDC_RX2_RX_PATH_CTL,
+		if (test_bit(HPH_PA_DELAY, &tasha->status_mask)) {
+			usleep_range(7000, 7100);
+			clear_bit(HPH_PA_DELAY, &tasha->status_mask);
+		}
+		tasha_codec_hph_post_pa_config(tasha, hph_mode, event);
+		snd_soc_update_bits(codec, WCD9335_CDC_RX2_RX_PATH_CTL,
 				    0x10, 0x00);
 		/* Remove mix path mute if it is enabled */
 		if ((snd_soc_read(codec, WCD9335_CDC_RX2_RX_PATH_MIX_CTL)) &
@@ -3742,7 +3735,7 @@ static int tasha_codec_enable_hphr_pa(struct snd_soc_dapm_widget *w,
 		blocking_notifier_call_chain(&tasha->notifier,
 					WCD_EVENT_PRE_HPHR_PA_OFF,
 					&tasha->mbhc);
-        tasha_codec_hph_post_pa_config(tasha, hph_mode, event);
+		tasha_codec_hph_post_pa_config(tasha, hph_mode, event);
 		break;
 	case SND_SOC_DAPM_POST_PMD:
 		/* 5ms sleep is required after PA is disabled as per
@@ -3770,25 +3763,26 @@ static int tasha_codec_enable_hphl_pa(struct snd_soc_dapm_widget *w,
 {
 	struct snd_soc_codec *codec = w->codec;
 	struct tasha_priv *tasha = snd_soc_codec_get_drvdata(codec);
-    int hph_mode = tasha->hph_mode;
+	int hph_mode = tasha->hph_mode;
 	int ret = 0;
 
 	dev_dbg(codec->dev, "%s %s %d\n", __func__, w->name, event);
 
 	switch (event) {
-    case SND_SOC_DAPM_PRE_PMU:
-	set_bit(HPH_PA_DELAY, &tasha->status_mask);
-	break;
+	case SND_SOC_DAPM_PRE_PMU:
+		set_bit(HPH_PA_DELAY, &tasha->status_mask);
+		break;
 	case SND_SOC_DAPM_POST_PMU:
-		/* 7ms sleep is required after PA is enabled as per
+		/*
+		 * 7ms sleep is required after PA is enabled as per
 		 * HW requirement
 		 */
-	if (test_bit(HPH_PA_DELAY, &tasha->status_mask)) {
-		usleep_range(7000, 7100);
-		clear_bit(HPH_PA_DELAY, &tasha->status_mask);
-	}
+		if (test_bit(HPH_PA_DELAY, &tasha->status_mask)) {
+			usleep_range(7000, 7100);
+			clear_bit(HPH_PA_DELAY, &tasha->status_mask);
+		}
 
-	tasha_codec_hph_post_pa_config(tasha, hph_mode, event);
+		tasha_codec_hph_post_pa_config(tasha, hph_mode, event);
 		snd_soc_update_bits(codec, WCD9335_CDC_RX1_RX_PATH_CTL,
 				    0x10, 0x00);
 		/* Remove mix path mute if it is enabled */
@@ -3802,7 +3796,7 @@ static int tasha_codec_enable_hphl_pa(struct snd_soc_dapm_widget *w,
 		blocking_notifier_call_chain(&tasha->notifier,
 					WCD_EVENT_PRE_HPHL_PA_OFF,
 					&tasha->mbhc);
-        tasha_codec_hph_post_pa_config(tasha, hph_mode, event);
+		tasha_codec_hph_post_pa_config(tasha, hph_mode, event);
 		break;
 	case SND_SOC_DAPM_POST_PMD:
 		/* 5ms sleep is required after PA is disabled as per
@@ -4428,6 +4422,7 @@ static void tasha_codec_hd2_control(struct snd_soc_codec *codec,
 		snd_soc_update_bits(codec, hd2_scale_reg, 0x3C, 0x00);
 	}
 }
+
 static int tasha_codec_enable_prim_interpolator(
 				struct snd_soc_codec *codec,
 				u16 reg, int event)
@@ -4444,7 +4439,7 @@ static int tasha_codec_enable_prim_interpolator(
 		if (tasha->prim_int_users[ind] == 1) {
 			snd_soc_update_bits(codec, prim_int_reg,
 					    0x10, 0x10);
-            tasha_codec_hd2_control(codec, prim_int_reg, event);
+			tasha_codec_hd2_control(codec, prim_int_reg, event);
 			snd_soc_update_bits(codec, prim_int_reg,
 					    1 << 0x5, 1 << 0x5);
 		}
@@ -4461,7 +4456,7 @@ static int tasha_codec_enable_prim_interpolator(
 					0x40, 0x40);
 			snd_soc_update_bits(codec, prim_int_reg,
 					0x40, 0x00);
-            tasha_codec_hd2_control(codec, prim_int_reg, event);
+			tasha_codec_hd2_control(codec, prim_int_reg, event);
 		}
 		break;
 	};
@@ -11450,8 +11445,8 @@ static const struct tasha_reg_mask_val tasha_codec_reg_init_val_2_0[] = {
 	{WCD9335_CDC_COMPANDER8_CTL7, 0x1E, 0x18},
 	{WCD9335_CDC_TX0_TX_PATH_SEC7, 0xFF, 0x45},
 	{WCD9335_CDC_RX0_RX_PATH_SEC0, 0xFC, 0xF4},
-    {WCD9335_HPH_REFBUFF_LP_CTL, 0x08, 0x08},
-    {WCD9335_HPH_REFBUFF_LP_CTL, 0x06, 0x02},
+	{WCD9335_HPH_REFBUFF_LP_CTL, 0x08, 0x08},
+	{WCD9335_HPH_REFBUFF_LP_CTL, 0x06, 0x02},
 };
 
 static const struct tasha_reg_mask_val tasha_codec_reg_defaults[] = {
@@ -12602,13 +12597,11 @@ static int tasha_codec_probe(struct snd_soc_codec *codec)
 		goto err_hwdep;
 	}
 
-		tasha->mbhc.wcd9xxx_sdev.name= "h2w";
-		tasha->mbhc.wcd9xxx_sdev.print_name = wcd9xxx_print_name;
-		ret = switch_dev_register(&tasha->mbhc.wcd9xxx_sdev);
-		if (ret)
-		{
-			goto err_switch_dev_register;
-		}
+	tasha->mbhc.wcd9xxx_sdev.name = "h2w";
+	tasha->mbhc.wcd9xxx_sdev.print_name = wcd9xxx_print_name;
+	ret = switch_dev_register(&tasha->mbhc.wcd9xxx_sdev);
+	if (ret)
+		goto err_switch_dev_register;
 
 	ptr = devm_kzalloc(codec->dev, (sizeof(tasha_rx_chs) +
 			   sizeof(tasha_tx_chs)), GFP_KERNEL);
@@ -12701,8 +12694,7 @@ static int tasha_codec_probe(struct snd_soc_codec *codec)
 	mutex_unlock(&codec->mutex);
 	snd_soc_dapm_sync(dapm);
 
-
-   priv_headset_type = tasha;
+	priv_headset_type = tasha;
 
 	return ret;
 

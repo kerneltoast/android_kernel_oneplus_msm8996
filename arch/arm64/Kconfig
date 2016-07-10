@@ -285,6 +285,11 @@ config ARCH_MSM8994_V1_TLBI_WA
 	  [39:38] bits of VA are tied to zero and due to which TLBI
 	  operations with VA or ASID will not work.
 
+config MACH_MSM8996_15801
+	bool "OnePlus 3"
+	help
+	  Support for the OnePlus 3 (Rain)
+
 endmenu
 
 menu "Bus support"

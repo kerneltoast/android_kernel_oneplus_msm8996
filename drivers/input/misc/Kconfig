@@ -745,7 +745,7 @@ config INPUT_DRV2667_HAPTICS
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called drv260x-haptics.
-	  
+
 config TRI_STATE_KEY
 	default n
 	tristate "switch Profiles by this triple key"

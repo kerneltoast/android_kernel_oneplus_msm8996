@@ -254,7 +254,7 @@ struct wcd_mbhc_config {
 	int key_code[WCD_MBHC_KEYCODE_NUM];
 	uint32_t linein_th;
 	struct wcd_mbhc_moisture_cfg moist_cfg;
-    int headset_type;
+	int headset_type;
 	int mbhc_micbias;
 	int anc_micbias;
 	bool enable_anc_mic_detect;

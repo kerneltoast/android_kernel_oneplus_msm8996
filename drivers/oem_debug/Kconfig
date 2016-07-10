@@ -1,3 +1,0 @@
-config OEM_FORCE_DUMP
-	default y
-	bool "OEM force dump function, it will enable goto the force dump"

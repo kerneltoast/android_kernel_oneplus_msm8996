@@ -55,7 +55,6 @@
 
 #include "synaptics_s1302_redremote.h"
 //#include <linux/boot_mode.h>
-#include <linux/project_info.h>
 enum oem_boot_mode{
 	MSM_BOOT_MODE__NORMAL,
 	MSM_BOOT_MODE__FASTBOOT,
@@ -2010,8 +2009,6 @@ static int synaptics_ts_probe(struct i2c_client *client, const struct i2c_device
 	memset(ts->fw_name,TP_FW_NAME_MAX_LEN,0);
 	strcpy(ts->fw_name,"tp/fw_synaptics_touchkey.img");
 	TPD_DEBUG("synatpitcs_fw: fw_name = %s \n",ts->fw_name);
-
-	push_component_info(TOUCH_KEY, ts->fw_id, ts->manu_name);
 
 	bootloader_mode = synaptics_rmi4_i2c_read_byte(ts->client, F01_RMI_DATA_BASE);
 	bootloader_mode = bootloader_mode&0x40;

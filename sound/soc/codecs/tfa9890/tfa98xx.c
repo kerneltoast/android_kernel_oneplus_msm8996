@@ -12,7 +12,6 @@
  * GNU General Public License for more details.
  */
 
-#define DEBUG
 #include <linux/cdev.h>
 #include <linux/clk.h>
 #include <linux/delay.h>
@@ -35,7 +34,6 @@
 #include <sound/initval.h>
 #include <sound/tlv.h>
 #include <linux/version.h>
-#include <sound/sounddebug.h>
 #include "tfa98xx-core.h"
 #include "tfa98xx-regs.h"
 #include "tfa_container.h"

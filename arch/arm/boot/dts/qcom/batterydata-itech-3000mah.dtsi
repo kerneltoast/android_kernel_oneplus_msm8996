@@ -12,7 +12,7 @@
 
 qcom,itech-3000mah {
 	/* #Itech_B00826LF_3000mAh_Feb24th_Averaged*/
-	qcom,max-voltage-uv = <4350000>;
+	qcom,max-voltage-uv = <4320000>;
 	qcom,v-cutoff-uv = <3400000>;
 	qcom,chg-term-ua = <100000>;
 	qcom,batt-id-kohm = <100>;

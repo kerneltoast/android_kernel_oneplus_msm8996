@@ -10,6 +10,7 @@
  * GNU General Public License for more details.
  */
 
+#include "dsi-panel-samsung_s6e3fa3_1080p_cmd.dtsi"
 #include "dsi-panel-sharp-dualmipi-wqxga-video.dtsi"
 #include "dsi-panel-nt35597-dualmipi-wqxga-video.dtsi"
 #include "dsi-panel-nt35597-dualmipi-wqxga-cmd.dtsi"
@@ -120,13 +121,29 @@
 		qcom,panel-supply-entry@0 {
 			reg = <0>;
 			qcom,supply-name = "vddio";
-			qcom,supply-min-voltage = <1800000>;
-			qcom,supply-max-voltage = <1800000>;
+			qcom,supply-min-voltage = <3300000>;
+			qcom,supply-max-voltage = <3300000>;
 			qcom,supply-enable-load = <62000>;
 			qcom,supply-disable-load = <80>;
-			qcom,supply-post-on-sleep = <20>;
+		};
+
+		qcom,panel-supply-entry@1 {
+			reg = <1>;
+			qcom,supply-name = "oled-vdda";
+			qcom,supply-min-voltage = <2150000>;
+			qcom,supply-max-voltage = <2150000>;
+			qcom,supply-enable-load = <62000>;
+			qcom,supply-disable-load = <0>;
 		};
 	};
+};
+
+&dsi_samsung_s6e3fa3_1080p_cmd {
+	qcom,mdss-dsi-panel-timings-8996 = [24 1F 08 09 05 03 04 a0
+		24 1F 08 09 05 03 04 a0
+		24 1F 08 09 05 03 04 a0
+		24 1F 08 09 05 03 04 a0
+		24 1B 08 09 05 03 04 a0];
 };
 
 &dsi_nt35950_4k_dsc_cmd {

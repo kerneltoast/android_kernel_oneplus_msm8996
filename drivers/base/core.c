@@ -1433,8 +1433,6 @@ int device_offline(struct device *dev)
 
 	device_lock(dev);
 	if (device_supports_offline(dev)) {
-		if (dev->bus->offline_clash && dev->bus->offline_clash(dev))
-			dev->offline = false;
 		if (dev->offline) {
 			ret = 1;
 		} else {
@@ -1466,8 +1464,6 @@ int device_online(struct device *dev)
 
 	device_lock(dev);
 	if (device_supports_offline(dev)) {
-		if (dev->bus->offline_clash && dev->bus->offline_clash(dev))
-			dev->offline = true;
 		if (dev->offline) {
 			ret = dev->bus->online(dev);
 			if (!ret) {

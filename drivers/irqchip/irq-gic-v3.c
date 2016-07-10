@@ -35,7 +35,6 @@
 
 #include "irq-gic-common.h"
 #include "irqchip.h"
-#include <linux/wakeup_reason.h>
 
 struct redist_region {
 	void __iomem		*redist_base;
@@ -383,7 +382,7 @@ static void gic_show_resume_irq(struct gic_chip_data *gic)
 			name = "stray irq";
 		else if (desc->action && desc->action->name)
 			name = desc->action->name;
-		log_wakeup_reason(irq);
+
 		pr_warn("%s: %d triggered %s\n", __func__, irq, name);
 	}
 }

@@ -93,6 +93,8 @@
 		      <0x8C2300 0x8>;
 		reg-names = "pll_base", "phy_base", "gdsc_base";
 
+		status = "disabled";
+
 		gdsc-supply = <&gdsc_mdss>;
 		vddio-supply = <&pm8994_l12>;
 		vcca-supply = <&pm8994_l28>;
