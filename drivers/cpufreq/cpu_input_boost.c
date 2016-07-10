@@ -493,8 +493,7 @@ static int sysfs_ib_init(void)
 	struct kobject *kobj;
 	int ret;
 
-	kobj = kobject_create_and_add("cpu_input_boost",
-					kernel_kobj);
+	kobj = kobject_create_and_add("cpu_input_boost", kernel_kobj);
 	if (!kobj) {
 		pr_err("Failed to create kobject\n");
 		return -ENOMEM;
@@ -519,7 +518,7 @@ static struct boost_policy *alloc_boost_policy(void)
 		return NULL;
 	}
 
-	b->wq = alloc_workqueue("cpu_ib_wq", WQ_HIGHPRI | WQ_NON_REENTRANT, 0);
+	b->wq = alloc_workqueue("cpu_ib_wq", WQ_HIGHPRI, 0);
 	if (!b->wq) {
 		pr_err("Failed to allocate workqueue\n");
 		goto free_b;
