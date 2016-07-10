@@ -59,7 +59,11 @@ static void scm_disable_sdi(void);
  * There is no API from TZ to re-enable the registers.
  * So the SDI cannot be re-enabled when it already by-passed.
 */
+#ifdef CONFIG_MACH_MSM8996_15801
+static int download_mode;
+#else
 static int download_mode = 1;
+#endif
 static struct kobject dload_kobj;
 
 #ifdef CONFIG_MSM_DLOAD_MODE
