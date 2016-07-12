@@ -315,6 +315,20 @@ static struct cpufreq_driver msm_cpufreq_driver = {
 	.attr		= msm_freq_attr,
 };
 
+#ifdef CONFIG_MACH_MSM8996_15801
+#define UNDERCLOCKED_MAX_KHZ_PERFCL	1708800
+#define UNDERCLOCKED_MAX_KHZ_PWRCL	1324800
+static bool no_cpu_underclock;
+
+static int __init get_cpu_underclock(char *unused)
+{
+	no_cpu_underclock = true;
+
+	return 0;
+}
+__setup("no_underclock", get_cpu_underclock);
+#endif
+
 static struct cpufreq_frequency_table *cpufreq_parse_dt(struct device *dev,
 						char *tbl_name, int cpu)
 {
@@ -349,6 +363,20 @@ static struct cpufreq_frequency_table *cpufreq_parse_dt(struct device *dev,
 		if (IS_ERR_VALUE(f))
 			break;
 		f /= 1000;
+
+#ifdef CONFIG_MACH_MSM8996_15801
+		if (i > 0) {
+			if (cpu < 2) {
+				if (ftbl[i - 1].frequency ==
+						UNDERCLOCKED_MAX_KHZ_PWRCL)
+					break;
+			} else {
+				if (ftbl[i - 1].frequency ==
+						UNDERCLOCKED_MAX_KHZ_PERFCL)
+					break;
+			}
+		}
+#endif
 
 		/*
 		 * Check if this is the last feasible frequency in the table.
