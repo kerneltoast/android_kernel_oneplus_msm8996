@@ -31,8 +31,8 @@
 #define DEF_SAMPLING_MS			50
 #define DEF_VOTE_THRESHOLD		3
 
-#define N_BIG_CPUS			4
-#define N_LITTLE_CPUS			4
+#define N_BIG_CPUS			2
+#define N_LITTLE_CPUS			2
 
 static DEFINE_MUTEX(cluster_plug_parameters_mutex);
 static struct delayed_work cluster_plug_work;
@@ -73,7 +73,7 @@ static DEFINE_PER_CPU(struct cp_cpu_info, cp_info);
 
 static bool is_big_cpu(unsigned int cpu)
 {
-	return cpu < N_BIG_CPUS;
+	return cpu >= N_BIG_CPUS;
 }
 
 static bool is_little_cpu(unsigned int cpu)
