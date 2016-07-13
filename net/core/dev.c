@@ -3409,8 +3409,10 @@ static int netif_rx_internal(struct sk_buff *skb)
 {
 	int ret;
 
+#ifndef CONFIG_MACH_MSM8996_15801
 	WARN_ONCE(skb_cloned(skb), "Cloned packet from dev %s\n",
 		  skb->dev->name);
+#endif
 
 	net_timestamp_check(netdev_tstamp_prequeue, skb);
 
