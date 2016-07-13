@@ -19,6 +19,10 @@
 #include <linux/input.h>
 #include <linux/slab.h>
 
+/* For MSM8996 */
+#define LITTLE_CPU_ID	0
+#define BIG_CPU_ID	2
+
 #define FB_BOOST_MS 1100
 
 enum boost_status {
@@ -60,7 +64,7 @@ struct boost_policy {
 
 static struct boost_policy *boost_policy_g;
 
-static void boost_cpu0(struct boost_policy *b);
+static void boost_primary_cpu(struct boost_policy *b);
 static bool is_driver_enabled(struct boost_policy *b);
 static bool is_fb_boost_active(struct boost_policy *b);
 static void set_fb_state(struct boost_policy *b, enum boost_status state);
@@ -96,7 +100,7 @@ static void ib_boost_main(struct work_struct *work)
 	 * the 2nd CPU to boost is offline at this point in time, so the boost
 	 * notifier will handle boosting the 2nd CPU if/when it comes online.
 	 */
-	boost_cpu0(b);
+	boost_primary_cpu(b);
 
 	put_online_cpus();
 }
@@ -180,7 +184,7 @@ static int do_cpu_boost(struct notifier_block *nb,
 
 	if (pcpu->state)
 		policy->min = min(policy->max,
-				b->ib.freq[policy->cpu ? 1 : 0]);
+				b->ib.freq[policy->cpu < BIG_CPU_ID ? 0 : 1]);
 	else
 		policy->min = policy->cpuinfo.min_freq;
 
@@ -303,13 +307,22 @@ static struct input_handler cpu_ib_input_handler = {
 	.id_table	= cpu_ib_ids,
 };
 
-static void boost_cpu0(struct boost_policy *b)
+static void boost_primary_cpu(struct boost_policy *b)
 {
-	struct ib_pcpu *pcpu = per_cpu_ptr(b->ib.boost_info, 0);
+	struct ib_pcpu *pcpu;
+	bool big_cl_online;
+	uint32_t cpu_to_boost;
 
+	get_online_cpus();
+	big_cl_online = cpu_online(BIG_CPU_ID);
+	put_online_cpus();
+
+	cpu_to_boost = big_cl_online ? BIG_CPU_ID : LITTLE_CPU_ID;
+
+	pcpu = per_cpu_ptr(b->ib.boost_info, cpu_to_boost);
 	pcpu->state = BOOST;
 	b->ib.nr_cpus_boosted++;
-	cpufreq_update_policy(0);
+	cpufreq_update_policy(cpu_to_boost);
 	queue_delayed_work(b->wq, &pcpu->unboost_work,
 				msecs_to_jiffies(b->ib.adj_duration_ms));
 
@@ -419,7 +432,7 @@ static ssize_t ib_freqs_write(struct device *dev,
 	if (!freq[0] || !freq[1])
 		return -EINVAL;
 
-	/* freq[0] is assigned to CPU0, freq[1] to CPUX (X > 0) */
+	/* freq[0] is assigned to LITTLE cluster, freq[1] to big cluster */
 	b->ib.freq[0] = freq[0];
 	b->ib.freq[1] = freq[1];
 
