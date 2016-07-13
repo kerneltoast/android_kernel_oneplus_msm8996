@@ -300,6 +300,33 @@ static void msm_restart_prepare(const char *cmd)
 	}
 
 	if (cmd != NULL) {
+#ifdef CONFIG_MACH_MSM8996_15801
+		if (!strncmp(cmd, "rf", 2)) {
+			qpnp_pon_set_restart_reason(PON_RESTART_REASON_RF);
+			__raw_writel(RF_MODE, restart_reason);
+		} else if (!strncmp(cmd, "wlan", 4)) {
+			qpnp_pon_set_restart_reason(PON_RESTART_REASON_WLAN);
+			__raw_writel(WLAN_MODE, restart_reason);
+		} else if (!strncmp(cmd, "mos", 3)) {
+			qpnp_pon_set_restart_reason(PON_RESTART_REASON_MOS);
+			__raw_writel(MOS_MODE, restart_reason);
+		} else if (!strncmp(cmd, "ftm", 3)) {
+			qpnp_pon_set_restart_reason(PON_RESTART_REASON_FACTORY);
+			__raw_writel(FACTORY_MODE, restart_reason);
+		} else if (!strncmp(cmd, "kernel", 6)) {
+			qpnp_pon_set_restart_reason(PON_RESTART_REASON_KERNEL);
+			__raw_writel(KERNEL_MODE, restart_reason);
+		} else if (!strncmp(cmd, "modem", 5)) {
+			qpnp_pon_set_restart_reason(PON_RESTART_REASON_MODEM);
+			__raw_writel(MODEM_MODE, restart_reason);
+		} else if (!strncmp(cmd, "android", 7)) {
+			qpnp_pon_set_restart_reason(PON_RESTART_REASON_ANDROID);
+			__raw_writel(ANDROID_MODE, restart_reason);
+		} else if (!strncmp(cmd, "aging", 5)) {
+			qpnp_pon_set_restart_reason(PON_RESTART_REASON_AGING);
+			__raw_writel(AGING_MODE, restart_reason);
+		} else
+#endif
 		if (!strncmp(cmd, "bootloader", 10)) {
 			qpnp_pon_set_restart_reason(
 				PON_RESTART_REASON_BOOTLOADER);
@@ -334,6 +361,9 @@ static void msm_restart_prepare(const char *cmd)
 		} else if (!strncmp(cmd, "edl", 3)) {
 			enable_emergency_dload_mode();
 		} else {
+#ifdef CONFIG_MACH_MSM8996_15801
+			qpnp_pon_set_restart_reason(PON_RESTART_REASON_REBOOT);
+#endif
 			__raw_writel(0x77665501, restart_reason);
 		}
 	}
