@@ -247,7 +247,8 @@ enum multi_stream msm_comm_get_stream_output_mode(struct msm_vidc_inst *inst)
 static int msm_comm_get_mbs_per_sec(struct msm_vidc_inst *inst)
 {
 	int output_port_mbs, capture_port_mbs;
-	int fps, rc;
+	int rc;
+	u32 fps;
 	struct v4l2_control ctrl;
 
 	output_port_mbs = NUM_MBS_PER_FRAME(inst->prop.width[OUTPUT_PORT],
@@ -259,6 +260,11 @@ static int msm_comm_get_mbs_per_sec(struct msm_vidc_inst *inst)
 	rc = msm_comm_g_ctrl(inst, &ctrl);
 	if (!rc && ctrl.value) {
 		fps = (ctrl.value >> 16) ? ctrl.value >> 16 : 1;
+		/*
+		 * Check if operating rate is less than fps.
+		 * If Yes, then use fps to scale the clocks
+		*/
+		fps = max(fps, inst->prop.fps);
 		return max(output_port_mbs, capture_port_mbs) * fps;
 	} else
 		return max(output_port_mbs, capture_port_mbs) * inst->prop.fps;
@@ -1157,6 +1163,8 @@ static void handle_event_change(enum hal_command_response cmd, void *data)
 			inst->prop.width[OUTPUT_PORT] = event_notify->width;
 	}
 
+	inst->seqchanged_count++;
+
 	if (inst->session_type == MSM_VIDC_DECODER)
 		msm_dcvs_init_load(inst);
 
@@ -1750,10 +1758,6 @@ int buf_ref_put(struct msm_vidc_inst *inst, struct buffer_info *binfo)
 
 	if (cnt < 0)
 		return cnt;
-
-	rc = output_buffer_cache_invalidate(inst, binfo);
-	if (rc)
-		return rc;
 
 	if (release_buf) {
 		/*
@@ -4576,6 +4580,9 @@ enum hal_extradata_id msm_comm_get_hal_extradata_index(
 		break;
 	case V4L2_MPEG_VIDC_EXTRADATA_ROI_QP:
 		ret = HAL_EXTRADATA_ROI_QP;
+		break;
+	case V4L2_MPEG_VIDC_EXTRADATA_OUTPUT_CROP:
+		ret = HAL_EXTRADATA_OUTPUT_CROP;
 		break;
 	default:
 		dprintk(VIDC_WARN, "Extradata not found: %d\n", index);

@@ -5896,11 +5896,6 @@ static void pp_ad_calc_worker(struct work_struct *work)
 	if ((PP_AD_STATE_RUN & ad->state) && ad->calc_itr > 0)
 		ad->calc_itr--;
 
-	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON);
-	ad->last_str = 0xFF & readl_relaxed(base + MDSS_MDP_REG_AD_STR_OUT);
-	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF);
-	if (mdata->ad_debugen)
-		pr_debug("itr number %d str %d\n", ad->calc_itr, ad->last_str);
 	mdp5_data->ad_events++;
 	sysfs_notify_dirent(mdp5_data->ad_event_sd);
 	if (!ad->calc_itr) {
@@ -5908,6 +5903,11 @@ static void pp_ad_calc_worker(struct work_struct *work)
 		ctl->ops.remove_vsync_handler(ctl, &ad->handle);
 	}
 	mutex_unlock(&ad->lock);
+
+	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON);
+	ad->last_str = 0xFF & readl_relaxed(base + MDSS_MDP_REG_AD_STR_OUT);
+	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF);
+	pr_debug("itr number %d str %d\n", ad->calc_itr, ad->last_str);
 }
 
 #define PP_AD_LUT_LEN 33
@@ -6800,6 +6800,8 @@ int mdss_mdp_copy_layer_pp_info(struct mdp_input_layer *layer)
 			pr_err("Failed to copy IGC payload, ret = %d\n", ret);
 			goto exit_pp_info;
 		}
+	} else {
+		pp_info->igc_cfg.cfg_payload = NULL;
 	}
 	if (ops & MDP_OVERLAY_PP_HIST_LUT_CFG) {
 		ret = pp_copy_layer_hist_lut_payload(pp_info);
@@ -6808,6 +6810,8 @@ int mdss_mdp_copy_layer_pp_info(struct mdp_input_layer *layer)
 				ret);
 			goto exit_igc;
 		}
+	} else {
+		pp_info->hist_lut_cfg.cfg_payload = NULL;
 	}
 	if (ops & MDP_OVERLAY_PP_PA_V2_CFG) {
 		ret = pp_copy_layer_pa_payload(pp_info);
@@ -6815,6 +6819,8 @@ int mdss_mdp_copy_layer_pp_info(struct mdp_input_layer *layer)
 			pr_err("Failed to copy PA payload, ret = %d\n", ret);
 			goto exit_hist_lut;
 		}
+	} else {
+		pp_info->pa_v2_cfg_data.cfg_payload = NULL;
 	}
 	if (ops & MDP_OVERLAY_PP_PCC_CFG) {
 		ret = pp_copy_layer_pcc_payload(pp_info);
@@ -6822,6 +6828,8 @@ int mdss_mdp_copy_layer_pp_info(struct mdp_input_layer *layer)
 			pr_err("Failed to copy PCC payload, ret = %d\n", ret);
 			goto exit_pa;
 		}
+	} else {
+		pp_info->pcc_cfg_data.cfg_payload = NULL;
 	}
 
 	layer->pp_info = pp_info;

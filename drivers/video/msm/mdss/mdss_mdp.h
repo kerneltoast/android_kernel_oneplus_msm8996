@@ -83,6 +83,8 @@
 
 #define XIN_HALT_TIMEOUT_US	0x4000
 
+#define MAX_LAYER_COUNT		0xC
+
 /* hw cursor can only be setup in highest mixer stage */
 #define HW_CURSOR_STAGE(mdata) \
 	(((mdata)->max_target_zorder + MDSS_MDP_STAGE_0) - 1)
@@ -295,6 +297,9 @@ struct mdss_mdp_ctl {
 	u32 play_cnt;
 	u32 vsync_cnt;
 	u32 underrun_cnt;
+
+	struct work_struct cpu_pm_work;
+	int autorefresh_frame_cnt;
 
 	u16 width;
 	u16 height;
@@ -1490,6 +1495,7 @@ int mdss_mdp_cmd_set_autorefresh_mode(struct mdss_mdp_ctl *ctl, int frame_cnt);
 int mdss_mdp_cmd_get_autorefresh_mode(struct mdss_mdp_ctl *ctl);
 int mdss_mdp_ctl_cmd_set_autorefresh(struct mdss_mdp_ctl *ctl, int frame_cnt);
 int mdss_mdp_ctl_cmd_get_autorefresh(struct mdss_mdp_ctl *ctl);
+void mdss_mdp_ctl_event_timer(void *data);
 int mdss_mdp_pp_get_version(struct mdp_pp_feature_version *version);
 
 struct mdss_mdp_ctl *mdss_mdp_ctl_alloc(struct mdss_data_type *mdata,
