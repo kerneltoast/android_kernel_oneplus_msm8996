@@ -216,6 +216,11 @@
 			reg = <0 0xb1c00000 0 0x23ff000>;
 			label = "cont_splash_mem_hdmi";
 		};
+
+                ramoops_mem: ramoops_mem@ac000000 {
+                        reg = <0 0xAC000000 0 0x00200000>;
+                        label = "ramoops_mem";
+                };
 	};
 };
 
@@ -3715,6 +3720,11 @@
 
 		qcom,save-reg;
 	};
+
+        ramoops {
+		compatible = "ramoops";
+		linux,contiguous-region = <&ramoops_mem>;
+        };
 };
 
 &gdsc_venus {
