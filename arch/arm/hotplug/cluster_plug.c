@@ -34,6 +34,9 @@
 #define N_BIG_CPUS			2
 #define N_LITTLE_CPUS			2
 
+#define LITTLE_CPU_ID_START		0
+#define BIG_CPU_ID_START		2
+
 static DEFINE_MUTEX(cluster_plug_parameters_mutex);
 static struct delayed_work cluster_plug_work;
 static struct workqueue_struct *clusterplug_wq;
@@ -56,8 +59,7 @@ module_param(vote_threshold_up, uint, 0664);
 static ktime_t last_action;
 
 static bool active = false;
-static bool big_cluster_enabled = true;
-static bool little_cluster_enabled = true;
+static bool whole_cluster_enabled = true;
 static bool low_power_mode = false;
 static bool online_all = false;
 
@@ -73,7 +75,8 @@ static DEFINE_PER_CPU(struct cp_cpu_info, cp_info);
 
 static bool is_big_cpu(unsigned int cpu)
 {
-	return cpu >= N_BIG_CPUS;
+	return cpu == BIG_CPU_ID_START ||
+		cpu == LITTLE_CPU_ID_START;
 }
 
 static bool is_little_cpu(unsigned int cpu)
@@ -137,47 +140,7 @@ static unsigned int get_num_unloaded_little_cpus(void)
 	return unloaded_cpus;
 }
 
-static void __ref enable_big_cluster(void)
-{
-	unsigned int cpu;
-	unsigned int num_up = 0;
-
-	if (big_cluster_enabled)
-		return;
-
-	for_each_present_cpu(cpu) {
-		if (is_big_cpu(cpu) && !cpu_online(cpu)) {
-			cpu_up(cpu);
-			num_up++;
-		}
-	}
-
-	pr_info("cluster_plug: %d big cpus enabled\n", num_up);
-
-	big_cluster_enabled = true;
-}
-
-static void disable_big_cluster(void)
-{
-	unsigned int cpu;
-	unsigned int num_down = 0;
-
-	if (!big_cluster_enabled)
-		return;
-
-	for_each_present_cpu(cpu) {
-		if (is_big_cpu(cpu) && cpu_online(cpu)) {
-			cpu_down(cpu);
-			num_down++;
-		}
-	}
-
-	pr_info("cluster_plug: %d big cpus disabled\n", num_down);
-
-	big_cluster_enabled = false;
-}
-
-static void __ref enable_little_cluster(void)
+static void __ref enable_whole_cluster(void)
 {
 	unsigned int cpu;
 	unsigned int num_up = 0;
@@ -189,18 +152,18 @@ static void __ref enable_little_cluster(void)
 		}
 	}
 
-	if (!little_cluster_enabled)
+	if (!whole_cluster_enabled)
 		pr_info("cluster_plug: %d little cpus enabled\n", num_up);
 
-	little_cluster_enabled = true;
+	whole_cluster_enabled = true;
 }
 
-static void disable_little_cluster(void)
+static void disable_half_cluster(void)
 {
 	unsigned int cpu;
 	unsigned int num_down = 0;
 
-	if (!little_cluster_enabled)
+	if (!whole_cluster_enabled)
 		return;
 
 	for_each_present_cpu(cpu) {
@@ -212,7 +175,7 @@ static void disable_little_cluster(void)
 
 	pr_info("cluster_plug: %d little cpus disabled\n", num_down);
 
-	little_cluster_enabled = false;
+	whole_cluster_enabled = false;
 }
 
 static void queue_clusterplug_work(unsigned ms)
@@ -246,11 +209,11 @@ static void cluster_plug_perform(void)
 	}
 
 	if (vote_up > vote_threshold_up) {
-		enable_little_cluster();
+		enable_whole_cluster();
 		vote_up = vote_threshold_up;
 		vote_down = 0;
 	} else if (!vote_up && vote_down > vote_threshold_down) {
-		disable_little_cluster();
+		disable_half_cluster();
 		vote_down = vote_threshold_down;
 	}
 
@@ -265,21 +228,16 @@ static void __ref cluster_plug_work_fn(struct work_struct *work)
 			if (!cpu_online(cpu))
 				cpu_up(cpu);
 		}
-		big_cluster_enabled = true;
-		little_cluster_enabled = true;
+		whole_cluster_enabled = true;
 		online_all = false;
 	}
 
 	if (active) {
 		if (low_power_mode) {
-			enable_little_cluster();
-			disable_big_cluster();
+			disable_half_cluster();
 			/* Do not schedule more work */
 			return;
 		}
-
-		if (!low_power_mode && !big_cluster_enabled)
-			enable_big_cluster();
 
 		cluster_plug_perform();
 		queue_clusterplug_work(sampling_time);
