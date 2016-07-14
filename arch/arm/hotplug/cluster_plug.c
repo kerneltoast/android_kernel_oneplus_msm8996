@@ -73,6 +73,20 @@ struct cp_cpu_info {
 
 static DEFINE_PER_CPU(struct cp_cpu_info, cp_info);
 
+static void online_cpu(unsigned int cpu)
+{
+	lock_device_hotplug();
+	device_online(get_cpu_device(cpu));
+	unlock_device_hotplug();
+}
+
+static void offline_cpu(unsigned int cpu)
+{
+	lock_device_hotplug();
+	device_offline(get_cpu_device(cpu));
+	unlock_device_hotplug();
+}
+
 static bool is_big_cpu(unsigned int cpu)
 {
 	return cpu == BIG_CPU_ID_START ||
@@ -147,7 +161,7 @@ static void __ref enable_whole_cluster(void)
 
 	for_each_present_cpu(cpu) {
 		if (is_little_cpu(cpu) && !cpu_online(cpu)) {
-			cpu_up(cpu);
+			online_cpu(cpu);
 			num_up++;
 		}
 	}
@@ -168,7 +182,7 @@ static void disable_half_cluster(void)
 
 	for_each_present_cpu(cpu) {
 		if (is_little_cpu(cpu) && cpu_online(cpu)) {
-			cpu_down(cpu);
+			offline_cpu(cpu);
 			num_down++;
 		}
 	}
@@ -226,7 +240,7 @@ static void __ref cluster_plug_work_fn(struct work_struct *work)
 		int cpu;
 		for_each_present_cpu(cpu) {
 			if (!cpu_online(cpu))
-				cpu_up(cpu);
+				online_cpu(cpu);
 		}
 		whole_cluster_enabled = true;
 		online_all = false;
