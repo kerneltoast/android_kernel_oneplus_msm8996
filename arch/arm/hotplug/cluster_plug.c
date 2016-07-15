@@ -22,6 +22,7 @@
 #include <linux/slab.h>
 #include <linux/input.h>
 #include <linux/cpufreq.h>
+#include <linux/fb.h>
 
 #define CLUSTER_PLUG_MAJOR_VERSION	2
 #define CLUSTER_PLUG_MINOR_VERSION	0
@@ -36,6 +37,8 @@
 
 #define LITTLE_CPU_ID_START		0
 #define BIG_CPU_ID_START		2
+
+#define FB_UNBLANK_BOOST_MS		1100
 
 static DEFINE_MUTEX(cluster_plug_parameters_mutex);
 static struct delayed_work cluster_plug_work;
@@ -65,6 +68,12 @@ static bool online_all = false;
 
 static unsigned int vote_up = 0;
 static unsigned int vote_down = 0;
+
+static struct workqueue_struct *cluster_pm_wq;
+static struct work_struct resume_work;
+static struct work_struct suspend_work;
+static unsigned int cpu_was_online[CONFIG_NR_CPUS];
+static bool suspended;
 
 struct cp_cpu_info {
 	u64 prev_cpu_wall;
@@ -236,6 +245,28 @@ static void cluster_plug_perform(void)
 
 static void __ref cluster_plug_work_fn(struct work_struct *work)
 {
+	if (suspended)
+		return;
+
+	/*
+	 * Just finished resuming, restore pre-resume state (CPU0 is
+	 * always kept online)
+	 */
+	if (cpu_was_online[0]) {
+		int cpu;
+		for_each_possible_cpu(cpu) {
+			if (!cpu)
+				continue;
+			if (cpu_was_online[cpu] && !cpu_online(cpu))
+				online_cpu(cpu);
+			else if (!cpu_was_online[cpu] && cpu_online(cpu))
+				offline_cpu(cpu);
+		}
+
+		/* Clear flag used to indicate system recently resumed */
+		cpu_was_online[0] = 0;
+	}
+
 	if (online_all) {
 		int cpu;
 		for_each_present_cpu(cpu) {
@@ -329,6 +360,73 @@ static const struct kernel_param_ops param_ops_low_power_mode = {
 
 module_param_cb(low_power_mode, &param_ops_low_power_mode, &low_power_mode, 0664);
 
+static void cluster_plug_resume(struct work_struct *work)
+{
+	unsigned int cpu;
+
+	if (!suspended)
+		return;
+
+	suspended = false;
+
+	lock_device_hotplug();
+
+	/* Enable all CPUs temporarily when resuming for performance */
+	for_each_possible_cpu(cpu) {
+		if (!cpu_online(cpu))
+			device_online(get_cpu_device(cpu));
+	}
+
+	unlock_device_hotplug();
+
+	queue_clusterplug_work(FB_UNBLANK_BOOST_MS);
+}
+
+static void cluster_plug_suspend(struct work_struct *work)
+{
+	unsigned int cpu;
+
+	if (suspended)
+		return;
+
+	suspended = true;
+
+	cancel_delayed_work_sync(&cluster_plug_work);
+
+	memset(&cpu_was_online[0], 0, sizeof(cpu_was_online));
+
+	lock_device_hotplug();
+
+	/* Unplug all CPUs except for CPU0 */
+	for_each_online_cpu(cpu) {
+		/* Save current state to restore it after resume */
+		cpu_was_online[cpu] = 1;
+		if (cpu)
+			device_offline(get_cpu_device(cpu));
+	}
+
+	unlock_device_hotplug();
+}
+
+static int fb_notifier_callback(struct notifier_block *nb,
+		unsigned long val, void *data)
+{
+	struct fb_event *evdata = data;
+	int *blank = evdata->data;
+
+	if (*blank == FB_BLANK_UNBLANK)
+		queue_work(cluster_pm_wq, &resume_work);
+	else
+		queue_work(cluster_pm_wq, &suspend_work);
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block fb_notifier = {
+	.notifier_call	= fb_notifier_callback,
+	.priority	= INT_MAX - 1,
+};
+
 int __init cluster_plug_init(void)
 {
 	pr_debug("cluster_plug: version %d.%d by sultanqasim and crpalmer\n",
@@ -338,6 +436,13 @@ int __init cluster_plug_init(void)
 	clusterplug_wq = alloc_workqueue("clusterplug",
 				WQ_HIGHPRI | WQ_UNBOUND, 1);
 	INIT_DELAYED_WORK(&cluster_plug_work, cluster_plug_work_fn);
+
+	cluster_pm_wq = alloc_workqueue("clusterplug_pm", WQ_HIGHPRI, 1);
+
+	INIT_WORK(&resume_work, cluster_plug_resume);
+	INIT_WORK(&suspend_work, cluster_plug_suspend);
+
+	fb_register_client(&fb_notifier);
 
 	return 0;
 }
