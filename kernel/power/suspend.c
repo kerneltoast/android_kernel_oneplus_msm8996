@@ -41,6 +41,10 @@ static const struct platform_freeze_ops *freeze_ops;
 static DECLARE_WAIT_QUEUE_HEAD(suspend_freeze_wait_head);
 static bool suspend_freeze_wake;
 
+#ifdef CONFIG_MACH_MSM8996_15801
+extern void thaw_fingerprintd(void);
+#endif
+
 void freeze_set_ops(const struct platform_freeze_ops *ops)
 {
 	lock_system_sleep();
@@ -358,6 +362,9 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 
  Platform_wake:
 	platform_resume_noirq(state);
+#ifdef CONFIG_MACH_MSM8996_15801
+	thaw_fingerprintd();
+#endif
 	dpm_resume_noirq(PMSG_RESUME);
 
  Platform_early_resume:
