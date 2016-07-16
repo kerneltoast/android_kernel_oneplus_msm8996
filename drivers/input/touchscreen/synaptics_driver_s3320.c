@@ -480,6 +480,8 @@ struct synaptics_ts_data {
 #ifdef SUPPORT_VIRTUAL_KEY
         struct kobject *properties_kobj;
 #endif
+
+	struct work_struct pm_work;
 };
 
 static struct device_attribute attrs_oem[] = {
@@ -3599,6 +3601,25 @@ err_pinctrl_get:
 	return retval;
 }
 
+static void synaptics_suspend_resume(struct work_struct *work)
+{
+	struct synaptics_ts_data *ts =
+		container_of(work, typeof(*ts), pm_work);
+
+	if (ts->is_suspended) {
+		atomic_set(&ts->is_stop, 1);
+		if (!ts->gesture_enable)
+			touch_disable(ts);
+		synaptics_ts_suspend(&ts->client->dev);
+	} else {
+		if (ts->gesture_enable)
+			synaptics_enable_interrupt_for_gesture(ts, false);
+		atomic_set(&ts->is_stop, 0);
+		touch_enable(ts);
+		synaptics_ts_resume(&ts->client->dev);
+	}
+}
+
 #ifdef SUPPORT_VIRTUAL_KEY
 #define VK_KEY_X    180
 #define VK_CENTER_Y 2020//2260
@@ -3783,6 +3804,9 @@ static int synaptics_ts_probe(struct i2c_client *client, const struct i2c_device
 	if(ret < 0) {
 		TPD_ERR("synaptics_input_init failed!\n");
 	}
+
+	INIT_WORK(&ts->pm_work, synaptics_suspend_resume);
+
 #if defined(CONFIG_FB)
 	ts->fb_notif.notifier_call = fb_notifier_callback;
 	ret = fb_register_client(&ts->fb_notif);
@@ -4070,54 +4094,36 @@ static int synaptics_mode_change(int mode)
 		TPD_ERR("%s: set dose mode[0x%x] err!!\n", __func__,tmp_mode);
 	return ret;
 }
+
 #if defined(CONFIG_FB)
 static int fb_notifier_callback(struct notifier_block *self, unsigned long event, void *data)
 {
+	struct synaptics_ts_data *ts =
+		container_of(self, struct synaptics_ts_data, fb_notif);
 	struct fb_event *evdata = data;
-	int *blank;
-	//int ret;
+	int *blank = evdata->data;
 
-	struct synaptics_ts_data *ts = container_of(self, struct synaptics_ts_data, fb_notif);
+	if (event != FB_EARLY_EVENT_BLANK)
+		return NOTIFY_OK;
 
-	if(FB_EARLY_EVENT_BLANK != event && FB_EVENT_BLANK != event)
-	return 0;
-	if((evdata) && (evdata->data) && (ts) && (ts->client))
-    {
-		blank = evdata->data;
-        TPD_DEBUG("%s blank[%d],event[0x%lx]\n", __func__,*blank,event);
-
-		if((*blank == FB_BLANK_UNBLANK || *blank == FB_BLANK_VSYNC_SUSPEND || *blank == FB_BLANK_NORMAL)\
-            //&& (event == FB_EVENT_BLANK ))
-            && (event == FB_EARLY_EVENT_BLANK ))
-        {
-            if (ts->is_suspended == 1)
-            {
-                TPD_DEBUG("%s going TP resume start\n", __func__);
-                ts->is_suspended = 0;
-		if (ts->gesture_enable)
-			synaptics_enable_interrupt_for_gesture(ts, false);
-		atomic_set(&ts->is_stop, 0);
-		touch_enable(ts);
-				synaptics_ts_resume(&ts->client->dev);
-                //atomic_set(&ts->is_stop,0);
-                TPD_DEBUG("%s going TP resume end\n", __func__);
-            }
-		}else if( *blank == FB_BLANK_POWERDOWN && (event == FB_EARLY_EVENT_BLANK ))
-		{
-            if (ts->is_suspended == 0)
-            {
-				TPD_DEBUG("%s : going TP suspend start\n", __func__);
-                ts->is_suspended = 1;
-                atomic_set(&ts->is_stop,1);
-				if(!(ts->gesture_enable)){
-					touch_disable(ts);
-				}
-                synaptics_ts_suspend(&ts->client->dev);
-				TPD_DEBUG("%s : going TP suspend end\n", __func__);
-            }
+	switch (*blank) {
+	case FB_BLANK_UNBLANK:
+	case FB_BLANK_VSYNC_SUSPEND:
+	case FB_BLANK_NORMAL:
+		if (ts->is_suspended) {
+			ts->is_suspended = 0;
+			queue_work(system_highpri_wq, &ts->pm_work);
 		}
+		break;
+	case FB_BLANK_POWERDOWN:
+		if (!ts->is_suspended) {
+			ts->is_suspended = 1;
+			queue_work(system_highpri_wq, &ts->pm_work);
+		}
+		break;
 	}
-	return 0;
+
+	return NOTIFY_OK;
 }
 #endif
 
