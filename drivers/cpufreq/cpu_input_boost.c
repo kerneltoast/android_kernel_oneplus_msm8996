@@ -203,7 +203,7 @@ static int fb_unblank_boost(struct notifier_block *nb,
 	int *blank = evdata->data;
 
 	/* Only boost for unblank (i.e. when device is woken) */
-	if (val != FB_EVENT_BLANK || *blank != FB_BLANK_UNBLANK)
+	if (val != FB_EARLY_EVENT_BLANK || *blank != FB_BLANK_UNBLANK)
 		return NOTIFY_OK;
 
 	if (!is_driver_enabled(b))
