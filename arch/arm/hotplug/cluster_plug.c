@@ -23,6 +23,7 @@
 #include <linux/input.h>
 #include <linux/cpufreq.h>
 #include <linux/fb.h>
+#include <linux/input.h>
 
 #define CLUSTER_PLUG_MAJOR_VERSION	2
 #define CLUSTER_PLUG_MINOR_VERSION	0
@@ -39,6 +40,7 @@
 #define BIG_CPU_ID_START		2
 
 #define FB_UNBLANK_BOOST_MS		1100
+#define BTN_BOOST_MS			500
 
 static DEFINE_MUTEX(cluster_plug_parameters_mutex);
 static struct delayed_work cluster_plug_work;
@@ -75,6 +77,9 @@ static struct work_struct suspend_work;
 static unsigned int cpu_was_online[CONFIG_NR_CPUS];
 static bool suspended;
 
+static struct work_struct boost_work;
+static struct delayed_work unboost_dwork;
+
 struct cp_cpu_info {
 	u64 prev_cpu_wall;
 	u64 prev_cpu_idle;
@@ -85,14 +90,16 @@ static DEFINE_PER_CPU(struct cp_cpu_info, cp_info);
 static void online_cpu(unsigned int cpu)
 {
 	lock_device_hotplug();
-	device_online(get_cpu_device(cpu));
+	if (!cpu_online(cpu))
+		device_online(get_cpu_device(cpu));
 	unlock_device_hotplug();
 }
 
 static void offline_cpu(unsigned int cpu)
 {
 	lock_device_hotplug();
-	device_offline(get_cpu_device(cpu));
+	if (cpu_online(cpu))
+		device_offline(get_cpu_device(cpu));
 	unlock_device_hotplug();
 }
 
@@ -360,12 +367,21 @@ static const struct kernel_param_ops param_ops_low_power_mode = {
 
 module_param_cb(low_power_mode, &param_ops_low_power_mode, &low_power_mode, 0664);
 
+static void stop_btn_boost(void)
+{
+	cancel_work_sync(&boost_work);
+	cancel_delayed_work_sync(&unboost_dwork);
+	sched_set_boost(0);
+}
+
 static void cluster_plug_resume(struct work_struct *work)
 {
 	unsigned int cpu;
 
 	if (!suspended)
 		return;
+
+	stop_btn_boost();
 
 	suspended = false;
 
@@ -388,6 +404,8 @@ static void cluster_plug_suspend(struct work_struct *work)
 
 	if (suspended)
 		return;
+
+	stop_btn_boost();
 
 	suspended = true;
 
@@ -430,8 +448,90 @@ static struct notifier_block fb_notifier = {
 	.priority	= INT_MAX - 1,
 };
 
+static void cluster_plug_boost(struct work_struct *work)
+{
+	cancel_delayed_work_sync(&unboost_dwork);
+	online_cpu(BIG_CPU_ID_START);
+	sched_set_boost(1);
+	queue_delayed_work(system_highpri_wq, &unboost_dwork,
+				msecs_to_jiffies(BTN_BOOST_MS));
+}
+
+static void cluster_plug_unboost(struct work_struct *work)
+{
+	sched_set_boost(0);
+	offline_cpu(BIG_CPU_ID_START);
+}
+
+static void cluster_plug_input_event(struct input_handle *handle,
+		unsigned int type, unsigned int code, int value)
+{
+	if (!suspended)
+		return;
+
+	cancel_work_sync(&boost_work);
+	queue_work(system_highpri_wq, &boost_work);
+}
+
+static int cluster_plug_input_connect(struct input_handler *handler,
+		struct input_dev *dev, const struct input_device_id *id)
+{
+	struct input_handle *handle;
+	int ret;
+
+	handle = kzalloc(sizeof(*handle), GFP_KERNEL);
+	if (!handle)
+		return -ENOMEM;
+
+	handle->dev = dev;
+	handle->handler = handler;
+	handle->name = "cluster_plug_handle";
+
+	ret = input_register_handle(handle);
+	if (ret)
+		goto err2;
+
+	ret = input_open_device(handle);
+	if (ret)
+		goto err1;
+
+	return 0;
+
+err1:
+	input_unregister_handle(handle);
+err2:
+	kfree(handle);
+	return ret;
+}
+
+static void cluster_plug_input_disconnect(struct input_handle *handle)
+{
+	input_close_device(handle);
+	input_unregister_handle(handle);
+	kfree(handle);
+}
+
+static const struct input_device_id cluster_plug_ids[] = {
+	/* Keypad */
+	{
+		.flags = INPUT_DEVICE_ID_MATCH_EVBIT,
+		.evbit = { BIT_MASK(EV_KEY) },
+	},
+	{ },
+};
+
+static struct input_handler cluster_plug_input_handler = {
+	.event		= cluster_plug_input_event,
+	.connect	= cluster_plug_input_connect,
+	.disconnect	= cluster_plug_input_disconnect,
+	.name		= "cluster_plug_handler",
+	.id_table	= cluster_plug_ids,
+};
+
 int __init cluster_plug_init(void)
 {
+	int ret;
+
 	pr_debug("cluster_plug: version %d.%d by sultanqasim and crpalmer\n",
 		 CLUSTER_PLUG_MAJOR_VERSION,
 		 CLUSTER_PLUG_MINOR_VERSION);
@@ -446,6 +546,13 @@ int __init cluster_plug_init(void)
 	INIT_WORK(&suspend_work, cluster_plug_suspend);
 
 	fb_register_client(&fb_notifier);
+
+	INIT_WORK(&boost_work, cluster_plug_boost);
+	INIT_DELAYED_WORK(&unboost_dwork, cluster_plug_unboost);
+
+	ret = input_register_handler(&cluster_plug_input_handler);
+	if (ret)
+		pr_err("%s: Failed to register input handler\n", __func__);
 
 	return 0;
 }
