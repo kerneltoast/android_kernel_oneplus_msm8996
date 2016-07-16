@@ -414,10 +414,13 @@ static int fb_notifier_callback(struct notifier_block *nb,
 	struct fb_event *evdata = data;
 	int *blank = evdata->data;
 
-	if (*blank == FB_BLANK_UNBLANK)
-		queue_work(cluster_pm_wq, &resume_work);
-	else
-		queue_work(cluster_pm_wq, &suspend_work);
+	if (*blank == FB_BLANK_UNBLANK) {
+		if (val == FB_EARLY_EVENT_BLANK)
+			queue_work(cluster_pm_wq, &resume_work);
+	} else {
+		if (val == FB_EVENT_BLANK)
+			queue_work(cluster_pm_wq, &suspend_work);
+	}
 
 	return NOTIFY_OK;
 }
