@@ -3506,7 +3506,9 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 				break;
 			}
 		} else {
+#ifndef CONFIG_MACH_MSM8996_15801
 			dwc3_msm_gadget_vbus_draw(mdwc, 0);
+#endif
 			dev_dbg(mdwc->dev, "No device, allowing suspend\n");
 		}
 		break;
