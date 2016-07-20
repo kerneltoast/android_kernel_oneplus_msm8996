@@ -224,7 +224,7 @@
 	};
 
 	rpm-regulator-ldoa14 {
-		status = "disabled";
+		status = "okay";
 		pm8994_l14: regulator-l14 {
 			regulator-min-microvolt = <1800000>;
 			regulator-max-microvolt = <1800000>;
@@ -269,9 +269,9 @@
 	rpm-regulator-ldoa18 {
 		status = "okay";
 		pm8994_l18: regulator-l18 {
-			regulator-min-microvolt = <3300000>;
-			regulator-max-microvolt = <3300000>;
-			qcom,init-voltage = <3300000>;
+			regulator-min-microvolt = <2700000>;
+			regulator-max-microvolt = <2900000>;
+			qcom,init-voltage = <2700000>;
 			status = "okay";
 		};
 
@@ -287,7 +287,6 @@
 			 * is driven high.
 			 */
 			qcom,enable-with-pin-ctrl = <0 4>;
-			status = "disabled";
 		};
 	};
 

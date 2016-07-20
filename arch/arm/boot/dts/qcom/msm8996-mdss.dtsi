@@ -405,8 +405,8 @@
 			reg-names = "dsi_ctrl", "dsi_phy", "mmss_misc_phys";
 
 			qcom,timing-db-mode;
-			oled-vdda-supply = <&pm8994_s5>;
-			vddio-supply = <&pm8994_l18>;
+			oled-vdda-supply = <&pm8994_l19>;
+			vddio-supply = <&pm8994_l14>;
 			lab-supply = <&lab_regulator>;
 			ibb-supply = <&ibb_regulator>;
 			qcom,mdss-mdp = <&mdss_mdp>;
@@ -437,8 +437,8 @@
 							ff 06
 							ff 06
 							ff 00];
-			qcom,platform-regulator-settings = [17
-							17 17 17 17];
+			qcom,platform-regulator-settings = [1d
+							1d 1d 1d 1d];
 			qcom,platform-lane-config = [00 00 10 0f
 						00 00 10 0f
 						00 00 10 0f
@@ -454,8 +454,6 @@
 				<0x996400 0x558>,
 				<0x828000 0x108>;
 			reg-names = "dsi_ctrl", "dsi_phy", "mmss_misc_phys";
-
-			status = "disabled";
 
 			qcom,timing-db-mode;
 			oled-vdda-supply = <&pm8994_l19>;
@@ -516,8 +514,6 @@
 			<0x70000 0x6158>,
 			<0x9e0000 0xFFF>;
 		reg-names = "core_physical", "qfprom_physical", "hdcp_physical";
-
-		status = "disabled";
 
 		hpd-gdsc-supply = <&gdsc_mdss>;
 

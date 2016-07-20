@@ -347,11 +347,10 @@
 &mdss_dsi0 {
 	qcom,dsi-pref-prim-pan = <&dsi_samsung_s6e3fa3_1080p_cmd>;
 	pinctrl-names = "mdss_default", "mdss_sleep";
-	pinctrl-0 = <&mdss_dsi_active &mdss_te_active &mdss_exits_active &mdss_err_active>;
-	pinctrl-1 = <&mdss_dsi_suspend &mdss_te_suspend &mdss_exits_suspend &mdss_err_suspend>;
-	qcom,platform-te-gpio = <&tlmm 11 0>;
+	pinctrl-0 = <&mdss_dsi_active &mdss_te_active>;
+	pinctrl-1 = <&mdss_dsi_suspend &mdss_te_suspend>;
+	qcom,platform-te-gpio = <&tlmm 10 0>;
 	qcom,platform-reset-gpio = <&tlmm 8 0>;
-	qcom,lcd-vddi-en-gpio = <&tlmm 26 0>;
 };
 
 &mdss_dsi1 {
@@ -365,7 +364,7 @@
 };
 
 &labibb {
-	status = "disabled";
+	status = "ok";
 	qpnp,qpnp-labibb-mode = "lcd";
 };
 
