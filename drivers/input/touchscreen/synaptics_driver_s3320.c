@@ -482,6 +482,8 @@ struct synaptics_ts_data {
 #endif
 
 	struct work_struct pm_work;
+
+	ktime_t timestamp;
 };
 
 static struct device_attribute attrs_oem[] = {
@@ -1283,6 +1285,12 @@ void int_touch(void)
 		TPD_ERR("synaptics_int_touch: i2c_transfer failed\n");
 		goto INT_TOUCH_END;
 	}
+
+	input_event(ts->input_dev, EV_SYN, SYN_TIME_SEC,
+			ktime_to_timespec(ts->timestamp).tv_sec);
+	input_event(ts->input_dev, EV_SYN, SYN_TIME_NSEC,
+			ktime_to_timespec(ts->timestamp).tv_nsec);
+
 	for( i = 0; i < ts->max_num; i++ ) {
 		points.status = buf[i*8];
 		points.x = ((buf[i*8+2]&0x0f)<<8) | (buf[i*8+1] & 0xff);
@@ -1444,6 +1452,8 @@ static irqreturn_t synaptics_irq_thread_fn(int irq, void *dev_id)
 	if( ts->enable_remote) {
 		return IRQ_HANDLED;
 	}
+
+	ts->timestamp = ktime_get();
 
 	ret = synaptics_rmi4_i2c_write_byte(ts->client, 0xff, 0x00 );
 	ret = synaptics_rmi4_i2c_read_word(ts->client, F01_RMI_DATA_BASE);
