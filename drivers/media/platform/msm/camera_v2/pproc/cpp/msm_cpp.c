@@ -2930,6 +2930,7 @@ static int msm_cpp_validate_input(unsigned int cmd, void *arg,
 {
 	switch (cmd) {
 	case MSM_SD_SHUTDOWN:
+	case MSM_SD_NOTIFY_FREEZE:
 		break;
 	default: {
 		if (ioctl_ptr == NULL) {
