@@ -80,6 +80,9 @@ static bool suspended;
 static struct work_struct boost_work;
 static struct delayed_work unboost_dwork;
 
+static int boost_refcnt;
+static spinlock_t boost_lock;
+
 struct cp_cpu_info {
 	u64 prev_cpu_wall;
 	u64 prev_cpu_idle;
@@ -250,6 +253,26 @@ static void cluster_plug_perform(void)
 	last_action = now;
 }
 
+static void cluster_sched_boost(int enable)
+{
+	int old_refcnt;
+
+	spin_lock(&boost_lock);
+	old_refcnt = boost_refcnt;
+
+	if (enable)
+		boost_refcnt++;
+	else
+		boost_refcnt--;
+	spin_unlock(&boost_lock);
+
+	if ((old_refcnt && enable) ||
+		(!old_refcnt && !enable))
+		return;
+
+	sched_set_boost(enable);
+}
+
 static void __ref cluster_plug_work_fn(struct work_struct *work)
 {
 	if (suspended)
@@ -272,6 +295,8 @@ static void __ref cluster_plug_work_fn(struct work_struct *work)
 
 		/* Clear flag used to indicate system recently resumed */
 		cpu_was_online[0] = 0;
+
+		cluster_sched_boost(0);
 	}
 
 	if (online_all) {
@@ -371,7 +396,6 @@ static void stop_btn_boost(void)
 {
 	cancel_work_sync(&boost_work);
 	cancel_delayed_work_sync(&unboost_dwork);
-	sched_set_boost(0);
 }
 
 static void cluster_plug_resume(struct work_struct *work)
@@ -395,6 +419,8 @@ static void cluster_plug_resume(struct work_struct *work)
 
 	unlock_device_hotplug();
 
+	cluster_sched_boost(1);
+
 	queue_clusterplug_work(FB_UNBLANK_BOOST_MS);
 }
 
@@ -412,6 +438,8 @@ static void cluster_plug_suspend(struct work_struct *work)
 	cancel_delayed_work_sync(&cluster_plug_work);
 
 	memset(&cpu_was_online[0], 0, sizeof(cpu_was_online));
+
+	cluster_sched_boost(0);
 
 	lock_device_hotplug();
 
@@ -452,14 +480,14 @@ static void cluster_plug_boost(struct work_struct *work)
 {
 	cancel_delayed_work_sync(&unboost_dwork);
 	online_cpu(BIG_CPU_ID_START);
-	sched_set_boost(1);
+	cluster_sched_boost(1);
 	queue_delayed_work(system_highpri_wq, &unboost_dwork,
 				msecs_to_jiffies(BTN_BOOST_MS));
 }
 
 static void cluster_plug_unboost(struct work_struct *work)
 {
-	sched_set_boost(0);
+	cluster_sched_boost(0);
 	offline_cpu(BIG_CPU_ID_START);
 }
 
@@ -535,6 +563,8 @@ int __init cluster_plug_init(void)
 	pr_debug("cluster_plug: version %d.%d by sultanqasim and crpalmer\n",
 		 CLUSTER_PLUG_MAJOR_VERSION,
 		 CLUSTER_PLUG_MINOR_VERSION);
+
+	spin_lock_init(&boost_lock);
 
 	clusterplug_wq = alloc_workqueue("clusterplug",
 				WQ_HIGHPRI | WQ_UNBOUND, 1);
