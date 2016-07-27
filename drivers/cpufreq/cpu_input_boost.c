@@ -65,7 +65,7 @@ struct boost_policy {
 
 static struct boost_policy *boost_policy_g;
 
-static void boost_primary_cpu(struct boost_policy *b);
+static void boost_primary_cpus(struct boost_policy *b);
 static bool is_driver_enabled(struct boost_policy *b);
 static bool is_fb_boost_active(struct boost_policy *b);
 static void set_fb_state(struct boost_policy *b, enum boost_status state);
@@ -82,12 +82,11 @@ static void ib_boost_main(struct work_struct *work)
 	b->ib.nr_cpus_boosted = 0;
 
 	/*
-	 * Maximum of two CPUs can be boosted at any given time.
-	 * Boost two CPUs if only one is online as it's very likely
-	 * that another CPU will come online soon (due to user interaction).
-	 * The next CPU to come online is the other CPU that will be boosted.
+	 * Maximum of two CPUs can be boosted at any given time. Boost two
+	 * CPUs if not all CPUs are online. If only one CPU is online, then
+	 * the next CPU to come online is the 2nd CPU that will be boosted.
 	 */
-	b->ib.nr_cpus_to_boost = num_online_cpus() == 1 ? 2 : 1;
+	b->ib.nr_cpus_to_boost = num_online_cpus() == CONFIG_NR_CPUS ? 1 : 2;
 
 	/*
 	 * Reduce the boost duration for all CPUs by a factor of
@@ -101,7 +100,7 @@ static void ib_boost_main(struct work_struct *work)
 	 * the 2nd CPU to boost is offline at this point in time, so the boost
 	 * notifier will handle boosting the 2nd CPU if/when it comes online.
 	 */
-	boost_primary_cpu(b);
+	boost_primary_cpus(b);
 
 	put_online_cpus();
 }
@@ -328,24 +327,45 @@ static struct input_handler cpu_ib_input_handler = {
 	.id_table	= cpu_ib_ids,
 };
 
-static void boost_primary_cpu(struct boost_policy *b)
+static void boost_primary_cpus(struct boost_policy *b)
 {
 	struct ib_pcpu *pcpu;
-	bool big_cl_online;
 	uint32_t cpu_to_boost;
+	uint32_t little_cpu_duration;
 
 	get_online_cpus();
-	big_cl_online = cpu_online(BIG_CPU_ID);
-	put_online_cpus();
 
-	cpu_to_boost = big_cl_online ? BIG_CPU_ID : LITTLE_CPU_ID;
+	/*
+	 * Prioritize boosting little CPU. If only one CPU is to be
+	 * boosted, then it will be a little CPU instead of a big CPU.
+	 */
+	cpu_to_boost = LITTLE_CPU_ID;
+	if (cpu_online(cpu_to_boost)) {
+		/*
+		 * Give the little CPU the extra time that was cut from the
+		 * big CPU's boost.
+		 */
+		little_cpu_duration = b->ib.duration_ms +
+				(b->ib.duration_ms - b->ib.adj_duration_ms);
+		pcpu = per_cpu_ptr(b->ib.boost_info, cpu_to_boost);
+		pcpu->state = BOOST;
+		b->ib.nr_cpus_boosted++;
+		cpufreq_update_policy(cpu_to_boost);
+		queue_delayed_work(b->wq, &pcpu->unboost_work,
+				msecs_to_jiffies(little_cpu_duration));
+	}
 
-	pcpu = per_cpu_ptr(b->ib.boost_info, cpu_to_boost);
-	pcpu->state = BOOST;
-	b->ib.nr_cpus_boosted++;
-	cpufreq_update_policy(cpu_to_boost);
-	queue_delayed_work(b->wq, &pcpu->unboost_work,
+	cpu_to_boost = BIG_CPU_ID;
+	if (b->ib.nr_cpus_to_boost > 1 && cpu_online(cpu_to_boost)) {
+		pcpu = per_cpu_ptr(b->ib.boost_info, cpu_to_boost);
+		pcpu->state = BOOST;
+		b->ib.nr_cpus_boosted++;
+		cpufreq_update_policy(cpu_to_boost);
+		queue_delayed_work(b->wq, &pcpu->unboost_work,
 				msecs_to_jiffies(b->ib.adj_duration_ms));
+	}
+
+	put_online_cpus();
 
 	/* Record start time for use if a 2nd CPU to be boosted comes online */
 	b->ib.start_time = ktime_to_ms(ktime_get());
