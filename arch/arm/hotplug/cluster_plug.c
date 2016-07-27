@@ -447,7 +447,7 @@ static void cluster_plug_suspend(struct work_struct *work)
 	for_each_online_cpu(cpu) {
 		/* Save current state to restore it after resume */
 		cpu_was_online[cpu] = 1;
-		if (cpu)
+		if (is_little_cpu(cpu))
 			device_offline(get_cpu_device(cpu));
 	}
 
@@ -479,7 +479,7 @@ static struct notifier_block fb_notifier = {
 static void cluster_plug_boost(struct work_struct *work)
 {
 	cancel_delayed_work_sync(&unboost_dwork);
-	online_cpu(BIG_CPU_ID_START);
+	online_cpu(BIG_CPU_ID_START + 1);
 	cluster_sched_boost(1);
 	queue_delayed_work(system_highpri_wq, &unboost_dwork,
 				msecs_to_jiffies(BTN_BOOST_MS));
@@ -488,7 +488,7 @@ static void cluster_plug_boost(struct work_struct *work)
 static void cluster_plug_unboost(struct work_struct *work)
 {
 	cluster_sched_boost(0);
-	offline_cpu(BIG_CPU_ID_START);
+	offline_cpu(BIG_CPU_ID_START + 1);
 }
 
 static void cluster_plug_input_event(struct input_handle *handle,
