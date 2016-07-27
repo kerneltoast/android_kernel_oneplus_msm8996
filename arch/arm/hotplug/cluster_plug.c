@@ -82,6 +82,8 @@ static struct delayed_work unboost_dwork;
 
 static int boost_refcnt;
 static spinlock_t boost_lock;
+static spinlock_t boost_running_lock;
+static bool boost_running;
 
 struct cp_cpu_info {
 	u64 prev_cpu_wall;
@@ -476,6 +478,13 @@ static struct notifier_block fb_notifier = {
 	.priority	= INT_MAX - 1,
 };
 
+static void cluster_set_boost_state(bool state)
+{
+	spin_lock(&boost_running_lock);
+	boost_running = state;
+	spin_unlock(&boost_running_lock);
+}
+
 static void cluster_plug_boost(struct work_struct *work)
 {
 	cancel_delayed_work_sync(&unboost_dwork);
@@ -489,15 +498,25 @@ static void cluster_plug_unboost(struct work_struct *work)
 {
 	cluster_sched_boost(0);
 	offline_cpu(BIG_CPU_ID_START + 1);
+	cluster_set_boost_state(0);
 }
 
 static void cluster_plug_input_event(struct input_handle *handle,
 		unsigned int type, unsigned int code, int value)
 {
+	bool do_boost;
+
 	if (!suspended)
 		return;
 
-	cancel_work_sync(&boost_work);
+	spin_lock(&boost_running_lock);
+	do_boost = !boost_running;
+	spin_unlock(&boost_running_lock);
+
+	if (!do_boost)
+		return;
+
+	cluster_set_boost_state(1);
 	queue_work(system_highpri_wq, &boost_work);
 }
 
@@ -565,6 +584,7 @@ int __init cluster_plug_init(void)
 		 CLUSTER_PLUG_MINOR_VERSION);
 
 	spin_lock_init(&boost_lock);
+	spin_lock_init(&boost_running_lock);
 
 	clusterplug_wq = alloc_workqueue("clusterplug",
 				WQ_HIGHPRI | WQ_UNBOUND, 1);
