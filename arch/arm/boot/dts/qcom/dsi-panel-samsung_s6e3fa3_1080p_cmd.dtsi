@@ -73,5 +73,17 @@
 		qcom,mdss-pan-physical-height-dimension = <122>;
 		qcom,ulps-enabled;
 		qcom,panel-allow-phy-poweroff;
+
+		cm,mdss-livedisplay-cabc-cmd = [
+			15 01 00 00 00 00 02 55 00];
+		cm,mdss-livedisplay-cabc-ui-value = <0x03>;
+		cm,mdss-livedisplay-hbm-on-cmd = [
+			15 01 00 00 00 00 02 53 E0];
+		cm,mdss-livedisplay-hbm-off-cmd = [
+			15 01 00 00 00 00 02 53 20];
+		cm,mdss-livedisplay-srgb-on-cmd = [
+			39 01 00 00 00 00 02 57 4C];
+		cm,mdss-livedisplay-srgb-off-cmd = [
+			39 01 00 00 00 00 02 57 40];
 	};
 };
