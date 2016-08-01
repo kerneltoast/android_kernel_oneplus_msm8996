@@ -2085,7 +2085,7 @@ error:
 
 int mdss_mdp_pp_setup_locked(struct mdss_mdp_ctl *ctl)
 {
-	struct mdss_data_type *mdata = ctl->mdata;
+	struct mdss_data_type *mdata;
 	int ret = 0, i;
 	u32 flags, pa_v2_flags;
 	u32 max_bw_needed;
@@ -2094,9 +2094,10 @@ int mdss_mdp_pp_setup_locked(struct mdss_mdp_ctl *ctl)
 	u32 disp_num;
 	bool valid_mixers = true;
 	bool valid_ad_panel = true;
-	if ((!ctl) || (!ctl->mfd) || (!mdss_pp_res) || (!mdata))
+	if ((!ctl) || (!ctl->mfd) || (!mdss_pp_res) || (!ctl->mdata))
 		return -EINVAL;
 
+	mdata = ctl->mdata;
 	/* treat fb_num the same as block logical id*/
 	disp_num = ctl->mfd->index;
 
@@ -2643,6 +2644,9 @@ static int pp_ad_calc_bl(struct msm_fb_data_type *mfd, int bl_in, int *bl_out,
 		return ret;
 	}
 
+	/* Don't update BL = 0 to AD */
+	if (bl_in == 0)
+		return 0;
 	mutex_lock(&ad->lock);
 	if (!mfd->ad_bl_level)
 		mfd->ad_bl_level = bl_in;
@@ -5382,6 +5386,8 @@ static void pp_ad_input_write(struct mdss_mdp_ad *ad_hw,
 		writel_relaxed(ad->ad_data, base + MDSS_MDP_REG_AD_AL);
 		break;
 	case MDSS_AD_MODE_AUTO_STR:
+		pr_debug("bl_data = %d, ad_data = %d\n", ad->bl_data,
+				ad->ad_data);
 		ad->last_ad_data = ad->ad_data;
 		ad->last_ad_data_valid = true;
 		writel_relaxed(ad->bl_data, base + MDSS_MDP_REG_AD_BL);
@@ -5400,6 +5406,8 @@ static void pp_ad_input_write(struct mdss_mdp_ad *ad_hw,
 			ad->last_ad_data = ad->ad_data;
 			ad->last_ad_data_valid = true;
 		}
+		pr_debug("bl_data = %d, last_ad_data = %d, last_str = %d\n",
+				ad->bl_data, ad->last_ad_data, ad->last_str);
 		writel_relaxed(ad->bl_data, base + MDSS_MDP_REG_AD_BL);
 		writel_relaxed(ad->last_ad_data, base + MDSS_MDP_REG_AD_AL);
 		writel_relaxed(ad->last_str, base + MDSS_MDP_REG_AD_STR_MAN);
@@ -5415,7 +5423,7 @@ static void pp_ad_init_write(struct mdss_mdp_ad *ad_hw, struct mdss_ad_info *ad,
 						struct mdss_mdp_ctl *ctl)
 {
 	struct mdss_data_type *mdata = ctl->mdata;
-	u32 temp;
+	u32 temp, cfg_buf_mode;
 	u32 frame_start, frame_end, procs_start, procs_end, tile_ctrl;
 	u32 num;
 	int side;
@@ -5501,20 +5509,22 @@ static void pp_ad_init_write(struct mdss_mdp_ad *ad_hw, struct mdss_ad_info *ad,
 			}
 			procs_end -= 1;
 			frame_end -= 1;
+			cfg_buf_mode = 0x3;
 		} else {
 			frame_start = 0x0;
 			frame_end = 0xFFFF;
 			procs_start = 0x0;
 			procs_end = 0xFFFF;
 			tile_ctrl = 0x0;
+			cfg_buf_mode = 0x2;
 		}
-
 
 		writel_relaxed(frame_start, base + MDSS_MDP_REG_AD_FRAME_START);
 		writel_relaxed(frame_end, base + MDSS_MDP_REG_AD_FRAME_END);
 		writel_relaxed(procs_start, base + MDSS_MDP_REG_AD_PROCS_START);
 		writel_relaxed(procs_end, base + MDSS_MDP_REG_AD_PROCS_END);
 		writel_relaxed(tile_ctrl, base + MDSS_MDP_REG_AD_TILE_CTRL);
+		writel_relaxed(cfg_buf_mode , base + MDSS_MDP_REG_AD_CFG_BUF);
 	}
 }
 
@@ -5993,9 +6003,9 @@ static int pp_ad_linearize_bl(struct mdss_ad_info *ad, u32 bl, u32 *bl_out,
 	}
 
 	pr_debug("bl_in = %d, inv = %d\n", bl, inv);
-	if (inv == MDP_PP_AD_BL_LINEAR_INV) {
+	if (inv == MDP_PP_AD_BL_LINEAR) {
 		bl_lut = ad->bl_lin;
-	} else if (inv == MDP_PP_AD_BL_LINEAR) {
+	} else if (inv == MDP_PP_AD_BL_LINEAR_INV) {
 		bl_lut = ad->bl_lin_inv;
 	} else {
 		pr_err("invalid inv param: inv = %d\n", inv);

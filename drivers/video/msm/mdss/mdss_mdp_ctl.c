@@ -53,7 +53,7 @@ static DEFINE_MUTEX(mdss_mdp_ctl_lock);
 
 static u32 mdss_mdp_get_vbp_factor_max(struct mdss_mdp_ctl *ctl);
 
-static void __mdss_mdp_reset_mixercfg(struct mdss_mdp_ctl *ctl)
+void mdss_mdp_reset_mixercfg(struct mdss_mdp_ctl *ctl)
 {
 	u32 off;
 	int i, nmixers;
@@ -115,7 +115,7 @@ u32 mdss_mdp_get_mixercfg(struct mdss_mdp_mixer *mixer, bool extn)
 	return mdss_mdp_ctl_read(mixer->ctl, mixer_off);
 }
 
-static inline u32 mdss_mdp_get_pclk_rate(struct mdss_mdp_ctl *ctl)
+static inline u64 mdss_mdp_get_pclk_rate(struct mdss_mdp_ctl *ctl)
 {
 	struct mdss_panel_info *pinfo = &ctl->panel_data->panel_info;
 
@@ -769,7 +769,8 @@ int mdss_mdp_perf_calc_pipe(struct mdss_mdp_pipe *pipe,
 			fps = pinfo->panel_max_fps;
 			v_total = pinfo->panel_max_vtotal;
 		} else {
-			fps = mdss_panel_get_framerate(pinfo);
+			fps = mdss_panel_get_framerate(pinfo,
+				FPS_RESOLUTION_HZ);
 			v_total = mdss_panel_get_vtotal(pinfo);
 		}
 		xres = get_panel_width(mixer->ctl);
@@ -855,6 +856,10 @@ int mdss_mdp_perf_calc_pipe(struct mdss_mdp_pipe *pipe,
 	perf->mdp_clk_rate = get_pipe_mdp_clk_rate(pipe, src, dst,
 		fps, v_total, flags);
 
+	if (pipe->flags & MDP_SOLID_FILL) {
+		perf->bw_overlap = 0;
+	}
+
 	if (mixer->ctl->intf_num == MDSS_MDP_NO_INTF ||
 		mdata->disable_prefill ||
 		mixer->ctl->disable_prefill ||
@@ -888,7 +893,7 @@ int mdss_mdp_perf_calc_pipe(struct mdss_mdp_pipe *pipe,
 	prefill_params.is_hflip = pipe->flags & MDP_FLIP_LR;
 	prefill_params.is_cmd = !mixer->ctl->is_video_mode;
 	prefill_params.pnum = pipe->num;
-	prefill_params.is_bwc = mdss_mdp_is_ubwc_format(pipe->src_fmt);
+	prefill_params.is_ubwc = mdss_mdp_is_ubwc_format(pipe->src_fmt);
 	prefill_params.is_nv12 = mdss_mdp_is_nv12_format(pipe->src_fmt);
 
 	mdss_mdp_get_bw_vote_mode(mixer, mdata->mdp_rev, perf,
@@ -954,7 +959,8 @@ static void mdss_mdp_perf_calc_mixer(struct mdss_mdp_mixer *mixer,
 				fps = pinfo->panel_max_fps;
 				v_total = pinfo->panel_max_vtotal;
 			} else {
-				fps = mdss_panel_get_framerate(pinfo);
+				fps = mdss_panel_get_framerate(pinfo,
+					FPS_RESOLUTION_HZ);
 				v_total = mdss_panel_get_vtotal(pinfo);
 			}
 
@@ -1207,7 +1213,7 @@ static u32 mdss_mdp_get_vbp_factor(struct mdss_mdp_ctl *ctl)
 		return 0;
 
 	pinfo = &ctl->panel_data->panel_info;
-	fps = mdss_panel_get_framerate(pinfo);
+	fps = mdss_panel_get_framerate(pinfo, FPS_RESOLUTION_HZ);
 	v_total = mdss_panel_get_vtotal(pinfo);
 	vbp = pinfo->lcdc.v_back_porch + pinfo->lcdc.v_pulse_width;
 	vbp += pinfo->prg_fet;
@@ -1317,9 +1323,9 @@ static void __mdss_mdp_perf_calc_ctl_helper(struct mdss_mdp_ctl *ctl,
 			perf->prefill_bytes += tmp.prefill_bytes;
 
 		if (ctl->intf_type) {
-			u32 clk_rate = mdss_mdp_get_pclk_rate(ctl);
+			u64 clk_rate = mdss_mdp_get_pclk_rate(ctl);
 			/* minimum clock rate due to inefficiency in 3dmux */
-			clk_rate = mult_frac(clk_rate >> 1, 9, 8);
+			clk_rate = DIV_ROUND_UP_ULL((clk_rate >> 1) * 9, 8);
 			if (clk_rate > perf->mdp_clk_rate)
 				perf->mdp_clk_rate = clk_rate;
 		}
@@ -2395,7 +2401,8 @@ int mdss_mdp_display_wakeup_time(struct mdss_mdp_ctl *ctl,
 				 ktime_t *wakeup_time)
 {
 	struct mdss_panel_info *pinfo;
-	u32 clk_rate, clk_period;
+	u64 clk_rate;
+	u32 clk_period;
 	u32 current_line, total_line;
 	u32 time_of_line, time_to_vsync, adjust_line_ns;
 
@@ -2410,7 +2417,7 @@ int mdss_mdp_display_wakeup_time(struct mdss_mdp_ctl *ctl,
 
 	clk_rate = mdss_mdp_get_pclk_rate(ctl);
 
-	clk_rate /= 1000;	/* in kHz */
+	clk_rate = DIV_ROUND_UP_ULL(clk_rate, 1000); /* in kHz */
 	if (!clk_rate)
 		return -EINVAL;
 
@@ -2419,7 +2426,7 @@ int mdss_mdp_display_wakeup_time(struct mdss_mdp_ctl *ctl,
 	 * accuracy with high pclk rate and this number is in 17 bit
 	 * range.
 	 */
-	clk_period = 1000000000 / clk_rate;
+	clk_period = DIV_ROUND_UP_ULL(1000000000, clk_rate);
 	if (!clk_period)
 		return -EINVAL;
 
@@ -2458,7 +2465,7 @@ int mdss_mdp_display_wakeup_time(struct mdss_mdp_ctl *ctl,
 
 	*wakeup_time = ktime_add_ns(current_time, time_to_vsync);
 
-	pr_debug("clk_rate=%dkHz clk_period=%d cur_line=%d tot_line=%d\n",
+	pr_debug("clk_rate=%lldkHz clk_period=%d cur_line=%d tot_line=%d\n",
 		clk_rate, clk_period, current_line, total_line);
 	pr_debug("time_to_vsync=%d current_time=%d wakeup_time=%d\n",
 		time_to_vsync, (int)ktime_to_ms(current_time),
@@ -3107,9 +3114,11 @@ void mdss_mdp_ctl_dsc_setup(struct mdss_mdp_ctl *ctl,
 		break;
 	case MDP_DUAL_LM_DUAL_DISPLAY:
 		sctl = mdss_mdp_get_split_ctl(ctl);
-		spinfo = &sctl->panel_data->panel_info;
-
-		__dsc_setup_dual_lm_dual_display(ctl, pinfo, sctl, spinfo);
+		if (sctl) {
+			spinfo = &sctl->panel_data->panel_info;
+			__dsc_setup_dual_lm_dual_display(ctl, pinfo, sctl,
+					spinfo);
+		}
 		break;
 	default:
 		/* pp_split is not supported yet */
@@ -3920,10 +3929,10 @@ int mdss_mdp_ctl_stop(struct mdss_mdp_ctl *ctl, int power_state)
 	mdss_mdp_ctl_write(ctl, MDSS_MDP_REG_CTL_TOP, 0);
 	if (sctl) {
 		mdss_mdp_ctl_write(sctl, MDSS_MDP_REG_CTL_TOP, 0);
-		__mdss_mdp_reset_mixercfg(sctl);
+		mdss_mdp_reset_mixercfg(sctl);
 	}
 
-	__mdss_mdp_reset_mixercfg(ctl);
+	mdss_mdp_reset_mixercfg(ctl);
 
 	ctl->play_cnt = 0;
 
@@ -4103,27 +4112,31 @@ void mdss_mdp_set_roi(struct mdss_mdp_ctl *ctl,
 	    (!l_roi->w && !l_roi->h && !r_roi->w && !r_roi->h) ||
 	    !ctl->panel_data->panel_info.partial_update_enabled) {
 
-		*l_roi = (struct mdss_rect) {0, 0,
+		if (ctl->mixer_left)
+			*l_roi = (struct mdss_rect) {0, 0,
 				ctl->mixer_left->width,
 				ctl->mixer_left->height};
 
-		if (ctl->mixer_right) {
+		if (ctl->mixer_right)
 			*r_roi = (struct mdss_rect) {0, 0,
 					ctl->mixer_right->width,
 					ctl->mixer_right->height};
-		}
 	}
 
 	previous_frame_pu_type = mdss_mdp_get_pu_type(ctl);
-	mdss_mdp_set_mixer_roi(ctl->mixer_left, l_roi);
-	ctl->roi = ctl->mixer_left->roi;
+	if (ctl->mixer_left) {
+		mdss_mdp_set_mixer_roi(ctl->mixer_left, l_roi);
+		ctl->roi = ctl->mixer_left->roi;
+	}
 
 	if (ctl->mfd->split_mode == MDP_DUAL_LM_DUAL_DISPLAY) {
 		struct mdss_mdp_ctl *sctl = mdss_mdp_get_split_ctl(ctl);
 
-		mdss_mdp_set_mixer_roi(sctl->mixer_left, r_roi);
-		sctl->roi = sctl->mixer_left->roi;
-	} else if (is_dual_lm_single_display(ctl->mfd)) {
+		if (sctl && sctl->mixer_left) {
+			mdss_mdp_set_mixer_roi(sctl->mixer_left, r_roi);
+			sctl->roi = sctl->mixer_left->roi;
+		}
+	} else if (is_dual_lm_single_display(ctl->mfd) && ctl->mixer_right) {
 
 		mdss_mdp_set_mixer_roi(ctl->mixer_right, r_roi);
 
@@ -4131,7 +4144,7 @@ void mdss_mdp_set_roi(struct mdss_mdp_ctl *ctl,
 		ctl->roi.w += ctl->mixer_right->roi.w;
 
 		/* right_only, update roi.x as per CTL ROI guidelines */
-		if (!ctl->mixer_left->valid_roi) {
+		if (ctl->mixer_left && !ctl->mixer_left->valid_roi) {
 			ctl->roi = ctl->mixer_right->roi;
 			ctl->roi.x = left_lm_w_from_mfd(ctl->mfd) +
 				ctl->mixer_right->roi.x;
@@ -4146,8 +4159,10 @@ void mdss_mdp_set_roi(struct mdss_mdp_ctl *ctl,
 	 */
 	if (is_split_lm(ctl->mfd) && mdata->has_src_split &&
 	    (previous_frame_pu_type != current_frame_pu_type)) {
-		ctl->mixer_left->roi_changed = true;
-		ctl->mixer_right->roi_changed = true;
+		if (ctl->mixer_left)
+			ctl->mixer_left->roi_changed = true;
+		if (ctl->mixer_right)
+			ctl->mixer_right->roi_changed = true;
 	}
 }
 
@@ -4221,7 +4236,7 @@ static void mdss_mdp_mixer_setup(struct mdss_mdp_ctl *master_ctl,
 
 	/* check if mixer setup for rotator is needed */
 	if (mixer_hw->rotator_mode) {
-		__mdss_mdp_reset_mixercfg(ctl_hw);
+		mdss_mdp_reset_mixercfg(ctl_hw);
 		return;
 	}
 
@@ -4246,7 +4261,7 @@ static void mdss_mdp_mixer_setup(struct mdss_mdp_ctl *master_ctl,
 	    is_dsc_compression(&ctl->panel_data->panel_info) &&
 	    ctl->panel_data->panel_info.partial_update_enabled &&
 	    mdss_has_quirk(mdata, MDSS_QUIRK_DSC_RIGHT_ONLY_PU))
-		__mdss_mdp_reset_mixercfg(ctl_hw);
+		mdss_mdp_reset_mixercfg(ctl_hw);
 
 	if (!mixer->valid_roi) {
 		/*
@@ -4818,8 +4833,13 @@ int mdss_mdp_ctl_update_fps(struct mdss_mdp_ctl *ctl)
 
 	if ((pinfo->dfps_update == DFPS_IMMEDIATE_PORCH_UPDATE_MODE_VFP) ||
 		(pinfo->dfps_update == DFPS_IMMEDIATE_PORCH_UPDATE_MODE_HFP) ||
+		(pinfo->dfps_update ==
+			DFPS_IMMEDIATE_MULTI_UPDATE_MODE_CLK_HFP) ||
+		(pinfo->dfps_update ==
+			DFPS_IMMEDIATE_MULTI_MODE_HFP_CALC_CLK) ||
 		pinfo->dfps_update == DFPS_IMMEDIATE_CLK_UPDATE_MODE) {
-		new_fps = mdss_panel_get_framerate(pinfo);
+		new_fps = mdss_panel_get_framerate(pinfo,
+				FPS_RESOLUTION_DEFAULT);
 	} else {
 		new_fps = pinfo->new_fps;
 	}
@@ -5074,7 +5094,7 @@ int mdss_mdp_display_commit(struct mdss_mdp_ctl *ctl, void *arg,
 		mdss_mdp_ctl_split_display_enable(split_lm_valid, ctl, sctl);
 
 	ATRACE_BEGIN("postproc_programming");
-	if (ctl->mfd && ctl->mfd->dcm_state != DTM_ENTER)
+	if (ctl->is_video_mode && ctl->mfd && ctl->mfd->dcm_state != DTM_ENTER)
 		/* postprocessing setup, including dspp */
 		mdss_mdp_pp_setup_locked(ctl);
 
@@ -5120,6 +5140,24 @@ int mdss_mdp_display_commit(struct mdss_mdp_ctl *ctl, void *arg,
 	if (ctl->ops.wait_pingpong && !mdata->serialize_wait4pp)
 		mdss_mdp_display_wait4pingpong(ctl, false);
 
+	/* Moved pp programming to post ping pong */
+	if (!ctl->is_video_mode && ctl->mfd &&
+			ctl->mfd->dcm_state != DTM_ENTER) {
+		/* postprocessing setup, including dspp */
+		mutex_lock(&ctl->flush_lock);
+		mdss_mdp_pp_setup_locked(ctl);
+		if (sctl) {
+			if (ctl->split_flush_en) {
+				ctl->flush_bits |= sctl->flush_bits;
+				sctl->flush_bits = 0;
+				sctl_flush_bits = 0;
+			} else {
+				sctl_flush_bits = sctl->flush_bits;
+			}
+		}
+		ctl_flush_bits = ctl->flush_bits;
+		mutex_unlock(&ctl->flush_lock);
+	}
 	/*
 	 * if serialize_wait4pp is false then roi_bkup used in wait4pingpong
 	 * will be of previous frame as expected.

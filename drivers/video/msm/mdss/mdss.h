@@ -294,6 +294,7 @@ struct mdss_data_type {
 
 	u32 mdp_irq_mask;
 	u32 mdp_hist_irq_mask;
+	u32 mdp_intf_irq_mask;
 
 	int suspend_fs_ena;
 	u8 clk_ena;
@@ -460,7 +461,9 @@ extern struct mdss_data_type *mdss_res;
 struct irq_info {
 	u32 irq;
 	u32 irq_mask;
+	u32 irq_wake_mask;
 	u32 irq_ena;
+	u32 irq_wake_ena;
 	u32 irq_buzy;
 };
 
@@ -484,6 +487,8 @@ struct mdss_util_intf {
 	int (*register_irq)(struct mdss_hw *hw);
 	void (*enable_irq)(struct mdss_hw *hw);
 	void (*disable_irq)(struct mdss_hw *hw);
+	void (*enable_wake_irq)(struct mdss_hw *hw);
+	void (*disable_wake_irq)(struct mdss_hw *hw);
 	void (*disable_irq_nosync)(struct mdss_hw *hw);
 	int (*irq_dispatch)(u32 hw_ndx, int irq, void *ptr);
 	int (*get_iommu_domain)(u32 type);
