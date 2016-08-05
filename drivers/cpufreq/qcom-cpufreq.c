@@ -316,8 +316,8 @@ static struct cpufreq_driver msm_cpufreq_driver = {
 };
 
 #ifdef CONFIG_MACH_MSM8996_15801
-#define UNDERCLOCKED_MAX_KHZ_PERFCL	1708800
-#define UNDERCLOCKED_MAX_KHZ_PWRCL	1401600
+#define UNDERCLOCKED_MAX_KHZ_PERFCL	1824000
+#define UNDERCLOCKED_MAX_KHZ_PWRCL	1478400
 static bool no_cpu_underclock;
 
 static int __init get_cpu_underclock(char *unused)
@@ -365,7 +365,7 @@ static struct cpufreq_frequency_table *cpufreq_parse_dt(struct device *dev,
 		f /= 1000;
 
 #ifdef CONFIG_MACH_MSM8996_15801
-		if (i > 0) {
+		if (!no_cpu_underclock && i > 0) {
 			if (cpu < 2) {
 				if (ftbl[i - 1].frequency ==
 						UNDERCLOCKED_MAX_KHZ_PWRCL)
