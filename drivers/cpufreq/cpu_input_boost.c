@@ -50,6 +50,7 @@ struct ib_config {
 	uint32_t adj_duration_ms;
 	uint32_t duration_ms;
 	uint32_t freq[2];
+	uint32_t little_cpu_duration;
 	uint32_t nr_cpus_boosted;
 	uint32_t nr_cpus_to_boost;
 };
@@ -235,7 +236,7 @@ static void cpu_ib_input_event(struct input_handle *handle, unsigned int type,
 		unsigned int code, int value)
 {
 	struct boost_policy *b = handle->handler->private;
-	bool do_boost;
+	bool do_boost, boost_running;
 
 	/* Anticipate device wake-up and boost early */
 	if (!b->device_awake) {
@@ -244,11 +245,25 @@ static void cpu_ib_input_event(struct input_handle *handle, unsigned int type,
 	}
 
 	spin_lock(&b->lock);
-	do_boost = b->enabled && !b->fb.state && !b->ib.running;
+	do_boost = b->enabled && !b->fb.state;
+	boost_running = b->ib.running;
 	spin_unlock(&b->lock);
 
 	if (!do_boost)
 		return;
+
+	/* Continuous boosting (from constant user input) */
+	if (boost_running) {
+		/* Only keep the LITTLE CPU boosted (more efficient) */
+		struct ib_pcpu *pcpu =
+			per_cpu_ptr(b->ib.boost_info, LITTLE_CPU_ID);
+
+		if (cancel_delayed_work_sync(&pcpu->unboost_work)) {
+			queue_delayed_work(b->wq, &pcpu->unboost_work,
+				msecs_to_jiffies(b->ib.little_cpu_duration));
+			return;
+		}
+	}
 
 	set_ib_status(b, true);
 
@@ -331,7 +346,6 @@ static void boost_primary_cpus(struct boost_policy *b)
 {
 	struct ib_pcpu *pcpu;
 	uint32_t cpu_to_boost;
-	uint32_t little_cpu_duration;
 
 	get_online_cpus();
 
@@ -345,14 +359,14 @@ static void boost_primary_cpus(struct boost_policy *b)
 		 * Give the little CPU the extra time that was cut from the
 		 * big CPU's boost.
 		 */
-		little_cpu_duration = b->ib.duration_ms +
+		b->ib.little_cpu_duration = b->ib.duration_ms +
 				(b->ib.duration_ms - b->ib.adj_duration_ms);
 		pcpu = per_cpu_ptr(b->ib.boost_info, cpu_to_boost);
 		pcpu->state = BOOST;
 		b->ib.nr_cpus_boosted++;
 		cpufreq_update_policy(cpu_to_boost);
 		queue_delayed_work(b->wq, &pcpu->unboost_work,
-				msecs_to_jiffies(little_cpu_duration));
+				msecs_to_jiffies(b->ib.little_cpu_duration));
 	}
 
 	cpu_to_boost = BIG_CPU_ID;
