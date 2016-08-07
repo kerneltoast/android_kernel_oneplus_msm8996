@@ -4254,6 +4254,8 @@ static int fg_init_batt_temp_state(struct fg_chip *chip)
 	return rc;
 }
 
+static void oem_update_cc_cv_setpoint(struct fg_chip *chip, int cv_float_point);
+
 static int fg_power_set_property(struct power_supply *psy,
 				  enum power_supply_property psp,
 				  const union power_supply_propval *val)
@@ -4287,6 +4289,17 @@ static int fg_power_set_property(struct power_supply *psy,
 
 		if (chip->jeita_hysteresis_support)
 			fg_hysteresis_config(chip);
+		break;
+	case POWER_SUPPLY_PROP_CC_TO_CV_POINT:
+		oem_update_cc_cv_setpoint(chip, val->intval);
+		break;
+	case POWER_SUPPLY_PROP_SET_ALLOW_READ_EXTERN_FG_IIC:
+		if (ext_fg && ext_fg->set_alow_reading)
+			ext_fg->set_alow_reading(val->intval);
+		break;
+	case POWER_SUPPLY_PROP_UPDATE_LCD_IS_OFF:
+		if (ext_fg && ext_fg->set_lcd_off_status)
+			ext_fg->set_lcd_off_status(val->intval);
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_DONE:
 		chip->charge_done = val->intval;
@@ -5227,6 +5240,25 @@ static void update_cc_cv_setpoint(struct fg_chip *chip)
 	}
 	if (fg_debug_mask & FG_STATUS)
 		pr_info("Wrote %x %x to address %x for CC_CV setpoint\n",
+			tmp[0], tmp[1], CC_CV_SETPOINT_REG);
+}
+
+static void oem_update_cc_cv_setpoint(struct fg_chip *chip, int cv_float_point)
+{
+	int rc;
+	u8 tmp[2];
+
+	if (!cv_float_point)
+		return;
+	batt_to_setpoint_adc(cv_float_point, tmp);
+	rc = fg_mem_write(chip, tmp, CC_CV_SETPOINT_REG, 2,
+				CC_CV_SETPOINT_OFFSET, 0);
+	if (rc) {
+		pr_err("failed to write CC_CV_VOLT rc=%d\n", rc);
+		return;
+	}
+	if (fg_debug_mask & FG_STATUS)
+		pr_info("oem Wrote %x %x to address %x for CC_CV setpoint\n",
 			tmp[0], tmp[1], CC_CV_SETPOINT_REG);
 }
 
