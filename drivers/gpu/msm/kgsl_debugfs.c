@@ -1,4 +1,4 @@
-/* Copyright (c) 2002,2008-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2002,2008-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -149,7 +149,7 @@ static int print_mem_entry(int id, void *ptr, void *data)
 			(unsigned long *) m->useraddr,
 			m->size, entry->id, flags,
 			memtype_str(kgsl_memdesc_usermem_type(m)),
-			usage, m->sgt->nents);
+			usage, (m->sgt ? m->sgt->nents : 0));
 
 	if (entry->metadata[0] != 0)
 		seq_printf(s, " %s", entry->metadata);
