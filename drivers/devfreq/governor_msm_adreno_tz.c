@@ -72,7 +72,9 @@ static struct workqueue_struct *workqueue;
 static struct devfreq *tz_devfreq_g;
 static struct work_struct boost_work;
 static struct delayed_work unboost_work;
+static struct work_struct reboost_work;
 static bool gpu_boost_running;
+static bool reboost_running;
 
 static unsigned long boost_freq;
 module_param(boost_freq, ulong, 0644);
@@ -481,6 +483,7 @@ static int tz_handler(struct devfreq *devfreq, unsigned int event, void *data)
 
 	case DEVFREQ_GOV_STOP:
 		cancel_work_sync(&boost_work);
+		cancel_work_sync(&reboost_work);
 		cancel_delayed_work_sync(&unboost_work);
 		tz_devfreq_g = NULL;
 		/* Queue the stop work before the TZ is stopped */
@@ -604,6 +607,15 @@ static void gpu_unboost_worker(struct work_struct *work)
 	gpu_boost_running = false;
 }
 
+static void gpu_reboost_worker(struct work_struct *work)
+{
+	if (cancel_delayed_work_sync(&unboost_work))
+		schedule_delayed_work(&unboost_work,
+			msecs_to_jiffies(boost_duration));
+
+	reboost_running = false;
+}
+
 static void gpu_ib_input_event(struct input_handle *handle,
 		unsigned int type, unsigned int code, int value)
 {
@@ -622,12 +634,13 @@ static void gpu_ib_input_event(struct input_handle *handle,
 	if (suspended)
 		return;
 
+	if (reboost_running)
+		return;
+
 	if (gpu_boost_running) {
-		if (cancel_delayed_work_sync(&unboost_work)) {
-			schedule_delayed_work(&unboost_work,
-				msecs_to_jiffies(boost_duration));
-			return;
-		}
+		reboost_running = true;
+		schedule_work(&reboost_work);
+		return;
 	}
 
 	gpu_boost_running = true;
@@ -712,6 +725,7 @@ static void gpu_ib_init(void)
 
 	INIT_WORK(&boost_work, gpu_boost_worker);
 	INIT_DELAYED_WORK(&unboost_work, gpu_unboost_worker);
+	INIT_WORK(&reboost_work, gpu_reboost_worker);
 
 	ret = input_register_handler(&gpu_ib_input_handler);
 	if (ret)
