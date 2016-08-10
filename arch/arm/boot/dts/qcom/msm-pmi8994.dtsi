@@ -151,7 +151,7 @@
 			reg = <0xa300 0x100>;
 			status = "okay";
 
-			qcom,led_mpp_3 {
+			qcom,led_mpp_4 {
 				label = "mpp";
 				linux,name = "button-backlight";
 				linux,default-trigger = "none";

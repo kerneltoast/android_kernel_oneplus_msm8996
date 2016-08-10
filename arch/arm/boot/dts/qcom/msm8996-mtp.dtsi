@@ -541,16 +541,12 @@
 };
 
 &pm8994_mpps {
-
 	mpp@a300 { /* MPP 4 */
-		/* HDMI_5v_vreg regulator enable */
-		qcom,mode = <1>;		/* Digital output */
-		qcom,output-type = <0>;		/* CMOS logic */
-		qcom,vin-sel = <2>;		/* S4 1.8V */
-		qcom,src-sel = <0>;		/* Constant */
-		qcom,master-en = <1>;		/* Enable GPIO */
-		qcom,invert = <0>;
-		status = "okay";
+		qcom,mode = <4>; /* AIN input */
+		qcom,invert = <1>; /* Enable MPP */
+		qcom,ain-route = <3>; /* AMUX 8 */
+		qcom,master-en = <1>;
+		qcom,src-sel = <0>; /* Function constant */
 	};
 };
 
@@ -626,14 +622,6 @@
 		qcom,vin-sel = <2>;             /* S4 1.8V */
 		qcom,src-sel = <7>;             /* DTEST4 */
 		qcom,master-en = <1>;           /* Enable MPP */
-		status = "okay";
-	};
-
-	mpp@a300 { /* MPP 4 */
-		/* WLED FET */
-		qcom,mode = <1>;        /* DIGITAL OUT */
-		qcom,vin-sel = <0>;     /* VIN0 */
-		qcom,master-en = <1>;
 		status = "okay";
 	};
 };
