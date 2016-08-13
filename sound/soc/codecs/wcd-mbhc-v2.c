@@ -1125,6 +1125,7 @@ static void wcd_correct_swch_plug(struct work_struct *work)
 	int rc, spl_hs_count = 0;
 #ifdef CONFIG_MACH_MSM8996_15801
 	int retry = 0;
+	int hph_cnt = 0, headset_cnt = 0;
 #endif
 
 	pr_debug("%s: enter\n", __func__);
@@ -1209,6 +1210,28 @@ correct_plug_type:
 			wcd_cancel_btn_work(mbhc);
 			mbhc->btn_press_intr = false;
 		}
+
+#ifdef CONFIG_MACH_MSM8996_15801
+		/*
+		 * We can't properly detect high-impedance headphones, so
+		 * treat them as a headset.
+		 */
+		if (plug_type == MBHC_PLUG_TYPE_HIGH_HPH)
+			plug_type = MBHC_PLUG_TYPE_HEADSET;
+
+		/*
+		 * It's pretty certain to be a headset or headphones after
+		 * 3 cycles.
+		 */
+		if (plug_type == MBHC_PLUG_TYPE_HEADSET) {
+			if (++headset_cnt == 3)
+				goto report;
+		} else if (plug_type == MBHC_PLUG_TYPE_HEADPHONE) {
+			if (++hph_cnt == 3)
+				goto report;
+		}
+#endif
+
 		/* Toggle FSM */
 		WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_FSM_EN, 0);
 		WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_FSM_EN, 1);
