@@ -1108,6 +1108,21 @@ exit:
 	return spl_hs;
 }
 
+#ifdef CONFIG_MACH_MSM8996_15801
+static void wcd_headset_btn_delay(struct work_struct *work)
+{
+	struct wcd_mbhc *mbhc =
+		container_of(work, typeof(*mbhc), mbhc_btn_delay_dwork.work);
+	/*
+	 * Allow delay between detection completion and the time when
+	 * headset button presses are allowed to be processed. This
+	 * is done in order to prevent spurious button interrupts
+	 * right after plug detection is finished.
+	 */
+	mbhc->ignore_btn_intr = false;
+}
+#endif
+
 static void wcd_correct_swch_plug(struct work_struct *work)
 {
 	struct wcd_mbhc *mbhc;
@@ -1132,6 +1147,11 @@ static void wcd_correct_swch_plug(struct work_struct *work)
 
 	mbhc = container_of(work, struct wcd_mbhc, correct_plug_swch);
 	codec = mbhc->codec;
+
+#ifdef CONFIG_MACH_MSM8996_15801
+	cancel_delayed_work_sync(&mbhc->mbhc_btn_delay_dwork);
+	mbhc->ignore_btn_intr = true;
+#endif
 
 	/*
 	 * Enable micbias/pullup for detection in correct work.
@@ -1436,6 +1456,10 @@ exit:
 		mbhc->mbhc_cb->hph_pull_down_ctrl(codec, true);
 
 	mbhc->mbhc_cb->lock_sleep(mbhc, false);
+#ifdef CONFIG_MACH_MSM8996_15801
+	schedule_delayed_work(&mbhc->mbhc_btn_delay_dwork,
+					msecs_to_jiffies(750));
+#endif
 	pr_debug("%s: leave\n", __func__);
 }
 
@@ -1928,6 +1952,12 @@ static irqreturn_t wcd_mbhc_btn_press_handler(int irq, void *data)
 	int mask;
 	unsigned long msec_val;
 
+#ifdef CONFIG_MACH_MSM8996_15801
+	/* Don't process button interrupts immediately after plug detection */
+	if (mbhc->ignore_btn_intr)
+		return IRQ_HANDLED;
+#endif
+
 	pr_debug("%s: enter\n", __func__);
 	complete(&mbhc->btn_press_compl);
 	WCD_MBHC_RSC_LOCK(mbhc);
@@ -2001,6 +2031,15 @@ static irqreturn_t wcd_mbhc_release_handler(int irq, void *data)
 		goto exit;
 
 	}
+
+#ifdef CONFIG_MACH_MSM8996_15801
+	/* Don't process button interrupts immediately after plug detection */
+	if (mbhc->ignore_btn_intr) {
+		wcd_cancel_btn_work(mbhc);
+		mbhc->buttons_pressed &= ~WCD_MBHC_JACK_BUTTON_MASK;
+	}
+#endif
+
 	if (mbhc->buttons_pressed & WCD_MBHC_JACK_BUTTON_MASK) {
 		ret = wcd_cancel_btn_work(mbhc);
 		if (ret == 0) {
@@ -2463,6 +2502,10 @@ int wcd_mbhc_init(struct wcd_mbhc *mbhc, struct snd_soc_codec *codec,
 		INIT_DELAYED_WORK(&mbhc->mbhc_firmware_dwork,
 				  wcd_mbhc_fw_read);
 		INIT_DELAYED_WORK(&mbhc->mbhc_btn_dwork, wcd_btn_lpress_fn);
+#ifdef CONFIG_MACH_MSM8996_15801
+		INIT_DELAYED_WORK(&mbhc->mbhc_btn_delay_dwork,
+						wcd_headset_btn_delay);
+#endif
 	}
 	mutex_init(&mbhc->hphl_pa_lock);
 	mutex_init(&mbhc->hphr_pa_lock);

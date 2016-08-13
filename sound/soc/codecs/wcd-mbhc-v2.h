@@ -371,6 +371,10 @@ struct wcd_mbhc {
 	int buttons_pressed;
 	struct wcd_mbhc_config *mbhc_cfg;
 	const struct wcd_mbhc_cb *mbhc_cb;
+#ifdef CONFIG_MACH_MSM8996_15801
+	struct delayed_work mbhc_btn_delay_dwork;
+	bool ignore_btn_intr;
+#endif
 
 	u32 hph_status; /* track headhpone status */
 	u8 hphlocp_cnt; /* headphone left ocp retry */
