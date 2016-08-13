@@ -1299,7 +1299,12 @@ correct_plug_type:
 					pr_debug("%s: switch didnt work\n",
 						  __func__);
 					plug_type = MBHC_PLUG_TYPE_GND_MIC_SWAP;
+#ifdef CONFIG_MACH_MSM8996_15801
+					/* Retry instead in case of a noisy detection */
+					continue;
+#else
 					goto report;
+#endif
 				} else {
 					plug_type = MBHC_PLUG_TYPE_GND_MIC_SWAP;
 				}
