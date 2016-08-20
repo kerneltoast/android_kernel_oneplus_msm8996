@@ -23,7 +23,9 @@
 #define ERRATA_74_75_ID_BIT	0x000
 #define ERRATA_76_ID_BIT	0x100
 
+#ifdef CONFIG_DEBUG_FS
 static struct dentry *debugfs_base;
+#endif
 static bool kryo_e74_e75_wa = true;
 static bool kryo_e76_wa;
 
@@ -46,6 +48,7 @@ static void kryo_e74_e75_scm(void *enable)
 			enable ? "enable" : "disable");
 }
 
+#ifdef CONFIG_DEBUG_FS
 static int kryo_e74_e75_set(void *data, u64 val)
 {
 	if ((val && kryo_e74_e75_wa) || (!val && !kryo_e74_e75_wa))
@@ -65,6 +68,7 @@ static int kryo_e74_e75_get(void *data, u64 *val)
 	*val = kryo_e74_e75_wa;
 	return 0;
 }
+#endif
 
 static void kryo_e76_scm(void *enable)
 {
@@ -85,6 +89,7 @@ static void kryo_e76_scm(void *enable)
 			enable ? "enable" : "disable");
 }
 
+#ifdef CONFIG_DEBUG_FS
 static int kryo_e76_set(void *data, u64 val)
 {
 	if ((val && kryo_e76_wa) || (!val && !kryo_e76_wa))
@@ -109,6 +114,7 @@ DEFINE_SIMPLE_ATTRIBUTE(kryo_e74_e75_fops, kryo_e74_e75_get,
 			kryo_e74_e75_set, "%llu\n");
 DEFINE_SIMPLE_ATTRIBUTE(kryo_e76_fops, kryo_e76_get,
 			kryo_e76_set, "%llu\n");
+#endif
 
 static int scm_errata_notifier_callback(struct notifier_block *nfb,
 					unsigned long action, void *hcpu)
@@ -130,6 +136,7 @@ static int __init scm_errata_init(void)
 {
 	int ret;
 
+#ifdef CONFIG_DEBUG_FS
 	debugfs_base = debugfs_create_dir("scm_errata", NULL);
 	if (!debugfs_base)
 		return -ENOMEM;
@@ -140,13 +147,16 @@ static int __init scm_errata_init(void)
 	if (!debugfs_create_file("kryo_e76", S_IRUGO | S_IWUSR,
 			debugfs_base, NULL, &kryo_e76_fops))
 		goto err;
+#endif
 	ret = register_hotcpu_notifier(&scm_errata_notifier);
 	if (ret)
 		goto err;
 
 	return 0;
 err:
+#ifdef CONFIG_DEBUG_FS
 	debugfs_remove_recursive(debugfs_base);
+#endif
 	return ret;
 }
 device_initcall(scm_errata_init);

@@ -321,7 +321,6 @@ endchoice
 endif
 
 config MSM_SCM_ERRATA
-	depends on DEBUG_FS
 	depends on MSM_SCM
 	bool "Support for enabling/disabling errata workarounds via debugfs"
 	help
