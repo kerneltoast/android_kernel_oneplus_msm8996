@@ -1020,19 +1020,14 @@ SYSCALL_DEFINE2(clock_settime, const clockid_t, which_clock,
 SYSCALL_DEFINE2(clock_gettime, const clockid_t, which_clock,
 		struct timespec __user *,tp)
 {
-	struct k_clock *kc;
+	struct k_clock *kc = clockid_to_kclock(which_clock);
 	struct timespec kernel_tp;
 	int error;
-	clockid_t clock_to_use = which_clock;
 
-	if (clock_to_use == CLOCK_MONOTONIC)
-		clock_to_use = CLOCK_BOOTTIME;
-
-	kc = clockid_to_kclock(clock_to_use);
 	if (!kc)
 		return -EINVAL;
 
-	error = kc->clock_get(clock_to_use, &kernel_tp);
+	error = kc->clock_get(which_clock, &kernel_tp);
 
 	if (!error && copy_to_user(tp, &kernel_tp, sizeof (kernel_tp)))
 		error = -EFAULT;
