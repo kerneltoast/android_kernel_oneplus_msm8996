@@ -47,7 +47,7 @@ MODULE_PARM_DESC(record_size,
 		"size of each dump done on oops/panic");
 
 #ifdef CONFIG_MACH_MSM8996_15801
-static ulong ramoops_console_size = 1536 * 1024UL;
+static ulong ramoops_console_size = 256 * 1024UL;
 static struct boot_shared_imem_cookie_type *bsic_ptr;
 #else
 static ulong ramoops_console_size = MIN_MEM_SIZE;
