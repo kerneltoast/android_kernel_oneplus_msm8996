@@ -1480,7 +1480,7 @@ static irqreturn_t synaptics_irq_thread_fn(int irq, void *dev_id)
 	if( ret < 0 ) {
 		TPDTM_DMESG("Synaptic:ret = %d\n", ret);
         synaptics_hard_reset(ts);
-		return IRQ_HANDLED;
+		goto exit;
 	}
 	status = ret & 0xff;
 	inte = (ret & 0x7f00)>>8;
@@ -1505,6 +1505,9 @@ static irqreturn_t synaptics_irq_thread_fn(int irq, void *dev_id)
 	if ( inte & 0x04 )
 		int_touch();
 
+exit:
+	if (ts->syna_isr_ws.active)
+		__pm_relax(&ts->syna_isr_ws);
 	return IRQ_HANDLED;
 }
 #endif
