@@ -4114,6 +4114,8 @@ static int synaptics_i2c_resume(struct device *dev)
 	ts->i2c_awake = true;
 	spin_unlock_irqrestore(&ts->isr_lock, flags);
 
+	complete(&ts->i2c_resume);
+
 	TPD_DEBUG("%s is called\n", __func__);
     queue_delayed_work(synaptics_wq,&ts->speed_up_work, msecs_to_jiffies(5));
 	if (ts->gesture_enable == 1){
