@@ -241,8 +241,6 @@ struct dwc3_msm {
 	atomic_t                in_p3;
 	unsigned int		lpm_to_suspend_delay;
 	bool			init;
-	enum dwc3_chg_type	old_chg_type;
-	unsigned int		old_mA;
 };
 
 #define USB_HSPHY_3P3_VOL_MIN		3050000 /* uV */
@@ -3220,18 +3218,34 @@ static int dwc3_otg_start_peripheral(struct dwc3_msm *mdwc, int on)
 
 static int dwc3_msm_gadget_vbus_draw(struct dwc3_msm *mdwc, unsigned mA)
 {
+	enum power_supply_type power_supply_type;
+
 	if (mdwc->charging_disabled)
 		return 0;
 
-	/* No change */
-	if (mdwc->old_chg_type == mdwc->chg_type && mdwc->old_mA == mA)
-		return 0;
-
-	mdwc->old_mA = mA;
-	mdwc->old_chg_type = mdwc->chg_type;
+	if (mdwc->chg_type != DWC3_INVALID_CHARGER) {
+		dev_dbg(mdwc->dev,
+			"SKIP setting power supply type again,chg_type = %d\n",
+			mdwc->chg_type);
+		goto skip_psy_type;
+	}
 
 	dev_dbg(mdwc->dev, "Requested curr from USB = %u, max-type-c:%u\n",
 					mA, mdwc->typec_current_max);
+
+	if (mdwc->chg_type == DWC3_SDP_CHARGER)
+		power_supply_type = POWER_SUPPLY_TYPE_USB;
+	else if (mdwc->chg_type == DWC3_CDP_CHARGER)
+		power_supply_type = POWER_SUPPLY_TYPE_USB_CDP;
+	else if (mdwc->chg_type == DWC3_DCP_CHARGER ||
+			mdwc->chg_type == DWC3_PROPRIETARY_CHARGER)
+		power_supply_type = POWER_SUPPLY_TYPE_USB_DCP;
+	else
+		power_supply_type = POWER_SUPPLY_TYPE_UNKNOWN;
+
+	power_supply_set_supply_type(&mdwc->usb_psy, power_supply_type);
+
+skip_psy_type:
 
 	if (mdwc->chg_type == DWC3_CDP_CHARGER)
 		mA = DWC3_IDEV_CHG_MAX;
@@ -3268,6 +3282,7 @@ static int dwc3_msm_gadget_vbus_draw(struct dwc3_msm *mdwc, unsigned mA)
 	if (power_supply_set_current_limit(&mdwc->usb_psy, 1000*mA))
 		goto psy_error;
 
+	power_supply_changed(&mdwc->usb_psy);
 	mdwc->max_power = mA;
 	return 0;
 
@@ -3491,9 +3506,7 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 				break;
 			}
 		} else {
-#ifndef CONFIG_MACH_MSM8996_15801
 			dwc3_msm_gadget_vbus_draw(mdwc, 0);
-#endif
 			dev_dbg(mdwc->dev, "No device, allowing suspend\n");
 		}
 		break;
