@@ -3746,6 +3746,7 @@ static int synaptics_ts_probe(struct i2c_client *client, const struct i2c_device
         ret = pinctrl_select_state(ts->pinctrl,
                 ts->pinctrl_state_active);
         }
+    msleep(100);//after power on tp need sometime from bootloader to ui mode
 	mutex_init(&ts->mutex);
 	mutex_init(&ts->mutexreport);
     atomic_set(&ts->irq_enable,0);
@@ -3870,6 +3871,7 @@ static int synaptics_ts_probe(struct i2c_client *client, const struct i2c_device
             TPD_ERR("unable to request gpio [%d]\n",ts->irq_gpio);
         }
         ret = gpio_direction_input(ts->irq_gpio);
+        msleep(50);
         ts->irq = gpio_to_irq(ts->irq_gpio);
 	}
 	TPD_ERR("synaptic:ts->irq is %d\n",ts->irq);
@@ -3880,6 +3882,7 @@ static int synaptics_ts_probe(struct i2c_client *client, const struct i2c_device
 			TPD_DEVICE, ts);
 	if(ret < 0)
 		TPD_ERR("%s request_threaded_irq ret is %d\n",__func__,ret);
+    msleep(5);
 	ret = synaptics_enable_interrupt(ts, 1);
 	if(ret < 0)
 		TPD_ERR("%s enable interrupt error ret=%d\n",__func__,ret);
