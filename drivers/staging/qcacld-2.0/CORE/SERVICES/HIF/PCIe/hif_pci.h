@@ -223,7 +223,7 @@ hif_pm_runtime_mark_last_busy(struct device *dev) { }
 static inline void
 hif_pci_runtime_pm_warn(struct hif_pci_softc *sc, const char *name) { }
 static inline void
-hif_pm_ssr_runtime_allow_suspend(struct hif_pci_softc *, void *) { }
+hif_pm_ssr_runtime_allow_suspend(struct hif_pci_softc *sc, void *context) { }
 #endif
 
 #define CE_HTT_T2H_MSG 1
