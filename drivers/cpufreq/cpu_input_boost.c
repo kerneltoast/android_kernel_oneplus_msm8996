@@ -52,7 +52,6 @@ struct ib_config {
 	uint32_t adj_duration_ms;
 	uint32_t duration_ms;
 	uint32_t freq[2];
-	uint32_t little_cpu_duration;
 	uint32_t nr_cpus_boosted;
 	uint32_t nr_cpus_to_boost;
 };
@@ -136,7 +135,7 @@ static void ib_reboost_main(struct work_struct *work)
 	/* Only keep the LITTLE CPU boosted (more efficient) */
 	if (cancel_delayed_work_sync(&pcpu->unboost_work))
 		queue_delayed_work(b->wq, &pcpu->unboost_work,
-			msecs_to_jiffies(b->ib.little_cpu_duration));
+			msecs_to_jiffies(b->ib.duration_ms));
 
 	/* Clear reboost flag */
 	set_ib_status(b, pcpu->state);
@@ -353,42 +352,34 @@ static struct input_handler cpu_ib_input_handler = {
 	.id_table	= cpu_ib_ids,
 };
 
+/* Should be called with get_online_cpus() incremented */
+static void configure_primary_boost(struct boost_policy *b,
+	int32_t cpu_to_boost, uint32_t duration_ms)
+{
+	struct ib_pcpu *pcpu = per_cpu_ptr(b->ib.boost_info, cpu_to_boost);
+
+	if (!cpu_online(cpu_to_boost))
+		return;
+
+	pcpu->state = BOOST;
+	b->ib.nr_cpus_boosted++;
+	cpufreq_update_policy(cpu_to_boost);
+	queue_delayed_work(b->wq, &pcpu->unboost_work,
+				msecs_to_jiffies(duration_ms));
+}
+
 static void boost_primary_cpus(struct boost_policy *b)
 {
-	struct ib_pcpu *pcpu;
-	uint32_t cpu_to_boost;
-
 	get_online_cpus();
 
 	/*
 	 * Prioritize boosting little CPU. If only one CPU is to be
 	 * boosted, then it will be a little CPU instead of a big CPU.
 	 */
-	cpu_to_boost = LITTLE_CPU_ID;
-	if (cpu_online(cpu_to_boost)) {
-		/*
-		 * Give the little CPU the extra time that was cut from the
-		 * big CPU's boost.
-		 */
-		b->ib.little_cpu_duration = b->ib.duration_ms +
-				(b->ib.duration_ms - b->ib.adj_duration_ms);
-		pcpu = per_cpu_ptr(b->ib.boost_info, cpu_to_boost);
-		pcpu->state = BOOST;
-		b->ib.nr_cpus_boosted++;
-		cpufreq_update_policy(cpu_to_boost);
-		queue_delayed_work(b->wq, &pcpu->unboost_work,
-				msecs_to_jiffies(b->ib.little_cpu_duration));
-	}
+	configure_primary_boost(b, LITTLE_CPU_ID, b->ib.duration_ms);
 
-	cpu_to_boost = BIG_CPU_ID;
-	if (b->ib.nr_cpus_to_boost > 1 && cpu_online(cpu_to_boost)) {
-		pcpu = per_cpu_ptr(b->ib.boost_info, cpu_to_boost);
-		pcpu->state = BOOST;
-		b->ib.nr_cpus_boosted++;
-		cpufreq_update_policy(cpu_to_boost);
-		queue_delayed_work(b->wq, &pcpu->unboost_work,
-				msecs_to_jiffies(b->ib.adj_duration_ms));
-	}
+	if (b->ib.nr_cpus_to_boost > 1)
+		configure_primary_boost(b, BIG_CPU_ID, b->ib.adj_duration_ms);
 
 	put_online_cpus();
 
