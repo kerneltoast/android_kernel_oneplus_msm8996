@@ -1088,12 +1088,11 @@ static int qbt1000_read_spi_conn_properties(struct device_node *node,
 							      clock_name);
 			if (IS_ERR(drvdata->clocks[index])) {
 				rc = PTR_ERR(drvdata->clocks[index]);
-				if (rc != -EPROBE_DEFER) {
+				if (rc != -EPROBE_DEFER)
 					dev_err(drvdata->dev,
 						"%s: Failed get %s\n",
 						__func__, clock_name);
-					return rc;
-				}
+				return rc;
 			}
 
 			if (!strcmp(clock_name, "spi_clk"))
