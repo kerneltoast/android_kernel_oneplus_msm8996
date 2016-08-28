@@ -437,7 +437,7 @@ int get_prop_pre_shutdown_soc(void)
 static int fg_soc_calibrate(struct  bq27541_device_info *di, int soc)
 {
 	union power_supply_propval ret = {0,};
-	unsigned int soc_calib;
+	unsigned int soc_calib = 50;
 	int counter_temp = 0;
 	static int charging_status = 0;
 	static int charging_status_pre = 0;

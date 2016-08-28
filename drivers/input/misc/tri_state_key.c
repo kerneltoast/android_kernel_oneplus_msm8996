@@ -107,7 +107,7 @@ static void switch_dev_work(struct work_struct *work)
 		mode = MODE_NORMAL;
 		keyCode = keyCode_slider_bottom;
 	}
-	else if(!gpio_get_value(switch_data->key1_gpio))
+	else
 	{
 		mode = MODE_MUTE;
 		keyCode = keyCode_slider_top;

@@ -1849,7 +1849,7 @@ static void __flush_nat_entry_set(struct f2fs_sb_info *sbi,
 	struct f2fs_summary_block *sum = curseg->sum_blk;
 	nid_t start_nid = set->set * NAT_ENTRY_PER_BLOCK;
 	bool to_journal = true;
-	struct f2fs_nat_block *nat_blk;
+	struct f2fs_nat_block *nat_blk = NULL;
 	struct nat_entry *ne, *cur;
 	struct page *page = NULL;
 

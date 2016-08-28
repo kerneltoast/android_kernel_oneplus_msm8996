@@ -1041,8 +1041,8 @@ static struct its_device *its_create_device(struct its_node *its, u32 dev_id,
 	struct its_device *dev;
 	unsigned long *lpi_map;
 	void *itt;
-	int lpi_base;
-	int nr_lpis;
+	int lpi_base = 0;
+	int nr_lpis = 0;
 	int nr_ites;
 	int cpu;
 	int sz;

@@ -593,7 +593,7 @@ void msm_rule_register(int num_rules, struct bus_rule_type *rule,
 static bool __rule_unregister(int num_rules, struct bus_rule_type *rule,
 					struct notifier_block *nb)
 {
-	int i;
+	int i = 0;
 	struct rule_node_info *node = NULL;
 	struct rule_node_info *node_tmp = NULL;
 	struct rules_def *node_rule;
@@ -613,7 +613,7 @@ static bool __rule_unregister(int num_rules, struct bus_rule_type *rule,
 		list_for_each_entry_safe(node_rule, node_rule_tmp,
 					&node->node_rules, link) {
 			if (comp_rules(&node_rule->rule_ops,
-					&rule[i]) == 0) {
+					&rule[i++]) == 0) {
 				list_del(&node_rule->link);
 				kfree(node_rule);
 				match_found = true;

@@ -524,7 +524,7 @@ static void touch_disable(struct synaptics_ts_data *ts)
 
 static int tpd_hw_pwron(struct synaptics_ts_data *ts)
 {
-	int rc;
+	int rc = 0;
 
 	/***enable the 2v8 power*****/
 	if (!IS_ERR(ts->vdd_2v8)) {

@@ -184,6 +184,10 @@ int vote(struct votable *votable, int client_id, bool state, int val)
 						state, client_id);
 		}
 		goto out;
+	default:
+		pr_err("%s: Invalid vote type: %d\n", __func__, votable->type);
+		rc = -EINVAL;
+		goto out;
 	}
 
 	/*

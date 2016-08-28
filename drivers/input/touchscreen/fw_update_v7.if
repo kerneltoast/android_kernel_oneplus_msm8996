@@ -999,7 +999,7 @@ static int fwu_write_f34_v7_partition_id(unsigned char cmd)
 {
 	int retval;
 	unsigned char base;
-	unsigned char partition;
+	unsigned char partition = 0;
 
 	base = fwu->f34_fd.data_base_addr;
 

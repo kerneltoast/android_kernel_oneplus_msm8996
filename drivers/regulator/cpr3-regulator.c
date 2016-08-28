@@ -2127,7 +2127,7 @@ static int cpr3_regulator_measure_aging(struct cpr3_controller *ctrl,
 	u32 mask, reg, result, quot_min, quot_max, sel_min, sel_max;
 	u32 quot_min_scaled, quot_max_scaled;
 	u32 gcnt, gcnt_ref, gcnt0_restore, gcnt1_restore, irq_restore;
-	u32 cont_dly_restore, up_down_dly_restore;
+	u32 cont_dly_restore, up_down_dly_restore = 0;
 	int quot_delta, quot_delta_scaled, quot_delta_scaled_sum;
 	int *quot_delta_results;
 	int rc, i, aging_measurement_count, filtered_count;
@@ -2301,7 +2301,8 @@ cleanup:
 	cpr3_write(ctrl, CPR3_REG_GCNT(1), gcnt1_restore);
 
 	if (ctrl->supports_hw_closed_loop
-		&& ctrl->ctrl_type == CPR_CTRL_TYPE_CPR3) {
+		&& ctrl->ctrl_type == CPR_CTRL_TYPE_CPR3
+		&& up_down_dly_restore) {
 		cpr3_write(ctrl, CPR3_REG_CPR_TIMER_MID_CONT, cont_dly_restore);
 		cpr3_write(ctrl, CPR3_REG_CPR_TIMER_UP_DN_CONT,
 				up_down_dly_restore);
@@ -2438,7 +2439,7 @@ static int cpr3_regulator_aging_adjust(struct cpr3_controller *ctrl)
 	struct cpr3_corner *corner;
 	int *restore_current_corner;
 	bool *restore_vreg_enabled;
-	int i, j, id, rc, rc2, vreg_count, aging_volt, max_aging_volt;
+	int i, j, id, rc, rc2, vreg_count, aging_volt, max_aging_volt = 0;
 	u32 reg;
 
 	if (!ctrl->aging_required || !ctrl->cpr_enabled
@@ -2521,7 +2522,6 @@ static int cpr3_regulator_aging_adjust(struct cpr3_controller *ctrl)
 	}
 
 	/* Perform aging measurement on all aging sensors */
-	max_aging_volt = 0;
 	for (i = 0; i < ctrl->aging_sensor_count; i++) {
 		for (j = 0; j < CPR3_AGING_RETRY_COUNT; j++) {
 			rc = cpr3_regulator_measure_aging(ctrl,

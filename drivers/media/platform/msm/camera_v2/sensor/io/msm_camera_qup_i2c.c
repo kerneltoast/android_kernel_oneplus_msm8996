@@ -398,12 +398,12 @@ int32_t msm_camera_qup_i2c_poll(struct msm_camera_i2c_client *client,
 	uint32_t addr, uint16_t data,
 	enum msm_camera_i2c_data_type data_type, uint32_t delay_ms)
 {
-	int32_t rc;
+	int32_t rc = 0;
 	int i;
 	S_I2C_DBG("%s: addr: 0x%x data: 0x%x dt: %d\n",
 		__func__, addr, data, data_type);
 
-	if (delay_ms > MAX_POLL_DELAY_MS) {
+	if (!delay_ms || delay_ms > MAX_POLL_DELAY_MS) {
 		pr_err("%s:%d invalid delay = %d max_delay = %d\n",
 			__func__, __LINE__, delay_ms, MAX_POLL_DELAY_MS);
 		return -EINVAL;

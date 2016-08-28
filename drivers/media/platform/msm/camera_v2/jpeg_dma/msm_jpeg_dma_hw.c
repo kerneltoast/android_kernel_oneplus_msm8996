@@ -1672,6 +1672,7 @@ static int msm_jpegdma_hw_attach_iommu(struct msm_jpegdma_device *dma)
 
 	if (dma->iommu_attached_cnt == UINT_MAX) {
 		dev_err(dma->dev, "Max count reached! can not attach iommu\n");
+		ret = -EPERM;
 		goto error;
 	}
 

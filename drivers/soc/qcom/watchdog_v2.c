@@ -328,10 +328,10 @@ static __ref int watchdog_kthread(void *arg)
 			if (wdog_dd->do_ipi_ping)
 				ping_other_cpus(wdog_dd);
 			pet_watchdog(wdog_dd);
+			/* Check again before scheduling *
+			 * Could have been changed on other cpu */
+			mod_timer(&wdog_dd->pet_timer, jiffies + delay_time);
 		}
-		/* Check again before scheduling *
-		 * Could have been changed on other cpu */
-		mod_timer(&wdog_dd->pet_timer, jiffies + delay_time);
 	}
 	return 0;
 }

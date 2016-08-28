@@ -2173,8 +2173,8 @@ static bool ufs_qcom_testbus_cfg_is_ok(struct ufs_qcom_host *host)
 
 int ufs_qcom_testbus_config(struct ufs_qcom_host *host)
 {
-	int reg;
-	int offset;
+	int reg = 0;
+	int offset = 0;
 	u32 mask = TEST_BUS_SUB_SEL_MASK;
 
 	if (!host)

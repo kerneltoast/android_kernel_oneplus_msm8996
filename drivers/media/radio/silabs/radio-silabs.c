@@ -1346,7 +1346,7 @@ static bool is_valid_freq(struct silabs_fm_device *radio, u32 freq)
 {
 	u32 band_low_limit = radio->recv_conf.band_low_limit * TUNE_STEP_SIZE;
 	u32 band_high_limit = radio->recv_conf.band_high_limit * TUNE_STEP_SIZE;
-	u8 spacing;
+	u8 spacing = 0;
 
 	if (radio->recv_conf.ch_spacing == 0)
 		spacing = CH_SPACING_200;
