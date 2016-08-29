@@ -28,6 +28,10 @@
 #ifndef _OL_FW_H_
 #define _OL_FW_H_
 
+#ifdef REMOVE_PKT_LOG
+#include <ol_if_athvar.h>
+#endif
+
 #ifdef QCA_WIFI_FTM
 #include "vos_types.h"
 #endif
@@ -133,7 +137,7 @@ void ol_target_failure(void *instance, A_STATUS status);
 u_int8_t ol_get_number_of_peers_supported(struct ol_softc *scn);
 
 #ifdef REMOVE_PKT_LOG
-static inline void ol_pktlog_init(void *)
+static inline void ol_pktlog_init(void *hif_sc)
 {
 }
 #else
