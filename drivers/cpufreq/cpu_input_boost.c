@@ -20,8 +20,8 @@
 #include <linux/slab.h>
 
 /* For MSM8996 */
-#define LITTLE_CPU_ID	0
-#define BIG_CPU_ID	2
+#define LITTLE_CPU_ID	0 /* CPU that is always online */
+#define BIG_CPU_ID	3 /* CPU that is sometimes online */
 
 #define FB_BOOST_MS 1100
 
@@ -67,7 +67,7 @@ struct boost_policy {
 
 static struct boost_policy *boost_policy_g;
 
-static void boost_primary_cpus(struct boost_policy *b);
+static void boost_primary_cpu(struct boost_policy *b);
 static bool is_driver_enabled(struct boost_policy *b);
 static bool is_fb_boost_active(struct boost_policy *b);
 static void set_fb_state(struct boost_policy *b, enum boost_status state);
@@ -85,10 +85,11 @@ static void ib_boost_main(struct work_struct *work)
 
 	/*
 	 * Maximum of two CPUs can be boosted at any given time. Boost two
-	 * CPUs if not all CPUs are online. If only one CPU is online, then
-	 * the next CPU to come online is the 2nd CPU that will be boosted.
+	 * CPUs if not all CPUs are online. If not all CPUs are online, then
+	 * the next (big) CPU to come online is the 2nd CPU that will be
+	 * boosted. A LITTLE CPU is always boosted.
 	 */
-	b->ib.nr_cpus_to_boost = num_online_cpus() == CONFIG_NR_CPUS ? 1 : 2;
+	b->ib.nr_cpus_to_boost = num_online_cpus() == NR_CPUS ? 1 : 2;
 
 	/*
 	 * Reduce the boost duration for all CPUs by a factor of
@@ -102,7 +103,7 @@ static void ib_boost_main(struct work_struct *work)
 	 * the 2nd CPU to boost is offline at this point in time, so the boost
 	 * notifier will handle boosting the 2nd CPU if/when it comes online.
 	 */
-	boost_primary_cpus(b);
+	boost_primary_cpu(b);
 
 	put_online_cpus();
 }
@@ -135,7 +136,7 @@ static void ib_reboost_main(struct work_struct *work)
 	/* Only keep the LITTLE CPU boosted (more efficient) */
 	if (cancel_delayed_work_sync(&pcpu->unboost_work))
 		queue_delayed_work(b->wq, &pcpu->unboost_work,
-			msecs_to_jiffies(b->ib.duration_ms));
+			msecs_to_jiffies(b->ib.adj_duration_ms));
 
 	/* Clear reboost flag */
 	set_ib_status(b, pcpu->state);
@@ -185,9 +186,9 @@ static int do_cpu_boost(struct notifier_block *nb,
 		return NOTIFY_OK;
 	}
 
-	/* Boost previously-offline CPU */
+	/* Boost previously-offline big CPU */
 	if (b->ib.nr_cpus_boosted < b->ib.nr_cpus_to_boost &&
-		policy->cpu && !pcpu->state) {
+		(policy->cpu == BIG_CPU_ID) && !pcpu->state) {
 		int32_t duration_ms = b->ib.adj_duration_ms -
 			(ktime_to_ms(ktime_get()) - b->ib.start_time);
 		if (duration_ms > 0) {
@@ -352,38 +353,25 @@ static struct input_handler cpu_ib_input_handler = {
 	.id_table	= cpu_ib_ids,
 };
 
-/* Should be called with get_online_cpus() incremented */
-static void configure_primary_boost(struct boost_policy *b,
-	int32_t cpu_to_boost, uint32_t duration_ms)
+static void boost_primary_cpu(struct boost_policy *b)
 {
-	struct ib_pcpu *pcpu = per_cpu_ptr(b->ib.boost_info, cpu_to_boost);
-
-	if (!cpu_online(cpu_to_boost))
-		return;
-
-	pcpu->state = BOOST;
-	b->ib.nr_cpus_boosted++;
-	cpufreq_update_policy(cpu_to_boost);
-	queue_delayed_work(b->wq, &pcpu->unboost_work,
-				msecs_to_jiffies(duration_ms));
-}
-
-static void boost_primary_cpus(struct boost_policy *b)
-{
-	get_online_cpus();
+	struct ib_pcpu *pcpu = per_cpu_ptr(b->ib.boost_info, LITTLE_CPU_ID);
 
 	/*
-	 * Prioritize boosting little CPU. If only one CPU is to be
-	 * boosted, then it will be a little CPU instead of a big CPU.
+	 * Prioritize boosting LITTLE CPU. If only one CPU is to be
+	 * boosted, then it will be a LITTLE CPU that is always online
+	 * instead of a big CPU.
 	 */
-	configure_primary_boost(b, LITTLE_CPU_ID, b->ib.duration_ms);
+	pcpu->state = BOOST;
+	b->ib.nr_cpus_boosted++;
+	cpufreq_update_policy(pcpu->cpu);
+	queue_delayed_work(b->wq, &pcpu->unboost_work,
+				msecs_to_jiffies(b->ib.adj_duration_ms));
 
-	if (b->ib.nr_cpus_to_boost > 1)
-		configure_primary_boost(b, BIG_CPU_ID, b->ib.adj_duration_ms);
-
-	put_online_cpus();
-
-	/* Record start time for use if a 2nd CPU to be boosted comes online */
+	/*
+	 * Record start time for use if a 2nd CPU to be boosted (a big CPU)
+	 * comes online.
+	 */
 	b->ib.start_time = ktime_to_ms(ktime_get());
 }
 
