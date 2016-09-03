@@ -1129,7 +1129,10 @@ static void wcd_correct_swch_plug(struct work_struct *work)
 	struct snd_soc_codec *codec;
 	enum wcd_mbhc_plug_type plug_type = MBHC_PLUG_TYPE_INVALID;
 	unsigned long timeout;
-	u16 hs_comp_res = 0, hphl_sch = 0, mic_sch = 0, btn_result = 0;
+	u16 hs_comp_res = 0, hphl_sch = 0, mic_sch = 0;
+#ifndef CONFIG_MACH_MSM8996_15801
+	u16 btn_result = 0;
+#endif
 	bool wrk_complete = false;
 	int pt_gnd_mic_swap_cnt = 0;
 	int no_gnd_mic_swap_cnt = 0;
@@ -1140,7 +1143,7 @@ static void wcd_correct_swch_plug(struct work_struct *work)
 	int rc, spl_hs_count = 0;
 #ifdef CONFIG_MACH_MSM8996_15801
 	int retry = 0;
-	int hph_cnt = 0, headset_cnt = 0;
+	int headset_cnt = 0;
 #endif
 
 	pr_debug("%s: enter\n", __func__);
@@ -1178,6 +1181,7 @@ static void wcd_correct_swch_plug(struct work_struct *work)
 	rc = wait_for_completion_timeout(&mbhc->btn_press_compl,
 			msecs_to_jiffies(WCD_MBHC_BTN_PRESS_COMPL_TIMEOUT_MS));
 
+#ifndef CONFIG_MACH_MSM8996_15801
 	WCD_MBHC_REG_READ(WCD_MBHC_BTN_RESULT, btn_result);
 	WCD_MBHC_REG_READ(WCD_MBHC_HS_COMP_RESULT, hs_comp_res);
 
@@ -1205,8 +1209,13 @@ static void wcd_correct_swch_plug(struct work_struct *work)
 		wcd_mbhc_find_plug_and_report(mbhc, plug_type);
 		WCD_MBHC_RSC_UNLOCK(mbhc);
 	}
+#endif
 
 correct_plug_type:
+#ifdef CONFIG_MACH_MSM8996_15801
+	/* Disable micbias so headphones use system mic */
+	wcd_enable_curr_micbias(mbhc, WCD_MBHC_EN_NONE);
+#endif
 
 	timeout = jiffies + msecs_to_jiffies(HS_DETECT_PLUG_TIME_MS);
 	while (!time_after(jiffies, timeout)) {
@@ -1230,27 +1239,6 @@ correct_plug_type:
 			wcd_cancel_btn_work(mbhc);
 			mbhc->btn_press_intr = false;
 		}
-
-#ifdef CONFIG_MACH_MSM8996_15801
-		/*
-		 * We can't properly detect high-impedance headphones, so
-		 * treat them as a headset.
-		 */
-		if (plug_type == MBHC_PLUG_TYPE_HIGH_HPH)
-			plug_type = MBHC_PLUG_TYPE_HEADSET;
-
-		/*
-		 * It's pretty certain to be a headset or headphones after
-		 * 3 cycles.
-		 */
-		if (plug_type == MBHC_PLUG_TYPE_HEADSET) {
-			if (++headset_cnt == 3)
-				goto report;
-		} else if (plug_type == MBHC_PLUG_TYPE_HEADPHONE) {
-			if (++hph_cnt == 3)
-				goto report;
-		}
-#endif
 
 		/* Toggle FSM */
 		WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_FSM_EN, 0);
@@ -1284,7 +1272,7 @@ correct_plug_type:
 		 * sometime and re-check stop request again.
 		 */
 #ifdef CONFIG_MACH_MSM8996_15801
-		msleep(5 * retry);
+		msleep(10 * retry);
 #else
 		msleep(180);
 #endif
@@ -1298,6 +1286,19 @@ correct_plug_type:
 				mbhc->micbias_enable = true;
 			}
 		}
+
+#ifdef CONFIG_MACH_MSM8996_15801
+		/*
+		 * It's pretty certain to be a headset or headphones after
+		 * 10 cycles.
+		 */
+		if (plug_type == MBHC_PLUG_TYPE_HEADSET) {
+			if (++headset_cnt == 10) {
+				wrk_complete = false;
+				break;
+			}
+		}
+#endif
 
 		if ((!hs_comp_res) && (!is_pa_on)) {
 			/* Check for cross connection*/
@@ -1952,12 +1953,6 @@ static irqreturn_t wcd_mbhc_btn_press_handler(int irq, void *data)
 	int mask;
 	unsigned long msec_val;
 
-#ifdef CONFIG_MACH_MSM8996_15801
-	/* Don't process button interrupts immediately after plug detection */
-	if (mbhc->ignore_btn_intr)
-		return IRQ_HANDLED;
-#endif
-
 	pr_debug("%s: enter\n", __func__);
 	complete(&mbhc->btn_press_compl);
 	WCD_MBHC_RSC_LOCK(mbhc);
@@ -1988,6 +1983,11 @@ static irqreturn_t wcd_mbhc_btn_press_handler(int irq, void *data)
 				__func__);
 		goto done;
 	}
+#ifdef CONFIG_MACH_MSM8996_15801
+	/* Don't process button interrupts immediately after plug detection */
+	if (mbhc->ignore_btn_intr)
+		goto done;
+#endif
 	mask = wcd_mbhc_get_button_mask(mbhc);
 	mbhc->buttons_pressed |= mask;
 	mbhc->mbhc_cb->lock_sleep(mbhc, true);
@@ -2037,6 +2037,7 @@ static irqreturn_t wcd_mbhc_release_handler(int irq, void *data)
 	if (mbhc->ignore_btn_intr) {
 		wcd_cancel_btn_work(mbhc);
 		mbhc->buttons_pressed &= ~WCD_MBHC_JACK_BUTTON_MASK;
+		goto exit;
 	}
 #endif
 
