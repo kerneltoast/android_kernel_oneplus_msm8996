@@ -1129,10 +1129,7 @@ static void wcd_correct_swch_plug(struct work_struct *work)
 	struct snd_soc_codec *codec;
 	enum wcd_mbhc_plug_type plug_type = MBHC_PLUG_TYPE_INVALID;
 	unsigned long timeout;
-	u16 hs_comp_res = 0, hphl_sch = 0, mic_sch = 0;
-#ifndef CONFIG_MACH_MSM8996_15801
-	u16 btn_result = 0;
-#endif
+	u16 hs_comp_res = 0, hphl_sch = 0, mic_sch = 0, btn_result = 0;
 	bool wrk_complete = false;
 	int pt_gnd_mic_swap_cnt = 0;
 	int no_gnd_mic_swap_cnt = 0;
@@ -1181,7 +1178,6 @@ static void wcd_correct_swch_plug(struct work_struct *work)
 	rc = wait_for_completion_timeout(&mbhc->btn_press_compl,
 			msecs_to_jiffies(WCD_MBHC_BTN_PRESS_COMPL_TIMEOUT_MS));
 
-#ifndef CONFIG_MACH_MSM8996_15801
 	WCD_MBHC_REG_READ(WCD_MBHC_BTN_RESULT, btn_result);
 	WCD_MBHC_REG_READ(WCD_MBHC_HS_COMP_RESULT, hs_comp_res);
 
@@ -1209,13 +1205,8 @@ static void wcd_correct_swch_plug(struct work_struct *work)
 		wcd_mbhc_find_plug_and_report(mbhc, plug_type);
 		WCD_MBHC_RSC_UNLOCK(mbhc);
 	}
-#endif
 
 correct_plug_type:
-#ifdef CONFIG_MACH_MSM8996_15801
-	/* Disable micbias so headphones use system mic */
-	wcd_enable_curr_micbias(mbhc, WCD_MBHC_EN_NONE);
-#endif
 
 	timeout = jiffies + msecs_to_jiffies(HS_DETECT_PLUG_TIME_MS);
 	while (!time_after(jiffies, timeout)) {
@@ -1239,12 +1230,10 @@ correct_plug_type:
 			wcd_cancel_btn_work(mbhc);
 			mbhc->btn_press_intr = false;
 		}
-
 		/* Toggle FSM */
 		WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_FSM_EN, 0);
 		WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_FSM_EN, 1);
 
-#ifndef CONFIG_MACH_MSM8996_15801
 		/* allow sometime and re-check stop requested again */
 		msleep(20);
 		if (mbhc->hs_detect_work_stop) {
@@ -1260,7 +1249,6 @@ correct_plug_type:
 			}
 			goto exit;
 		}
-#endif
 		WCD_MBHC_REG_READ(WCD_MBHC_HS_COMP_RESULT, hs_comp_res);
 
 		pr_debug("%s: hs_comp_res: %x\n", __func__, hs_comp_res);
@@ -1272,7 +1260,7 @@ correct_plug_type:
 		 * sometime and re-check stop request again.
 		 */
 #ifdef CONFIG_MACH_MSM8996_15801
-		msleep(10 * retry);
+		msleep(5 * retry);
 #else
 		msleep(180);
 #endif
@@ -1289,8 +1277,9 @@ correct_plug_type:
 
 #ifdef CONFIG_MACH_MSM8996_15801
 		/*
-		 * It's pretty certain to be a headset or headphones after
-		 * 10 cycles.
+		 * It's pretty certain to be a headset after being detected
+		 * as such 10 times, so exit early to reduce detection
+		 * latency.
 		 */
 		if (plug_type == MBHC_PLUG_TYPE_HEADSET) {
 			if (++headset_cnt == 10) {
