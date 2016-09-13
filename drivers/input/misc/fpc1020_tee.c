@@ -71,8 +71,6 @@ struct fpc1020_data {
 	int irq_gpio;
 	int rst_gpio;
 	int irq_num;
-	struct mutex lock;
-	bool prepared;
 
 	struct pinctrl         *ts_pinctrl;
 	struct pinctrl_state   *gpio_state_active;
@@ -89,6 +87,10 @@ struct fpc1020_data {
 	struct notifier_block fb_notif;
     #endif
 	struct work_struct pm_work;
+	int proximity_state; /* 0:far 1:near */
+	bool irq_enabled;
+	spinlock_t irq_lock;
+	struct delayed_work status_work;
 };
 
 static int fpc1020_request_named_gpio(struct fpc1020_data *fpc1020,
@@ -261,7 +263,16 @@ static ssize_t irq_get(struct device* device,
 			     char* buffer)
 {
 	struct fpc1020_data* fpc1020 = dev_get_drvdata(device);
-	int irq = gpio_get_value(fpc1020->irq_gpio);
+	int irq = 0;
+	bool irq_enabled;
+
+	spin_lock(&fpc1020->irq_lock);
+	irq_enabled = fpc1020->irq_enabled;
+	spin_unlock(&fpc1020->irq_lock);
+
+	if (irq_enabled)
+		irq = gpio_get_value(fpc1020->irq_gpio);
+
 	return scnprintf(buffer, PAGE_SIZE, "%i\n", irq);
 }
 
@@ -286,6 +297,98 @@ extern bool s1302_is_keypad_stopped(void);
 
 bool key_home_pressed = false;
 EXPORT_SYMBOL(key_home_pressed);
+
+static irqreturn_t fpc1020_irq_handler(int irq, void *handle);
+
+static int fpc1020_enable_irq(struct fpc1020_data *fpc1020)
+{
+	struct device *dev = fpc1020->dev;
+	int rc;
+
+	rc = devm_request_threaded_irq(dev, gpio_to_irq(fpc1020->irq_gpio),
+			NULL, fpc1020_irq_handler, IRQF_TRIGGER_RISING |
+			IRQF_ONESHOT, dev_name(dev), fpc1020);
+	if (rc) {
+		dev_err(dev, "Could not request irq %d\n",
+				gpio_to_irq(fpc1020->irq_gpio));
+		goto exit;
+	}
+	dev_dbg(dev, "requested irq %d\n", gpio_to_irq(fpc1020->irq_gpio));
+
+	usleep_range(5000, 6000);
+	enable_irq_wake(gpio_to_irq(fpc1020->irq_gpio));
+	gpio_direction_output(fpc1020->EN_VDD_gpio, 1);
+
+	spin_lock(&fpc1020->irq_lock);
+	fpc1020->irq_enabled = true;
+	spin_unlock(&fpc1020->irq_lock);
+
+exit:
+	return rc;
+}
+
+static void fpc1020_disable_irq(struct fpc1020_data *fpc1020)
+{
+	struct device *dev = fpc1020->dev;
+	int irq = gpio_to_irq(fpc1020->irq_gpio);
+
+	devm_free_irq(dev, irq, fpc1020);
+
+	gpio_direction_output(fpc1020->EN_VDD_gpio, 0);
+
+	spin_lock(&fpc1020->irq_lock);
+	fpc1020->irq_enabled = false;
+	spin_unlock(&fpc1020->irq_lock);
+}
+
+static int fpc1020_set_irq(struct fpc1020_data *fpc1020, bool enable)
+{
+	int rc = 0;
+	bool irq_enabled;
+
+	spin_lock(&fpc1020->irq_lock);
+	irq_enabled = fpc1020->irq_enabled;
+	spin_unlock(&fpc1020->irq_lock);
+
+	if (enable && !irq_enabled)
+		rc = fpc1020_enable_irq(fpc1020);
+	else if (!enable && irq_enabled)
+		fpc1020_disable_irq(fpc1020);
+
+	return rc;
+}
+
+static void fpc1020_status_work(struct work_struct *work)
+{
+	struct delayed_work *dwork = to_delayed_work(work);
+	struct fpc1020_data *fpc1020 =
+			container_of(dwork, struct fpc1020_data, status_work);
+	int irq_enabled;
+
+	spin_lock(&fpc1020->irq_lock);
+	irq_enabled = fpc1020->irq_enabled;
+	spin_unlock(&fpc1020->irq_lock);
+
+	if (irq_enabled && gpio_to_irq(fpc1020->irq_gpio))
+		return;
+
+	if (fpc1020_set_irq(fpc1020, true)) {
+		dev_err(fpc1020->dev, "IRQ enable failed\n");
+		return;
+	}
+
+	spin_lock(&fpc1020->irq_lock);
+	gpio_set_value(fpc1020->rst_gpio, 1);
+	udelay(FPC1020_RESET_HIGH1_US);
+	gpio_set_value(fpc1020->rst_gpio, 0);
+	udelay(FPC1020_RESET_LOW_US);
+	gpio_set_value(fpc1020->rst_gpio, 1);
+	udelay(FPC1020_RESET_HIGH2_US);
+	spin_unlock(&fpc1020->irq_lock);
+
+	if (!gpio_to_irq(fpc1020->irq_gpio))
+		dev_err(fpc1020->dev, "Reset failed\n");
+}
 
 static ssize_t report_home_set(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t count)
@@ -347,11 +450,36 @@ static ssize_t screen_state_get(struct device* device,
 
 static DEVICE_ATTR(screen_state, S_IRUSR , screen_state_get, NULL);
 
+static ssize_t proximity_state_set(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct fpc1020_data *fpc1020 = dev_get_drvdata(dev);
+	int rc, val;
+
+	rc = kstrtoint(buf, 10, &val);
+	if (rc)
+		return -EINVAL;
+
+	fpc1020->proximity_state = !!val;
+
+	if (!fpc1020->screen_state) {
+		fpc1020_set_irq(fpc1020, !fpc1020->proximity_state);
+		if (!fpc1020->proximity_state)
+			schedule_delayed_work(&fpc1020->status_work,
+						msecs_to_jiffies(50));
+	}
+
+	return count;
+}
+
+static DEVICE_ATTR(proximity_state, S_IWUSR, NULL, proximity_state_set);
+
 static struct attribute *attributes[] = {
 	&dev_attr_hw_reset.attr,
 	&dev_attr_irq.attr,
 	&dev_attr_report_home.attr,
 	&dev_attr_screen_state.attr,
+	&dev_attr_proximity_state.attr,
 	NULL
 };
 
@@ -427,10 +555,12 @@ static void fpc1020_suspend_resume(struct work_struct *work)
 		container_of(work, typeof(*fpc1020), pm_work);
 
 	/* Escalate fingerprintd priority when screen is off */
-	if (fpc1020->screen_state)
+	if (fpc1020->screen_state) {
+		fpc1020_set_irq(fpc1020, true);
 		set_fingerprintd_nice(0);
-	else
+	} else {
 		set_fingerprintd_nice(MIN_NICE);
+	}
 
 	sysfs_notify(&fpc1020->dev->kobj, NULL,
 				dev_attr_screen_state.attr.name);
@@ -482,7 +612,6 @@ static int fpc1020_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	int rc = 0;
-	int irqf;
 	struct device_node *np = dev->of_node;
 
 	struct fpc1020_data *fpc1020 = devm_kzalloc(dev, sizeof(*fpc1020),
@@ -570,24 +699,16 @@ static int fpc1020_probe(struct platform_device *pdev)
     fpc1020->screen_state = 1;
     #endif
 
-	irqf = IRQF_TRIGGER_RISING | IRQF_ONESHOT;
-	mutex_init(&fpc1020->lock);
-	rc = devm_request_threaded_irq(dev, gpio_to_irq(fpc1020->irq_gpio),
-			NULL, fpc1020_irq_handler, irqf,
-			dev_name(dev), fpc1020);
-	if (rc) {
-		dev_err(dev, "could not request irq %d\n",
-				gpio_to_irq(fpc1020->irq_gpio));
-		goto exit;
-	}
-	dev_info(dev, "requested irq %d\n", gpio_to_irq(fpc1020->irq_gpio));
-
-	/* Request that the interrupt should not be wakeable */
-	//disable_irq_wake( gpio_to_irq( fpc1020->irq_gpio ) );
-
-	enable_irq_wake( gpio_to_irq( fpc1020->irq_gpio ) );
 	wake_lock_init(&fpc1020->ttw_wl, WAKE_LOCK_SUSPEND, "fpc_ttw_wl");
 	device_init_wakeup(fpc1020->dev, 1);
+	spin_lock_init(&fpc1020->irq_lock);
+	INIT_DELAYED_WORK(&fpc1020->status_work, fpc1020_status_work);
+
+	rc = fpc1020_enable_irq(fpc1020);
+	if (rc) {
+		dev_err(dev, "could not enable irq\n");
+		goto exit;
+	}
 
 	rc = sysfs_create_group(&dev->kobj, &attribute_group);
 	if (rc) {
