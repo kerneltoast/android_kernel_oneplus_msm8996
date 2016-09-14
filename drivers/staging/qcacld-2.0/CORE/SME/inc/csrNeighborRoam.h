@@ -178,7 +178,7 @@ typedef struct sCsrNeighborRoamControlInfo
     tANI_U8                     currentOpportunisticThresholdDiff;
     tANI_U8                     currentRoamRescanRssiDiff;
     tANI_BOOLEAN                scanRspPending;
-    v_TIME_t                    scanRequestTimeStamp;
+    tANI_TIMESTAMP              scanRequestTimeStamp;
     tDblLinkList                roamableAPList;    // List of current FT candidates
     tCsrRoamProfile             csrNeighborRoamProfile;
 #ifdef WLAN_FEATURE_VOWIFI_11R

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2016 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2015 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -92,7 +92,7 @@ typedef  enum  {
     WMI_SERVICE_BATCH_SCAN,           /*Service to support batch scan*/
     WMI_SERVICE_QPOWER,               /* QPower service */
     WMI_SERVICE_PLMREQ,
-    WMI_SERVICE_THERMAL_MGMT,         /* thermal throttling support */
+    WMI_SERVICE_THERMAL_MGMT,
     WMI_SERVICE_RMC,                  /* RMC support */
     WMI_SERVICE_MHF_OFFLOAD,          /* multi-hop forwarding offload */
     WMI_SERVICE_COEX_SAR,             /* target support SAR tx limit from WMI_PDEV_PARAM_TXPOWER_LIMITxG */
@@ -128,37 +128,7 @@ typedef  enum  {
     WMI_SERVICE_EGAP,                 /* enhanced green ap support */
     WMI_SERVICE_STA_PMF_OFFLOAD,      /* FW supports 11W PMF Offload for STA */
     WMI_SERVICE_UNIFIED_WOW_CAPABILITY, /* FW supports unified D0 and D3 wow */
-    WMI_SERVICE_ENHANCED_PROXY_STA,   /* Enhanced ProxySTA mode support */
-    WMI_SERVICE_ATF,                  /* Air Time Fairness support */
-    WMI_SERVICE_COEX_GPIO,            /* BTCOEX GPIO support */
-    WMI_SERVICE_AUX_SPECTRAL_INTF,    /* Aux Radio enhancement support for ignoring spectral scan intf from main radios */
-    WMI_SERVICE_AUX_CHAN_LOAD_INTF,   /* Aux Radio enhancement support for ignoring chan load intf from main radios*/
-    WMI_SERVICE_BSS_CHANNEL_INFO_64,  /* BSS channel info (freq, noise floor, 64-bit counters) event support */
-    WMI_SERVICE_ENTERPRISE_MESH,      /* Enterprise MESH Service Support */
-    WMI_SERVICE_RESTRT_CHNL_SUPPORT,  /* Restricted Channel Support */
-    WMI_SERVICE_BPF_OFFLOAD,          /* FW supports bpf offload */
-    WMI_SERVICE_SYNC_DELETE_CMDS,     /* FW sends response event for Peer, Vdev delete commands */
-    WMI_SERVICE_SMART_ANTENNA_SW_SUPPORT,
-    WMI_SERVICE_SMART_ANTENNA_HW_SUPPORT,
-    WMI_SERVICE_RATECTRL_LIMIT_MAX_MIN_RATES, /* allow per-peer tx MCS min/max limits by host */
-    WMI_SERVICE_NAN_DATA,             /* FW supports NAN data */
-    WMI_SERVICE_NAN_RTT,              /* FW supports NAN RTT */
-    WMI_SERVICE_11AX,                 /* FW supports 802.11ax */
-    /* WMI_SERVICE_DEPRECATED_REPLACE
-     * FW supports these new WMI commands, to be used rather than
-     * deprecated matching commands:
-     * - WMI_PDEV_SET_PCL_CMDID          (vs. WMI_SOC_SET_PCL_CMDID)
-     * - WMI_PDEV_SET_HW_MODE_CMDID      (vs. WMI_SOC_SET_HW_MODE_CMDID)
-     * - WMI_PDEV_SET_MAC_CONFIG_CMDID   (vs. WMI_SOC_SET_DUAL_MAC_CONFIG_CMDID)
-     * - WMI_PDEV_SET_ANTENNA_MODE_CMDID (vs. WMI_SOC_SET_ANTENNA_MODE_CMDID)
-     * - WMI_VDEV_SET_DSCP_TID_MAP_CMDID (vs. WMI_VDEV_SET_WMM_PARAMS_CMDID)
-     */
-    WMI_SERVICE_DEPRECATED_REPLACE,
-    WMI_SERVICE_TDLS_CONN_TRACKER_IN_HOST_MODE, /* FW supports a new mode that allows to run connection tracker in host */
-    WMI_SERVICE_ENHANCED_MCAST_FILTER,/* FW supports enhanced multicast filtering (of mcast IP inside ucast WLAN) */
-    WMI_SERVICE_PERIODIC_CHAN_STAT_SUPPORT, /* periodic channel stats service */
-    WMI_SERVICE_MESH_11S,
-    WMI_SERVICE_HALF_RATE_QUARTER_RATE_SUPPORT, /* FW+HW supports 10 MHz (half rate) and 5 MHz (quarter rate) channel bandwidth */
+
     WMI_MAX_SERVICE=128               /* max service */
 } WMI_SERVICE;
 
