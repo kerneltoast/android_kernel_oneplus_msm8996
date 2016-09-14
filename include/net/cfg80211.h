@@ -64,6 +64,8 @@ struct wiphy;
 
 #define SUPPORT_WDEV_CFG80211_VENDOR_EVENT_ALLOC 1
 #define CFG80211_DEL_STA_V2 1
+#define CFG80211_CONNECT_BSS 1
+#define CFG80211_DISCONNECTED_V2 1
 
 /*
  * wireless hardware capability structures
@@ -4399,6 +4401,32 @@ static inline void cfg80211_testmode_event(struct sk_buff *skb, gfp_t gfp)
 #endif
 
 /**
+ * cfg80211_connect_bss - notify cfg80211 of connection result
+ *
+ * @dev: network device
+ * @bssid: the BSSID of the AP
+ * @bss: entry of bss to which STA got connected to, can be obtained
+ *	through cfg80211_get_bss (may be %NULL)
+ * @req_ie: association request IEs (maybe be %NULL)
+ * @req_ie_len: association request IEs length
+ * @resp_ie: association response IEs (may be %NULL)
+ * @resp_ie_len: assoc response IEs length
+ * @status: status code, 0 for successful connection, use
+ *      %WLAN_STATUS_UNSPECIFIED_FAILURE if your device cannot give you
+ *      the real status code for failures.
+ * @gfp: allocation flags
+ *
+ * It should be called by the underlying driver whenever connect() has
+ * succeeded. This is similar to cfg80211_connect_result(), but with the
+ * option of identifying the exact bss entry for the connection. Only one of
+ * these functions should be called.
+ */
+void cfg80211_connect_bss(struct net_device *dev, const u8 *bssid,
+			  struct cfg80211_bss *bss, const u8 *req_ie,
+			  size_t req_ie_len, const u8 *resp_ie,
+			  size_t resp_ie_len, u16 status, gfp_t gfp);
+
+/**
  * cfg80211_connect_result - notify cfg80211 of connection result
  *
  * @dev: network device
@@ -4415,10 +4443,15 @@ static inline void cfg80211_testmode_event(struct sk_buff *skb, gfp_t gfp)
  * It should be called by the underlying driver whenever connect() has
  * succeeded.
  */
-void cfg80211_connect_result(struct net_device *dev, const u8 *bssid,
-			     const u8 *req_ie, size_t req_ie_len,
-			     const u8 *resp_ie, size_t resp_ie_len,
-			     u16 status, gfp_t gfp);
+static inline void
+cfg80211_connect_result(struct net_device *dev, const u8 *bssid,
+			const u8 *req_ie, size_t req_ie_len,
+			const u8 *resp_ie, size_t resp_ie_len,
+			u16 status, gfp_t gfp)
+{
+	cfg80211_connect_bss(dev, bssid, NULL, req_ie, req_ie_len, resp_ie,
+			     resp_ie_len, status, gfp);
+}
 
 /**
  * cfg80211_roamed - notify cfg80211 of roaming
@@ -4474,13 +4507,15 @@ void cfg80211_roamed_bss(struct net_device *dev, struct cfg80211_bss *bss,
  * @ie: information elements of the deauth/disassoc frame (may be %NULL)
  * @ie_len: length of IEs
  * @reason: reason code for the disconnection, set it to 0 if unknown
+ * @locally_generated: disconnection was requested locally
  * @gfp: allocation flags
  *
  * After it calls this function, the driver should enter an idle state
  * and not try to connect to any AP any more.
  */
 void cfg80211_disconnected(struct net_device *dev, u16 reason,
-			   const u8 *ie, size_t ie_len, gfp_t gfp);
+			   const u8 *ie, size_t ie_len,
+			   bool locally_generated, gfp_t gfp);
 
 /**
  * cfg80211_ready_on_channel - notification of remain_on_channel start

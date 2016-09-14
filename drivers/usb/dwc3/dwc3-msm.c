@@ -204,7 +204,6 @@ struct dwc3_msm {
 	struct workqueue_struct *dwc3_wq;
 	struct delayed_work	sm_work;
 	unsigned long		inputs;
-	struct completion	dwc3_xcvr_vbus_init;
 	enum dwc3_chg_type	chg_type;
 	unsigned		max_power;
 	bool			charging_disabled;
@@ -664,32 +663,6 @@ static int dwc3_msm_ep_queue(struct usb_ep *ep,
 								gfp_flags);
 	}
 
-	if (!dep->endpoint.desc) {
-		dev_err(mdwc->dev,
-			"%s: trying to queue request %p to disabled ep %s\n",
-			__func__, request, ep->name);
-		return -EPERM;
-	}
-
-	if (dep->number == 0 || dep->number == 1) {
-		dev_err(mdwc->dev,
-			"%s: trying to queue dbm request %p to control ep %s\n",
-			__func__, request, ep->name);
-		return -EPERM;
-	}
-
-
-	if (dep->busy_slot != dep->free_slot || !list_empty(&dep->request_list)
-					 || !list_empty(&dep->req_queued)) {
-		dev_err(mdwc->dev,
-			"%s: trying to queue dbm request %p tp ep %s\n",
-			__func__, request, ep->name);
-		return -EPERM;
-	} else {
-		dep->busy_slot = 0;
-		dep->free_slot = 0;
-	}
-
 	/* HW restriction regarding TRB size (8KB) */
 	if (req->request.length < 0x2000) {
 		dev_err(mdwc->dev, "%s: Min TRB size is 8KB\n", __func__);
@@ -724,6 +697,8 @@ static int dwc3_msm_ep_queue(struct usb_ep *ep,
 	if (ret < 0) {
 		dev_err(mdwc->dev,
 			"error %d after calling dbm_ep_config\n", ret);
+		list_del(&req_complete->list_item);
+		kfree(req_complete);
 		return ret;
 	}
 
@@ -743,18 +718,53 @@ static int dwc3_msm_ep_queue(struct usb_ep *ep,
 	 * as soon as possible so we will release back the lock.
 	 */
 	spin_lock_irqsave(&dwc->lock, flags);
+	if (!dep->endpoint.desc) {
+		dev_err(mdwc->dev,
+			"%s: trying to queue request %p to disabled ep %s\n",
+			__func__, request, ep->name);
+		ret = -EPERM;
+		goto err;
+	}
+
+	if (dep->number == 0 || dep->number == 1) {
+		dev_err(mdwc->dev,
+			"%s: trying to queue dbm request %p to control ep %s\n",
+			__func__, request, ep->name);
+		ret = -EPERM;
+		goto err;
+	}
+
+
+	if (dep->busy_slot != dep->free_slot || !list_empty(&dep->request_list)
+					 || !list_empty(&dep->req_queued)) {
+		dev_err(mdwc->dev,
+			"%s: trying to queue dbm request %p tp ep %s\n",
+			__func__, request, ep->name);
+		ret = -EPERM;
+		goto err;
+	} else {
+		dep->busy_slot = 0;
+		dep->free_slot = 0;
+	}
+
 	ret = __dwc3_msm_ep_queue(dep, req);
-	spin_unlock_irqrestore(&dwc->lock, flags);
 	if (ret < 0) {
 		dev_err(mdwc->dev,
 			"error %d after calling __dwc3_msm_ep_queue\n", ret);
-		return ret;
+		goto err;
 	}
 
+	spin_unlock_irqrestore(&dwc->lock, flags);
 	superspeed = dwc3_msm_is_dev_superspeed(mdwc);
 	dbm_set_speed(mdwc->dbm, (u8)superspeed);
 
 	return 0;
+
+err:
+	list_del(&req_complete->list_item);
+	spin_unlock_irqrestore(&dwc->lock, flags);
+	kfree(req_complete);
+	return ret;
 }
 
 /*
@@ -1473,10 +1483,10 @@ static void dwc3_restart_usb_work(struct work_struct *w)
 		pm_runtime_suspend(mdwc->dev);
 	}
 
+	mdwc->in_restart = false;
 	/* Force reconnect only if cable is still connected */
 	if (mdwc->vbus_active) {
 		mdwc->chg_type = chg_type;
-		mdwc->in_restart = false;
 		dwc3_resume_work(&mdwc->resume_work.work);
 	}
 
@@ -2103,8 +2113,7 @@ static int dwc3_msm_resume(struct dwc3_msm *mdwc)
 static void dwc3_ext_event_notify(struct dwc3_msm *mdwc)
 {
 	/* Flush processing any pending events before handling new ones */
-	if (mdwc->init)
-		flush_delayed_work(&mdwc->sm_work);
+	flush_delayed_work(&mdwc->sm_work);
 
 	if (mdwc->id_state == DWC3_ID_FLOAT) {
 		dev_dbg(mdwc->dev, "XCVR: ID set\n");
@@ -2136,12 +2145,8 @@ static void dwc3_ext_event_notify(struct dwc3_msm *mdwc)
 		pm_runtime_use_autosuspend(mdwc->dev);
 		if (!work_busy(&mdwc->sm_work.work))
 			schedule_delayed_work(&mdwc->sm_work, 0);
-
-		complete(&mdwc->dwc3_xcvr_vbus_init);
-		dev_dbg(mdwc->dev, "XCVR: BSV init complete\n");
 		return;
 	}
-
 
 	schedule_delayed_work(&mdwc->sm_work, 0);
 }
@@ -2538,14 +2543,23 @@ static int dwc3_msm_get_clk_gdsc(struct dwc3_msm *mdwc)
 		return ret;
 	}
 
-	/*
-	 * Get Max supported clk frequency for USB Core CLK and request
-	 * to set the same.
-	 */
-	mdwc->core_clk_rate = clk_round_rate(mdwc->core_clk, LONG_MAX);
+	if (!of_property_read_u32(mdwc->dev->of_node, "qcom,core-clk-rate",
+				(u32 *)&mdwc->core_clk_rate)) {
+		mdwc->core_clk_rate = clk_round_rate(mdwc->core_clk,
+							mdwc->core_clk_rate);
+	} else {
+		/*
+		 * Get Max supported clk frequency for USB Core CLK and request
+		 * to set the same.
+		 */
+		mdwc->core_clk_rate = clk_round_rate(mdwc->core_clk, LONG_MAX);
+	}
+
 	if (IS_ERR_VALUE(mdwc->core_clk_rate)) {
 		dev_err(mdwc->dev, "fail to get core clk max freq.\n");
 	} else {
+		dev_dbg(mdwc->dev, "USB core frequency = %ld\n",
+							mdwc->core_clk_rate);
 		ret = clk_set_rate(mdwc->core_clk, mdwc->core_clk_rate);
 		if (ret)
 			dev_err(mdwc->dev, "fail to set core_clk freq:%d\n",
@@ -2616,7 +2630,6 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 	INIT_DELAYED_WORK(&mdwc->resume_work, dwc3_resume_work);
 	INIT_WORK(&mdwc->restart_usb_work, dwc3_restart_usb_work);
 	INIT_WORK(&mdwc->bus_vote_w, dwc3_msm_bus_vote_w);
-	init_completion(&mdwc->dwc3_xcvr_vbus_init);
 	INIT_DELAYED_WORK(&mdwc->sm_work, dwc3_otg_sm_work);
 
 	mdwc->dwc3_wq = alloc_ordered_workqueue("dwc3_wq", 0);
@@ -2633,6 +2646,8 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 	}
 
 	mdwc->id_state = DWC3_ID_FLOAT;
+	set_bit(ID, &mdwc->inputs);
+
 	mdwc->charging_disabled = of_property_read_bool(node,
 				"qcom,charging-disabled");
 
@@ -3293,36 +3308,6 @@ psy_error:
 }
 
 
-void dwc3_init_sm(struct dwc3_msm *mdwc)
-{
-	int ret;
-	static bool sm_initialized;
-
-	/*
-	 * dwc3_init_sm() can be called multiple times in undefined state.
-	 * example: QC charger connected during boot up sequeunce, and
-	 * performing charger disconnect.
-	 */
-	if (sm_initialized) {
-		pr_debug("%s(): Already sm_initialized.\n", __func__);
-		return;
-	}
-
-	/*
-	 * VBUS initial state is reported after PMIC
-	 * driver initialization. Wait for it.
-	 */
-	ret = wait_for_completion_timeout(&mdwc->dwc3_xcvr_vbus_init,
-					msecs_to_jiffies(SM_INIT_TIMEOUT));
-	if (!ret) {
-		dev_err(mdwc->dev, "%s: completion timeout\n", __func__);
-		/* We can safely assume no cable connected */
-		set_bit(ID, &mdwc->inputs);
-	}
-
-	sm_initialized = true;
-}
-
 static void dwc3_initialize(struct dwc3_msm *mdwc)
 {
 	u32 tmp;
@@ -3400,7 +3385,6 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 	/* Check OTG state */
 	switch (mdwc->otg_state) {
 	case OTG_STATE_UNDEFINED:
-		dwc3_init_sm(mdwc);
 		if (!test_bit(ID, &mdwc->inputs)) {
 			dbg_event(0xFF, "undef_host", 0);
 			atomic_set(&dwc->in_lpm, 0);

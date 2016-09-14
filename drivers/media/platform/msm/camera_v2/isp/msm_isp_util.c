@@ -739,6 +739,8 @@ static int msm_isp_set_dual_HW_master_slave_mode(
 	vfe_dev->common_data->ms_resource.dual_hw_type = DUAL_HW_MASTER_SLAVE;
 	vfe_dev->vfe_ub_policy = MSM_WM_UB_EQUAL_SLICING;
 	if (dual_hw_ms_cmd->primary_intf < VFE_SRC_MAX) {
+		ISP_DBG("%s: vfe %d primary_intf %d\n", __func__,
+			vfe_dev->pdev->id, dual_hw_ms_cmd->primary_intf);
 		src_info = &vfe_dev->axi_data.
 			src_info[dual_hw_ms_cmd->primary_intf];
 		src_info->dual_hw_ms_info.dual_hw_ms_type =
@@ -749,7 +751,7 @@ static int msm_isp_set_dual_HW_master_slave_mode(
 	if (src_info != NULL &&
 		dual_hw_ms_cmd->dual_hw_ms_type == MS_TYPE_MASTER) {
 		src_info->dual_hw_type = DUAL_HW_MASTER_SLAVE;
-		ISP_DBG("%s: Master\n", __func__);
+		ISP_DBG("%s: vfe %d Master\n", __func__, vfe_dev->pdev->id);
 
 		src_info->dual_hw_ms_info.sof_info =
 			&vfe_dev->common_data->ms_resource.master_sof_info;
@@ -760,7 +762,7 @@ static int msm_isp_set_dual_HW_master_slave_mode(
 			&vfe_dev->common_data->common_dev_data_lock,
 			flags);
 		src_info->dual_hw_type = DUAL_HW_MASTER_SLAVE;
-		ISP_DBG("%s: Slave\n", __func__);
+		ISP_DBG("%s: vfe %d Slave\n", __func__, vfe_dev->pdev->id);
 
 		for (j = 0; j < MS_NUM_SLAVE_MAX; j++) {
 			if (vfe_dev->common_data->ms_resource.
@@ -787,7 +789,8 @@ static int msm_isp_set_dual_HW_master_slave_mode(
 			return -EBUSY;
 		}
 	}
-	ISP_DBG("%s: num_src %d\n", __func__, dual_hw_ms_cmd->num_src);
+	ISP_DBG("%s: vfe %d num_src %d\n", __func__, vfe_dev->pdev->id,
+		dual_hw_ms_cmd->num_src);
 	/* This for loop is for non-primary intf to be marked with Master/Slave
 	 * in order for frame id sync. But their timestamp is not saved.
 	 * So no sof_info resource is allocated */
@@ -797,7 +800,9 @@ static int msm_isp_set_dual_HW_master_slave_mode(
 				dual_hw_ms_cmd->input_src[i]);
 			return -EINVAL;
 		}
-		ISP_DBG("%s: src %d\n", __func__, dual_hw_ms_cmd->input_src[i]);
+		ISP_DBG("%s: vfe %d src %d type %d\n", __func__,
+			vfe_dev->pdev->id, dual_hw_ms_cmd->input_src[i],
+			dual_hw_ms_cmd->dual_hw_ms_type);
 		src_info = &vfe_dev->axi_data.
 			src_info[dual_hw_ms_cmd->input_src[i]];
 		src_info->dual_hw_type = DUAL_HW_MASTER_SLAVE;
@@ -1107,6 +1112,8 @@ static long msm_isp_ioctl_unlocked(struct v4l2_subdev *sd,
 		vfe_dev->isp_raw1_debug = 0;
 		vfe_dev->isp_raw2_debug = 0;
 		break;
+	case MSM_SD_UNNOTIFY_FREEZE:
+		break;
 	case MSM_SD_SHUTDOWN:
 		while (vfe_dev->vfe_open_cnt != 0)
 			msm_isp_close_node(sd, NULL);
@@ -1227,7 +1234,8 @@ static int msm_isp_send_hw_cmd(struct vfe_device *vfe_dev,
 	case VFE_READ_DMI_16BIT:
 	case VFE_READ_DMI_32BIT:
 	case VFE_READ_DMI_64BIT: {
-		if (reg_cfg_cmd->cmd_type == VFE_WRITE_DMI_64BIT) {
+		if (reg_cfg_cmd->cmd_type == VFE_WRITE_DMI_64BIT ||
+			reg_cfg_cmd->cmd_type == VFE_READ_DMI_64BIT) {
 			if ((reg_cfg_cmd->u.dmi_info.hi_tbl_offset <=
 				reg_cfg_cmd->u.dmi_info.lo_tbl_offset) ||
 				(reg_cfg_cmd->u.dmi_info.hi_tbl_offset -
@@ -1599,19 +1607,20 @@ int msm_isp_cal_word_per_line(uint32_t output_format,
 	case V4L2_PIX_FMT_QRGGB8:
 	case V4L2_PIX_FMT_JPEG:
 	case V4L2_PIX_FMT_META:
-	case V4L2_PIX_FMT_GREY:
 		val = CAL_WORD(pixel_per_line, 1, 8);
 		break;
 	case V4L2_PIX_FMT_SBGGR10:
 	case V4L2_PIX_FMT_SGBRG10:
 	case V4L2_PIX_FMT_SGRBG10:
 	case V4L2_PIX_FMT_SRGGB10:
+	case V4L2_PIX_FMT_Y10:
 		val = CAL_WORD(pixel_per_line, 5, 32);
 		break;
 	case V4L2_PIX_FMT_SBGGR12:
 	case V4L2_PIX_FMT_SGBRG12:
 	case V4L2_PIX_FMT_SGRBG12:
 	case V4L2_PIX_FMT_SRGGB12:
+	case V4L2_PIX_FMT_Y12:
 		val = CAL_WORD(pixel_per_line, 3, 16);
 		break;
 	case V4L2_PIX_FMT_SBGGR14:
@@ -1644,6 +1653,7 @@ int msm_isp_cal_word_per_line(uint32_t output_format,
 	case V4L2_PIX_FMT_NV41:
 	case V4L2_PIX_FMT_NV16:
 	case V4L2_PIX_FMT_NV61:
+	case V4L2_PIX_FMT_GREY:
 		val = CAL_WORD(pixel_per_line, 1, 8);
 		break;
 	case V4L2_PIX_FMT_YUYV:
@@ -1689,6 +1699,9 @@ enum msm_isp_pack_fmt msm_isp_get_pack_format(uint32_t output_format)
 	case V4L2_PIX_FMT_SGBRG14:
 	case V4L2_PIX_FMT_SGRBG14:
 	case V4L2_PIX_FMT_SRGGB14:
+	case V4L2_PIX_FMT_GREY:
+	case V4L2_PIX_FMT_Y10:
+	case V4L2_PIX_FMT_Y12:
 		return MIPI;
 	case V4L2_PIX_FMT_QBGGR8:
 	case V4L2_PIX_FMT_QGBRG8:
@@ -1985,8 +1998,7 @@ irqreturn_t msm_isp_process_irq(int irq_num, void *data)
 	error_mask1 &= irq_status1;
 	irq_status0 &= ~error_mask0;
 	irq_status1 &= ~error_mask1;
-	if (!vfe_dev->ignore_error &&
-		((error_mask0 != 0) || (error_mask1 != 0)))
+	if ((error_mask0 != 0) || (error_mask1 != 0))
 		msm_isp_update_error_info(vfe_dev, error_mask0, error_mask1);
 
 	if ((irq_status0 == 0) && (irq_status1 == 0) &&
@@ -2113,10 +2125,15 @@ int msm_isp_open_node(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
 
 	ISP_DBG("%s open_cnt %u\n", __func__, vfe_dev->vfe_open_cnt);
 
-	if (vfe_dev->common_data == NULL) {
-		pr_err("%s: Error in probe. No common_data\n", __func__);
+	if (vfe_dev->common_data == NULL ||
+		vfe_dev->common_data->dual_vfe_res == NULL) {
+		pr_err("%s: Error in probe. No common_data or dual vfe res\n",
+			__func__);
 		return -EINVAL;
 	}
+
+	if (vfe_dev->pdev->id == ISP_VFE0)
+		vfe_dev->common_data->dual_vfe_res->epoch_sync_mask = 0;
 
 	mutex_lock(&vfe_dev->realtime_mutex);
 	mutex_lock(&vfe_dev->core_mutex);

@@ -1365,6 +1365,7 @@ correct_plug_type:
 				      MBHC_PLUG_TYPE_HEADSET) &&
 				     (mbhc->current_plug !=
 				      MBHC_PLUG_TYPE_ANC_HEADPHONE)) &&
+				    !wcd_swch_level_remove(mbhc) &&
 				    !mbhc->btn_press_intr) {
 					pr_debug("%s: cable is %sheadset\n",
 						__func__,
@@ -2357,11 +2358,14 @@ void wcd_mbhc_stop(struct wcd_mbhc *mbhc)
 	}
 	mbhc->current_plug = MBHC_PLUG_TYPE_NONE;
 	mbhc->hph_status = 0;
-	mbhc->mbhc_cb->irq_control(mbhc->codec, mbhc->intr_ids->hph_left_ocp,
-				   false);
-	mbhc->mbhc_cb->irq_control(mbhc->codec, mbhc->intr_ids->hph_right_ocp,
-				   false);
-
+	if (mbhc->mbhc_cb && mbhc->mbhc_cb->irq_control) {
+		mbhc->mbhc_cb->irq_control(mbhc->codec,
+				mbhc->intr_ids->hph_left_ocp,
+				false);
+		mbhc->mbhc_cb->irq_control(mbhc->codec,
+				mbhc->intr_ids->hph_right_ocp,
+				false);
+	}
 	if (mbhc->mbhc_fw || mbhc->mbhc_cal) {
 		cancel_delayed_work_sync(&mbhc->mbhc_firmware_dwork);
 		if (!mbhc->mbhc_cal)

@@ -49,6 +49,7 @@
 	pinctrl-0 = <&uart_console_active>;
 };
 
+#if 0
 &sdhc_1 {
 	vdd-supply = <&pm8994_l20>;
 	qcom,vdd-voltage-level = <2950000 2950000>;
@@ -91,6 +92,7 @@
 
 	status = "disabled";
 };
+#endif
 
 &pm8994_vadc {
 	chan@5 {
@@ -273,6 +275,7 @@
 	};
 };
 
+#if 0
 &mdss_hdmi_tx {
 	pinctrl-names = "hdmi_hpd_active", "hdmi_ddc_active", "hdmi_cec_active",
 				"hdmi_active", "hdmi_sleep";
@@ -287,6 +290,7 @@
 	pinctrl-4 = <&mdss_hdmi_hpd_suspend &mdss_hdmi_ddc_suspend
 						&mdss_hdmi_cec_suspend>;
 };
+#endif
 
 &pmi8994_vadc {
 	chan@0 {
@@ -417,6 +421,16 @@
 	qcom,mdss-dsi-bl-min-level = <1>;
 	qcom,mdss-dsi-bl-max-level = <4095>;
 	qcom,panel-supply-entries = <&dsi_panel_pwr_supply>;
+};
+
+&dsi_sharp_4k_dsc_cmd {
+	qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_wled";
+	qcom,mdss-dsi-bl-min-level = <1>;
+	qcom,mdss-dsi-bl-max-level = <4095>;
+	qcom,panel-supply-entries = <&dsi_panel_pwr_supply>;
+	qcom,partial-update-enabled;
+	/* panel supports slice height of 8/16/32/48/3840 */
+	qcom,panel-roi-alignment = <1080 8 1080 8 1080 8>;
 };
 
 &dsi_nt35597_dsc_video {

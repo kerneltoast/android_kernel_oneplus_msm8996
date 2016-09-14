@@ -26,8 +26,6 @@
 #include <media/v4l2-ioctl.h>
 #include <media/v4l2-device.h>
 #include <media/videobuf2-core.h>
-#include <media/msm_camera.h>
-#include <media/msm_isp.h>
 
 #include "msm.h"
 #include "msm_buf_mgr.h"
@@ -87,7 +85,7 @@ struct msm_isp_bufq *msm_isp_get_bufq(
 
 	/* bufq_handle cannot be 0 */
 	if ((bufq_handle == 0) ||
-		(bufq_index >= BUF_MGR_NUM_BUF_Q) ||
+		bufq_index >= BUF_MGR_NUM_BUF_Q ||
 		(bufq_index > buf_mgr->num_buf_q))
 		return NULL;
 

@@ -1,4 +1,4 @@
-/* Copyright (c) 2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -10,9 +10,15 @@
  * GNU General Public License for more details.
  */
 
-#ifndef __MSM_JPEG_DMA__
-#define __MSM_JPEG_DMA__
+/dts-v1/;
 
-#include <uapi/media/msm_jpeg_dma.h>
+#include "msm8996pro-v1.1.dtsi"
+#include "msm8996-pm8994-pmi8996-pmk8001.dtsi"
+#include "msm8996-mtp.dtsi"
 
-#endif /* __MSM_JPEG_DMA__ */
+/ {
+	model = "Qualcomm Technologies, Inc. MSM 8996pro v1.1 \
+					+ PM8994 + PMI8996 + PMK8001 MTP";
+	compatible = "qcom,msm8996-mtp", "qcom,msm8996", "qcom,mtp";
+	qcom,board-id = <8 0>;
+};

@@ -398,13 +398,19 @@ static int cpe_worker_thread(void *context)
 	 * by setting the t_info->stop_thread flag
 	 */
 	while (1) {
+		/* Check if thread needs to be stopped */
+		CPE_SVC_GRAB_LOCK(&t_info->msg_lock, "msg_lock");
+		if (t_info->stop_thread)
+			goto unlock_and_exit;
+		CPE_SVC_REL_LOCK(&t_info->msg_lock, "msg_lock");
+
 		/* Wait for command to be processed */
 		wait_for_completion(&t_info->cmd_complete);
 
 		CPE_SVC_GRAB_LOCK(&t_info->msg_lock, "msg_lock");
 		cpe_cmd_received(t_info);
 		reinit_completion(&t_info->cmd_complete);
-		/* Check if thread needs to be stopped */
+		/* Was this woken up to stop the thread? */
 		if (t_info->stop_thread)
 			goto unlock_and_exit;
 		CPE_SVC_REL_LOCK(&t_info->msg_lock, "msg_lock");
