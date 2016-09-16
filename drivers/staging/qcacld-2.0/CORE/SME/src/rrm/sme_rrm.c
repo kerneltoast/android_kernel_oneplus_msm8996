@@ -1184,7 +1184,7 @@ void rrmStoreNeighborRptByRoamScore(tpAniSirGlobal pMac, tpRrmNeighborReportDesc
   \sa
 
   --------------------------------------------------------------------------*/
-eHalStatus __attribute__((optimize("O0"))) sme_RrmProcessNeighborReport(tpAniSirGlobal pMac, void *pMsgBuf)
+eHalStatus sme_RrmProcessNeighborReport(tpAniSirGlobal pMac, void *pMsgBuf)
 {
    eHalStatus status = eHAL_STATUS_SUCCESS;
    tpSirNeighborReportInd pNeighborRpt = (tpSirNeighborReportInd) pMsgBuf;
