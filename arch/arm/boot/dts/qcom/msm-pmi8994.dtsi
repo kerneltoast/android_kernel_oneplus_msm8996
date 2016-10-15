@@ -715,7 +715,7 @@
 				qcom,default-led-trigger =
 						"torch0_trigger";
 				qcom,id = <0>;
-				qcom,current = <48>;
+				qcom,current = <100>;
 				qcom,max-current = <200>;
 			};
 
@@ -725,7 +725,7 @@
 				qcom,default-led-trigger =
 						"torch1_trigger";
 				qcom,id = <1>;
-				qcom,current = <48>;
+				qcom,current = <100>;
 				qcom,max-current = <200>;
 			};
 
