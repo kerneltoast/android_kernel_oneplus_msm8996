@@ -778,6 +778,17 @@
 		status = "okay";
 	};
 
+	gpio@cb00 { /* GPIO 12 - NFC ESE PWR REQ */
+		qcom,mode = <1>;
+		qcom,output-type = <0>;
+		qcom,pull = <5>;
+		qcom,vin-sel = <2>;
+		qcom,out-strength = <3>;
+		qcom,src-sel = <0>;
+		qcom,master-en = <1>;
+		status = "okay";
+	};
+
 	gpio@cd00 { /* GPIO 14 - lcd_bklt_reg_en */
 		qcom,mode = <1>;	/* DIGITAL OUT */
 		qcom,output-type = <0>;		/* CMOS logic */
@@ -910,6 +921,7 @@
 		qcom,nq-ven = <&tlmm 12 0x00>;
 		qcom,nq-firm = <&pm8994_gpios 7 0x00>;
 		qcom,nq-clkreq = <&pm8994_gpios 10 0x00>;
+		qcom,nq-esepwr = <&pm8994_gpios 12 0x00>;
 		interrupt-parent = <&tlmm>;
 		qcom,clk-src = "BBCLK2";
 		interrupts = <9 0>;
