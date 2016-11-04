@@ -2443,8 +2443,8 @@ int mdss_mdp_pp_init(struct device *dev)
 	int i, ret = 0;
 	struct mdss_data_type *mdata = mdss_mdp_get_mdata();
 	struct mdss_mdp_pipe *vig;
-	struct pp_hist_col_info *hist = NULL;
 	void *ret_ptr = NULL;
+	struct pp_hist_col_info *hist = NULL;
 	u32 ctl_off = 0;
 
 	if (!mdata)
