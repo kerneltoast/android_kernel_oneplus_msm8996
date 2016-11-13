@@ -23,7 +23,7 @@
 #define LITTLE_CPU_ID	0 /* CPU that is always online */
 #define BIG_CPU_ID	3 /* CPU that is sometimes online */
 
-#define FB_BOOST_MS 1100
+#define FB_BOOST_MS 3000
 
 enum boost_status {
 	UNBOOST,
