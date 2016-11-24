@@ -140,6 +140,7 @@ static int create_fixed_stream_quirk(struct snd_usb_audio *chip,
 	}
 	INIT_LIST_HEAD(&fp->list);
 	if (fp->nr_rates > MAX_NR_RATES) {
+		list_del(&fp->list);
 		kfree(fp);
 		return -EINVAL;
 	}
@@ -147,6 +148,7 @@ static int create_fixed_stream_quirk(struct snd_usb_audio *chip,
 		rate_table = kmemdup(fp->rate_table,
 				     sizeof(int) * fp->nr_rates, GFP_KERNEL);
 		if (!rate_table) {
+			list_del(&fp->list);
 			kfree(fp);
 			return -ENOMEM;
 		}
