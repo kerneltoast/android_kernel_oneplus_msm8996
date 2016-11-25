@@ -342,6 +342,9 @@ struct qpnp_hap {
 
 static struct qpnp_hap *ghap;
 
+static int disable_haptics_refcnt;
+static DEFINE_SPINLOCK(disable_lock);
+
 /* helper to read a pmic register */
 static int qpnp_hap_read_reg(struct qpnp_hap *hap, u8 *data, u16 addr)
 {
@@ -1645,6 +1648,30 @@ static int qpnp_hap_set(struct qpnp_hap *hap, int on)
 	return rc;
 }
 
+void qpnp_disable_haptics(bool disable)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&disable_lock, flags);
+	if (disable)
+		disable_haptics_refcnt++;
+	else if (disable_haptics_refcnt > 0)
+		disable_haptics_refcnt--;
+	spin_unlock_irqrestore(&disable_lock, flags);
+}
+
+static bool is_haptics_disabled(void)
+{
+	unsigned long flags;
+	bool disable;
+
+	spin_lock_irqsave(&disable_lock, flags);
+	disable = disable_haptics_refcnt;
+	spin_unlock_irqrestore(&disable_lock, flags);
+
+	return disable;
+}
+
 static void qpnp_timed_enable_worker(struct work_struct *work)
 {
 	struct qpnp_hap *hap = container_of(work, struct qpnp_hap,
@@ -1657,6 +1684,9 @@ static void qpnp_timed_enable_worker(struct work_struct *work)
 
 	/* Vibrator already disabled */
 	if (!value && !hap->state)
+		return;
+
+	if (value && is_haptics_disabled())
 		return;
 
 	flush_work(&hap->work);
