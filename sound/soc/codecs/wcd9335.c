@@ -25,7 +25,6 @@
 #include <linux/mfd/wcd9xxx/wcd9xxx_registers.h>
 #include <linux/mfd/wcd9335/registers.h>
 #include <linux/mfd/wcd9xxx/pdata.h>
-#include <linux/qpnp/qpnp-haptic.h>
 #include <linux/regulator/consumer.h>
 #include <linux/clk.h>
 #include <linux/delay.h>
@@ -194,8 +193,6 @@ static int tx_unmute_delay = TASHA_TX_UNMUTE_DELAY_MS;
 module_param(tx_unmute_delay, int,
 		S_IRUGO | S_IWUSR | S_IWGRP);
 MODULE_PARM_DESC(tx_unmute_delay, "delay to unmute the tx path");
-
-static int mic_open_refcnt;
 
 static struct afe_param_slimbus_slave_port_cfg tasha_slimbus_slave_port_cfg = {
 	.minor_version = 1,
@@ -10612,20 +10609,9 @@ static int tasha_set_channel_map(struct snd_soc_dai *dai,
 	return 0;
 }
 
-static inline bool tasha_is_capture_stream(const char *name)
-{
-	return name && strstr(name, "Capture");
-}
-
 static int tasha_startup(struct snd_pcm_substream *substream,
 		struct snd_soc_dai *dai)
 {
-	/* Disable haptics when the microphone is open */
-	if (tasha_is_capture_stream(dai->driver->capture.stream_name)) {
-		mic_open_refcnt++;
-		qpnp_disable_haptics(true);
-	}
-
 	pr_debug("%s(): substream = %s  stream = %d\n" , __func__,
 		 substream->name, substream->stream);
 
@@ -10635,11 +10621,6 @@ static int tasha_startup(struct snd_pcm_substream *substream,
 static void tasha_shutdown(struct snd_pcm_substream *substream,
 		struct snd_soc_dai *dai)
 {
-	if (tasha_is_capture_stream(dai->driver->capture.stream_name)) {
-		mic_open_refcnt--;
-		qpnp_disable_haptics(mic_open_refcnt);
-	}
-
 	pr_debug("%s(): substream = %s  stream = %d\n" , __func__,
 		 substream->name, substream->stream);
 }

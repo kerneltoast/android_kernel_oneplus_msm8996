@@ -342,8 +342,6 @@ struct qpnp_hap {
 
 static struct qpnp_hap *ghap;
 
-static bool stop_haptics;
-
 /* helper to read a pmic register */
 static int qpnp_hap_read_reg(struct qpnp_hap *hap, u8 *data, u16 addr)
 {
@@ -1647,19 +1645,11 @@ static int qpnp_hap_set(struct qpnp_hap *hap, int on)
 	return rc;
 }
 
-void qpnp_disable_haptics(bool disable)
-{
-	stop_haptics = disable;
-}
-
 static void qpnp_timed_enable_worker(struct work_struct *work)
 {
 	struct qpnp_hap *hap = container_of(work, struct qpnp_hap,
 					 td_work);
 	int value;
-
-	if (stop_haptics)
-		return;
 
 	spin_lock(&hap->td_lock);
 	value = hap->td_value;
@@ -1779,9 +1769,6 @@ static void qpnp_hap_worker(struct work_struct *work)
 					 work);
 	u8 val = 0x00;
 	int rc, reg_en = 0;
-
-	if (stop_haptics)
-		return;
 
 	if (hap->vcc_pon) {
 		reg_en = regulator_enable(hap->vcc_pon);
