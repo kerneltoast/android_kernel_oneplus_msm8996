@@ -296,6 +296,7 @@ extern void int_touch(void);
 extern struct completion key_cm;
 extern bool virtual_key_enable;
 extern bool s1302_is_keypad_stopped(void);
+extern void s3320_disable_gestures(bool disable);
 
 bool key_home_pressed = false;
 EXPORT_SYMBOL(key_home_pressed);
@@ -389,6 +390,7 @@ static ssize_t proximity_state_set(struct device *dev,
 		return -EINVAL;
 
 	fpc1020->proximity_state = !!val;
+	s3320_disable_gestures(fpc1020->proximity_state);
 
 	if (!fpc1020->screen_state)
 		set_fpc_irq(fpc1020, !fpc1020->proximity_state);
