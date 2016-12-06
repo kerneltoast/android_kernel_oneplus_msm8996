@@ -94,7 +94,7 @@ static uint32_t get_boost_freq(const struct ib_config *ib, uint32_t cpu);
 static uint32_t get_boost_state(struct boost_policy *b);
 static void set_boost_bit(struct boost_policy *b, uint32_t state);
 static void clear_boost_bit(struct boost_policy *b, uint32_t state);
-static void unboost_all_cpus(struct ib_config *ib);
+static void unboost_all_cpus(struct boost_policy *b);
 static void update_online_cpu_policy(void);
 
 static void ib_boost_main(struct work_struct *work)
@@ -210,6 +210,9 @@ static void fb_boost_main(struct work_struct *work)
 	/* Immediately boost the online CPUs */
 	update_online_cpu_policy();
 
+	/* Enable sched boost (big CPUs are favored for scheduling) */
+	sched_set_boost(1);
+
 	queue_delayed_work(b->wq, &fb->unboost_work,
 				msecs_to_jiffies(FB_BOOST_MS));
 }
@@ -217,11 +220,9 @@ static void fb_boost_main(struct work_struct *work)
 static void fb_unboost_main(struct work_struct *work)
 {
 	struct boost_policy *b = boost_policy_g;
-	struct ib_config *ib = &b->ib;
 
-	/* Clear wake boost bit */
-	clear_boost_bit(b, WAKE_BOOST);
-	unboost_all_cpus(ib);
+	/* This clears the wake-boost bit and unboosts everything */
+	unboost_all_cpus(b);
 }
 
 static int do_cpu_boost(struct notifier_block *nb,
@@ -273,7 +274,6 @@ static int fb_notifier_callback(struct notifier_block *nb,
 		unsigned long action, void *data)
 {
 	struct boost_policy *b = boost_policy_g;
-	struct ib_config *ib = &b->ib;
 	struct fb_policy *fb = &b->fb;
 	struct fb_event *evdata = data;
 	int *blank = evdata->data;
@@ -293,10 +293,8 @@ static int fb_notifier_callback(struct notifier_block *nb,
 		break;
 	default:
 		/* Unboost CPUs when the screen turns off */
-		if (state & INPUT_BOOST || state & WAKE_BOOST) {
-			clear_boost_bit(b, WAKE_BOOST);
-			unboost_all_cpus(ib);
-		}
+		if (state & INPUT_BOOST || state & WAKE_BOOST)
+			unboost_all_cpus(b);
 		clear_boost_bit(b, SCREEN_AWAKE);
 		return NOTIFY_OK;
 	}
@@ -471,8 +469,20 @@ static void clear_boost_bit(struct boost_policy *b, uint32_t state)
 	spin_unlock(&b->lock);
 }
 
-static void unboost_all_cpus(struct ib_config *ib)
+static void unboost_all_cpus(struct boost_policy *b)
 {
+	struct ib_config *ib = &b->ib;
+	uint32_t state;
+
+	state = get_boost_state(b);
+
+	/* Disable sched boost if it's enabled */
+	if (state & WAKE_BOOST)
+		sched_set_boost(0);
+
+	/* Clear wake boost bit */
+	clear_boost_bit(b, WAKE_BOOST);
+
 	/* Clear cpus_to_boost bits for all CPUs */
 	ib->cpus_to_boost = 0;
 
@@ -511,7 +521,7 @@ static ssize_t enabled_write(struct device *dev,
 		/* Stop everything */
 		cancel_work_sync(&fb->boost_work);
 		cancel_work_sync(&ib->boost_work);
-		unboost_all_cpus(ib);
+		unboost_all_cpus(b);
 	}
 
 	return size;
