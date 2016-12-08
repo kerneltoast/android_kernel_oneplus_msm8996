@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2016, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2008-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -3692,14 +3692,19 @@ static int kgsl_mmap(struct file *file, struct vm_area_struct *vma)
 
 	if (cache == KGSL_CACHEMODE_WRITEBACK
 		|| cache == KGSL_CACHEMODE_WRITETHROUGH) {
+		struct scatterlist *s;
 		int i;
 		unsigned long addr = vma->vm_start;
-		struct kgsl_memdesc *m = &entry->memdesc;
 
-		for (i = 0; i < m->page_count; i++) {
-				struct page *page = m->pages[i];
+		for_each_sg(entry->memdesc.sgt->sgl, s,
+				entry->memdesc.sgt->nents, i) {
+			int j;
+			for (j = 0; j < (s->length >> PAGE_SHIFT); j++) {
+				struct page *page = sg_page(s);
+				page = nth_page(page, j);
 				vm_insert_page(vma, addr, page);
 				addr += PAGE_SIZE;
+			}
 		}
 	}
 
