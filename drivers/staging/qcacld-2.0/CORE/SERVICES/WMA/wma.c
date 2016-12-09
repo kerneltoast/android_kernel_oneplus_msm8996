@@ -11157,8 +11157,21 @@ VOS_STATUS wma_process_dhcp_ind(tp_wma_handle wma_handle,
 	return VOS_STATUS_SUCCESS;
 }
 
-static WLAN_PHY_MODE wma_chan_to_mode(u8 chan, ePhyChanBondState chan_offset,
-                                      u8 vht_capable, u8 dot11_mode)
+/**
+* wma_chan_to_mode() - calculate phy mode corresponding to channel
+* @chan: channel
+* @chan_offset: secondary channel offset
+* @vht_capable: If vht capable
+* @dot11_mode: dot11 mode
+*
+* calculate phy mode corresponding to channel, dot11 mode, vht capability
+* and secondary channel offset.
+*
+* Return: WLAN_PHY_MODE
+*/
+
+WLAN_PHY_MODE wma_chan_to_mode(uint8_t chan, ePhyChanBondState chan_offset,
+			uint8_t vht_capable, uint8_t dot11_mode)
 {
 	WLAN_PHY_MODE phymode = MODE_UNKNOWN;
 
@@ -21884,11 +21897,34 @@ static void wma_finish_scan_req(tp_wma_handle wma_handle,
 static void wma_process_update_opmode(tp_wma_handle wma_handle,
                                 tUpdateVHTOpMode *update_vht_opmode)
 {
-        WMA_LOGD("%s: opMode = %d", __func__, update_vht_opmode->opMode);
+	struct wma_txrx_node *iface;
+	WLAN_PHY_MODE  chanMode;
+	wmi_channel_width chanwidth;
 
-        wma_set_peer_param(wma_handle, update_vht_opmode->peer_mac,
-                           WMI_PEER_CHWIDTH, update_vht_opmode->opMode,
-                           update_vht_opmode->smesessionId);
+	iface = &wma_handle->interfaces[update_vht_opmode->smesessionId];
+	if (update_vht_opmode->chanMode == MODE_MAX)
+		chanMode = iface->chanmode;
+	else
+		chanMode = update_vht_opmode->chanMode;
+
+	WMA_LOGD("%s: opMode = %d, chanMode = %d",
+		__func__, update_vht_opmode->opMode, chanMode);
+
+	chanwidth = chanmode_to_chanwidth(chanMode);
+	if (chanwidth < update_vht_opmode->opMode) {
+		WMA_LOGE("%s: stop changing chanwidth from %d to %d,",
+			__func__,
+			chanwidth, update_vht_opmode->opMode);
+	} else {
+		iface->chanmode = chanMode;
+		wma_set_peer_param(wma_handle, update_vht_opmode->peer_mac,
+				WMI_PEER_PHYMODE, chanMode,
+				update_vht_opmode->smesessionId);
+
+		wma_set_peer_param(wma_handle, update_vht_opmode->peer_mac,
+				WMI_PEER_CHWIDTH, update_vht_opmode->opMode,
+				update_vht_opmode->smesessionId);
+	}
 }
 
 static void wma_process_update_rx_nss(tp_wma_handle wma_handle,
@@ -33384,6 +33420,7 @@ static void wma_set_vdev_suspend_dtim(tp_wma_handle wma, v_U8_t vdev_id)
 		int32_t ret;
 		u_int32_t listen_interval;
 		u_int32_t max_mod_dtim;
+		u_int32_t beacon_interval_mod;
 
 		if (wma->staDynamicDtim) {
 			listen_interval = wma->staDynamicDtim;
@@ -33399,7 +33436,16 @@ static void wma_set_vdev_suspend_dtim(tp_wma_handle wma, v_U8_t vdev_id)
 			  * Else
 			  * Set LI to maxModulatedDTIM * AP_DTIM
 			  */
-			max_mod_dtim = wma->staMaxLIModDtim/iface->dtimPeriod;
+			beacon_interval_mod = iface->beaconInterval/100;
+			if (beacon_interval_mod == 0)
+				beacon_interval_mod = 1;
+
+			max_mod_dtim = wma->staMaxLIModDtim
+				/(iface->dtimPeriod*beacon_interval_mod);
+
+			if (max_mod_dtim <= 0)
+				max_mod_dtim = 1;
+
 			if (max_mod_dtim >= wma->staModDtim) {
 				listen_interval =
 					(wma->staModDtim * iface->dtimPeriod);

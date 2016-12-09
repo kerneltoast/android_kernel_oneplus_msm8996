@@ -2918,6 +2918,8 @@ typedef enum {
      * the values. Safety check will happen in Halphy
      */
     WMI_PDEV_PARAM_TXPOWER_DECR_DB,
+     /** Set TX delay value in TX sch module, unit is microseconds */
+    WMI_PDEV_PARAM_TX_SCH_DELAY,
 } WMI_PDEV_PARAM;
 
 typedef enum {

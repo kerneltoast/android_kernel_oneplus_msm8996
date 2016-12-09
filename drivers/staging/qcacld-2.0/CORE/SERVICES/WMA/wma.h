@@ -1689,4 +1689,8 @@ int wma_crash_inject(tp_wma_handle wma_handle, uint32_t type,
 
 uint32_t wma_get_vht_ch_width(void);
 
+WLAN_PHY_MODE wma_chan_to_mode(uint8_t chan, ePhyChanBondState chan_offset,
+		uint8_t vht_capable, uint8_t dot11_mode);
+
+
 #endif
