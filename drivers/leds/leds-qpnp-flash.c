@@ -2388,7 +2388,7 @@ static int qpnp_flash_led_probe(struct spmi_device *spmi)
 	struct resource *flash_resource;
 	struct device_node *node, *temp;
 #ifdef CONFIG_DEBUG_FS
-	struct dentry *root, *file;
+	struct dentry *root = NULL, *file;
 #endif
 	int rc, i = 0, j, num_leds = 0;
 	u32 val;
