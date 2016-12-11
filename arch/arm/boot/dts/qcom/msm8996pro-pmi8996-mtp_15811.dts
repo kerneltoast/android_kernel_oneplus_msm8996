@@ -30,3 +30,7 @@
 		op,low-bat-capacity = <20>;
 	};
 };
+
+&pil_gpu {
+	qcom,firmware-name = "a530_zap-pro";
+};

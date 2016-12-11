@@ -15,6 +15,10 @@
 #include <soc/qcom/scm.h>
 #include <linux/pm_opp.h>
 
+#ifdef CONFIG_MACH_MSM8996_15801
+#include <soc/qcom/socinfo.h>
+#endif
+
 #include "adreno.h"
 #include "a5xx_reg.h"
 #include "adreno_a5xx.h"
@@ -2572,7 +2576,14 @@ static int a5xx_microcode_load(struct adreno_device *adreno_dev,
 
 	/* Load the zap shader firmware through PIL if its available */
 	if (adreno_dev->gpucore->zap_name && !zap_ucode_loaded) {
+#ifdef CONFIG_MACH_MSM8996_15801
+		if (socinfo_get_id() == 305) /* MSM8996pro */
+			ptr = subsystem_get("a530_zap-pro");
+		else
+			ptr = subsystem_get(adreno_dev->gpucore->zap_name);
+#else
 		ptr = subsystem_get(adreno_dev->gpucore->zap_name);
+#endif
 
 		/* Return error if the zap shader cannot be loaded */
 		if (IS_ERR_OR_NULL(ptr))
