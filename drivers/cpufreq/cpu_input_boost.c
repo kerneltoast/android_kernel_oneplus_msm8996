@@ -501,6 +501,26 @@ static void update_online_cpu_policy(void)
 	put_online_cpus();
 }
 
+static uint32_t get_valid_cpufreq(uint32_t cpu, uint32_t freq)
+{
+	struct cpufreq_frequency_table *table;
+	struct cpufreq_policy policy;
+	uint32_t index, ret;
+
+	ret = cpufreq_get_policy(&policy, cpu);
+	if (ret)
+		return freq;
+
+	table = cpufreq_frequency_get_table(cpu);
+	if (!table)
+		return freq;
+
+	cpufreq_frequency_table_target(&policy, table, freq,
+					CPUFREQ_RELATION_L, &index);
+
+	return table[index].frequency;
+}
+
 static ssize_t enabled_write(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
@@ -543,8 +563,8 @@ static ssize_t ib_freqs_write(struct device *dev,
 		return -EINVAL;
 
 	/* freq[0] is assigned to LITTLE cluster, freq[1] to big cluster */
-	ib->freq[0] = freq[0];
-	ib->freq[1] = freq[1];
+	ib->freq[0] = get_valid_cpufreq(0, freq[0]);
+	ib->freq[1] = get_valid_cpufreq(2, freq[1]);
 
 	return size;
 }
