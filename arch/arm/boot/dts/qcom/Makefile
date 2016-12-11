@@ -174,7 +174,8 @@ dtb-$(CONFIG_ARCH_MSM8909) += msm8909-pm8916-mtp.dtb \
 	msm8909w-wtp.dtb \
 	apq8009w-wtp.dtb
 
-dtb-$(CONFIG_MACH_MSM8996_15801) := msm8996-v3.0-pmi8996-mtp_15801.dtb
+dtb-$(CONFIG_MACH_MSM8996_15801) := msm8996-v3.0-pmi8996-mtp_15801.dtb \
+	msm8996pro-pmi8996-mtp_15811.dtb
 
 ifeq ($(CONFIG_ARM64),y)
 always          := $(dtb-y)
