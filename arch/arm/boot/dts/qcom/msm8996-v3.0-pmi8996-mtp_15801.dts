@@ -22,3 +22,10 @@
 	compatible = "qcom,msm8996-mtp", "qcom,msm8996", "qcom,mtp";
 	qcom,board-id = <8 0 15801 13>, <8 0 15801 14>, <8 0 15801 15>, <8 0 15801 16>;
 };
+
+&i2c_6 {
+	bq27541-battery@55 {
+		op,low-bat-voltage-uv = <3350000>;
+		op,low-bat-capacity = <10>;
+	};
+};

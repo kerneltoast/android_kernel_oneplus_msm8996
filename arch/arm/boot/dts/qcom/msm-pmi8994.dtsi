@@ -225,6 +225,36 @@
 			qcom,fastchg-current-ma = <2000>;
 			qcom,float-voltage-mv = <4320>;
 			qcom,resume-delta-mv = <200>;
+			/* ibatmax setting for different temp regions */
+			qcom,ibatmax-little-cold-ma = <300>;
+			qcom,ibatmax-cool-ma = <400>;
+			qcom,ibatmax-little-cool-ma = <700>;
+			qcom,ibatmax-pre-normal-ma = <1500>;
+			qcom,ibatmax-normal-ma = <1910>;
+			qcom,ibatmax-warm-ma = <800>;
+			/* vbatmax setting for different temp regions */
+			qcom,vbatmax-little-cold-mv = <3980>;
+			qcom,vbatmax-cool-mv = <4370>;
+			qcom,vbatmax-little-cool-mv = <4370>;
+			qcom,vbatmax-pre-normal-mv = <4370>;
+			qcom,vbatmax-normal-mv = <4370>;
+			qcom,vbatmax-warm-mv = <4080>;
+			/* vbatdet setting for different temp regions */
+			qcom,vbatdet-little-cold-mv = <3700>;
+			qcom,vbatdet-cool-mv = <4150>;
+			qcom,vbatdet-little-cool-mv = <4270>;
+			qcom,vbatdet-pre-normal-mv = <4270>;
+			qcom,vbatdet-normal-mv = <4270>;
+			qcom,vbatdet-warm-mv = <3980>;
+			/* vbatdet setting for different temp regions */
+			qcom,cold-bat-decidegc = <30>;
+			qcom,little-cold-bat-decidegc = <0>;
+			qcom,cool-bat-decidegc = <50>;
+			qcom,little-cool-bat-decidegc = <120>;
+			qcom,pre-normal-bat-decidegc = <160>;
+			qcom,warm-bat-decidegc = <450>;
+			qcom,hot-bat-decidegc = <530>;
+			qcom,cutoff-voltage-with-charger=<3250>;
 			qcom,chg-inhibit-fg;
 			qcom,dc-psy-type = "Mains";
 			qcom,dc-psy-ma = <1500>;
