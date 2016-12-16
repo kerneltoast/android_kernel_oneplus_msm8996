@@ -12,6 +12,8 @@
 
 &mdss_mdp {
 	dsi_samsung_s6e3fa3_1080p_cmd: qcom,mdss_dsi_samsung_s6e3fa3_1080p_cmd {
+		qcom,cont-splash-enabled;
+		qcom,panel-supply-entries = <&dsi_panel_pwr_supply_no_labibb>;
 		qcom,mdss-dsi-panel-name = "samsung s6e3fa3 1080p cmd mode dsi panel";
 		qcom,mdss-dsi-panel-controller = <&mdss_dsi0>;
 		qcom,mdss-dsi-panel-type = "dsi_cmd_mode";
@@ -26,7 +28,7 @@
 		qcom,mdss-dsi-v-pulse-width = <2>;
 		qcom,mdss-dsi-bpp = <24>;
 		qcom,mdss-dsi-on-command = [
-			05 01 00 00 04 00 02 11 00
+			05 01 00 00 14 00 02 11 00
 			39 01 00 00 00 00 03 F0 5A 5A
 			39 01 00 00 00 00 03 FC 5A 5A
 			39 01 00 00 00 00 02 B0 01
@@ -42,7 +44,7 @@
 			15 01 00 00 00 00 02 53 20
 			15 01 00 00 00 00 02 55 00
 			39 01 00 00 00 00 02 57 40
-			05 01 00 00 04 00 02 29 00];
+			05 01 00 00 00 00 02 29 00];
 		qcom,mdss-dsi-off-command = [
 			05 01 00 00 28 00 02 28 00
 			05 01 00 00 A0 00 02 10 00];

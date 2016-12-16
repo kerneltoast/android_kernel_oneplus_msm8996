@@ -372,24 +372,6 @@
 	qpnp,qpnp-labibb-mode = "lcd";
 };
 
-&dsi_samsung_s6e3fa3_1080p_cmd {
-	qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_dcs";
-	qcom,cont-splash-enabled;
-	qcom,panel-supply-entries = <&dsi_panel_pwr_supply_no_labibb>;
-};
-
-&dsi_samsung_s6e3fa5_1080p_cmd {
-	qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_dcs";
-	qcom,cont-splash-enabled;
-	qcom,panel-supply-entries = <&dsi_panel_pwr_supply_no_labibb>;
-};
-
-&dsi_samsung_s6e3fa5r9s_1080p_cmd {
-	qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_dcs";
-	qcom,cont-splash-enabled;
-	qcom,panel-supply-entries = <&dsi_panel_pwr_supply_no_labibb>;
-};
-
 &dsi_truly_1080_vid {
 	qcom,panel-supply-entries = <&dsi_panel_pwr_supply>;
 };
