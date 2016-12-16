@@ -11,6 +11,8 @@
  */
 
 #include "dsi-panel-samsung_s6e3fa3_1080p_cmd.dtsi"
+#include "dsi-panel-samsung_s6e3fa5_1080p_cmd.dtsi"
+#include "dsi-panel-samsung_s6e3fa5r9s_1080p_cmd.dtsi"
 #include "dsi-panel-sharp-dualmipi-wqxga-video.dtsi"
 #include "dsi-panel-nt35597-dualmipi-wqxga-video.dtsi"
 #include "dsi-panel-nt35597-dualmipi-wqxga-cmd.dtsi"
