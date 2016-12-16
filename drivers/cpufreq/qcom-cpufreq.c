@@ -319,9 +319,20 @@ static struct cpufreq_driver msm_cpufreq_driver = {
 };
 
 #ifdef CONFIG_MACH_MSM8996_15801
-#define UNDERCLK_MAX_PERFCL_MSM8996PRO	2054400
-#define UNDERCLK_MAX_PWRCL_MSM8996PRO	1593600
-#define UNDERCLK_MAX_PERFCL_MSM8996	1920000
+/*
+ * Always underclock the power cluster for both MSM8996 and MSM8996pro. There
+ * are reproducible crashes with the AnTuTu CPU multithread test when both
+ * clusters run at their stock maxfreq. Underclocking the power cluster allows
+ * MSM8996 to be stable at its perf cluster's stock maxfreq, and it allows
+ * MSM8996pro to be stable at 2150 MHz on its perf cluster.
+ *
+ * This instability occurs even with a kernel that the OEM compiled.
+ * TODO: Investigate why this happens and find a proper fix that allows use of
+ * all stock frequencies.
+ */
+#define UNDERCLK_MAX_PERFCL_MSM8996PRO	2150400
+#define UNDERCLK_MAX_PWRCL_MSM8996PRO	1516800
+#define UNDERCLK_MAX_PERFCL_MSM8996	1824000
 #define UNDERCLK_MAX_PWRCL_MSM8996	1478400
 static bool no_cpu_underclock;
 
@@ -346,6 +357,12 @@ static struct cpufreq_frequency_table *cpufreq_parse_dt(struct device *dev,
 	if (socinfo_get_id() == 305) {
 		underclk_max_perfcl = UNDERCLK_MAX_PERFCL_MSM8996PRO;
 		underclk_max_pwrcl = UNDERCLK_MAX_PWRCL_MSM8996PRO;
+		/*
+		 * TODO: Find out why higher freqs on both clusters crash
+		 * MSM8996pro during AnTuTu's CPU multithread test, even with
+		 * the OEM's kernel.
+		 */
+		no_cpu_underclock = false;
 	} else {
 		underclk_max_perfcl = UNDERCLK_MAX_PERFCL_MSM8996;
 		underclk_max_pwrcl = UNDERCLK_MAX_PWRCL_MSM8996;
@@ -381,12 +398,13 @@ static struct cpufreq_frequency_table *cpufreq_parse_dt(struct device *dev,
 		f /= 1000;
 
 #ifdef CONFIG_MACH_MSM8996_15801
-		if (!no_cpu_underclock && i > 0) {
+		if (i > 0) {
+			/* Always underclock power cluster for stability */
 			if (cpu < 2) {
 				if (ftbl[i - 1].frequency ==
 						underclk_max_pwrcl)
 					break;
-			} else {
+			} else if (!no_cpu_underclock) {
 				if (ftbl[i - 1].frequency ==
 						underclk_max_perfcl)
 					break;
