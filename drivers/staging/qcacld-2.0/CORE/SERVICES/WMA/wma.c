@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2016 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2017 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -22946,7 +22946,7 @@ static VOS_STATUS wma_enable_arp_ns_offload(tp_wma_handle wma, tpSirHostOffloadR
 	WMI_ARP_OFFLOAD_TUPLE *arp_tuple;
 	A_UINT8* buf_ptr;
 	wmi_buf_t buf;
-	int32_t len;
+	uint32_t len;
 	u_int8_t vdev_id;
 	uint32_t count = 0, num_ns_ext_tuples = 0;
 
@@ -22966,6 +22966,11 @@ static VOS_STATUS wma_enable_arp_ns_offload(tp_wma_handle wma, tpSirHostOffloadR
 
 	if (!bArpOnly)
 		count = pHostOffloadParams->num_ns_offload_count;
+
+	if (count >= SIR_MAC_NUM_TARGET_IPV6_NS_OFFLOAD_NA) {
+		vos_mem_free(pHostOffloadParams);
+		return VOS_STATUS_E_FAILURE;
+	}
 
 	len = sizeof(WMI_SET_ARP_NS_OFFLOAD_CMD_fixed_param) +
 		WMI_TLV_HDR_SIZE + // TLV place holder size for array of NS tuples
