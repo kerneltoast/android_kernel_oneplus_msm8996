@@ -234,6 +234,42 @@ static int mdss_dsi_regulator_init(struct platform_device *pdev,
 	return rc;
 }
 
+#ifdef CONFIG_MACH_MSM8996_15801
+static void vendor_lcd_power_on(struct mdss_panel_data *pdata, bool enable)
+{
+	struct mdss_dsi_ctrl_pdata *ctrl_pdata;
+	int lcd_1v8_gpio, rc;
+
+	if (pdata == NULL) {
+		pr_err("%s: Invalid input data\n", __func__);
+		return;
+	}
+
+	ctrl_pdata = container_of(pdata, typeof(*ctrl_pdata), panel_data);
+	lcd_1v8_gpio = ctrl_pdata->lcd_power_1v8_en;
+
+	if (!gpio_is_valid(lcd_1v8_gpio)) {
+		pr_err("%s:%d, lcd 1v8 en line not configured\n",
+				__func__, __LINE__);
+		return;
+	}
+
+	if (enable) {
+		rc = gpio_request(lcd_1v8_gpio, "lcd_1v8_en");
+		if (rc) {
+			pr_err("request lcd 1v8 en gpio failed, rc=%d\n", rc);
+			return;
+		}
+		gpio_set_value(lcd_1v8_gpio, 1);
+		usleep_range(2 * 1000, 2 * 1000);
+	} else {
+		gpio_set_value(lcd_1v8_gpio, 0);
+		usleep_range(5 * 1000, 5 * 1000);
+		gpio_free(lcd_1v8_gpio);
+	}
+}
+#endif
+
 static int mdss_dsi_panel_power_off(struct mdss_panel_data *pdata)
 {
 	int ret = 0;
@@ -264,6 +300,9 @@ static int mdss_dsi_panel_power_off(struct mdss_panel_data *pdata)
 		pr_err("%s: failed to disable vregs for %s\n",
 			__func__, __mdss_dsi_pm_name(DSI_PANEL_PM));
 
+#ifdef CONFIG_MACH_MSM8996_15801
+	vendor_lcd_power_on(pdata, false);
+#endif
 end:
 	return ret;
 }
@@ -289,6 +328,10 @@ static int mdss_dsi_panel_power_on(struct mdss_panel_data *pdata)
 			__func__, __mdss_dsi_pm_name(DSI_PANEL_PM));
 		return ret;
 	}
+
+#ifdef CONFIG_MACH_MSM8996_15801
+	vendor_lcd_power_on(pdata, true);
+#endif
 
 	/*
 	 * If continuous splash screen feature is enabled, then we need to
@@ -3799,6 +3842,14 @@ static int mdss_dsi_parse_gpio_params(struct platform_device *ctrl_pdev,
 	if (!gpio_is_valid(ctrl_pdata->rst_gpio))
 		pr_err("%s:%d, reset gpio not specified\n",
 						__func__, __LINE__);
+
+#ifdef CONFIG_MACH_MSM8996_15801
+	ctrl_pdata->lcd_power_1v8_en = of_get_named_gpio(ctrl_pdev->dev.of_node,
+		"qcom,lcd-vddi-en-gpio", 0);
+	if (!gpio_is_valid(ctrl_pdata->lcd_power_1v8_en))
+		pr_err("%s:%d, lcd_power_1v8_en gpio not specified\n",
+						__func__, __LINE__);
+#endif
 
 	if (pinfo->mode_gpio_state != MODE_GPIO_NOT_VALID) {
 
