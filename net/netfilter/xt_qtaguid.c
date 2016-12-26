@@ -3019,7 +3019,7 @@ static int __init qtaguid_mt_init(void)
 /*
  * TODO: allow unloading of the module.
  * For now stats are permanent.
- * Kconfig forces'y/n' and never an 'm'.
+ * Since module_exit isn't defined, this module cannot be unloaded.
  */
 
 module_init(qtaguid_mt_init);

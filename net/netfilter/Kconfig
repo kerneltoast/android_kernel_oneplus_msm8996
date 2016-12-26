@@ -1305,7 +1305,7 @@ config NETFILTER_XT_MATCH_PKTTYPE
 	  To compile it as a module, choose M here.  If unsure, say N.
 
 config NETFILTER_XT_MATCH_QTAGUID
-	bool '"quota, tag, owner" match and stats support'
+	tristate '"quota, tag, owner" match and stats support'
         depends on NETFILTER_XT_MATCH_SOCKET
 	depends on NETFILTER_XT_MATCH_OWNER=n
 	help
