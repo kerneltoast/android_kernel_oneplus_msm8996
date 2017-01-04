@@ -441,10 +441,6 @@ struct mdss_dsi_ctrl_pdata {
 	bool dcs_cmd_insert;
 	atomic_t te_irq_ready;
 
-#ifdef CONFIG_MACH_MSM8996_15801
-	int lcd_power_1v8_en;
-#endif
-
 	bool cmd_sync_wait_broadcast;
 	bool cmd_sync_wait_trigger;
 

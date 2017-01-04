@@ -355,7 +355,6 @@
 	pinctrl-1 = <&mdss_dsi_suspend &mdss_te_suspend>;
 	qcom,platform-te-gpio = <&tlmm 10 0>;
 	qcom,platform-reset-gpio = <&tlmm 8 0>;
-	qcom,lcd-vddi-en-gpio = <&tlmm 26 0>;
 };
 
 &mdss_dsi1 {
