@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014-2016, Sultanxda <sultanxda@gmail.com>
+ * Copyright (C) 2014-2017, Sultanxda <sultanxda@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -114,7 +114,8 @@ static void ib_boost_main(struct work_struct *work)
 	/* Start from CPU1 since CPU0 is always boosted */
 	for (cpu = 1; cpu < NR_CPUS; cpu++) {
 		struct cpufreq_policy policy;
-		uint32_t boost_freq, freq, ret;
+		uint32_t boost_freq, freq;
+		int ret;
 
 		ret = cpufreq_get_policy(&policy, cpu);
 		if (ret)
