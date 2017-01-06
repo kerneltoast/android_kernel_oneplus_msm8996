@@ -21,7 +21,6 @@
 #include <linux/sort.h>
 #include <linux/clk.h>
 #include <linux/bitmap.h>
-#include <linux/workqueue.h>
 
 #include <soc/qcom/event_timer.h>
 #include "mdss_fb.h"
@@ -3650,32 +3649,10 @@ int mdss_mdp_ctl_destroy(struct mdss_mdp_ctl *ctl)
 	return 0;
 }
 
-struct intf_handler_info {
-	struct work_struct work;
-	struct completion cmd_done;
-	struct list_head item;
-	int (*event_handler) (struct mdss_panel_data *pdata, int e, void *arg);
-	struct mdss_panel_data *pdata;
-	int event;
-	void *arg;
-	int rc;
-};
-
-static void intf_handler_work(struct work_struct *work)
-{
-        struct intf_handler_info *info = container_of(work,
-                struct intf_handler_info, work);
-
-	info->rc = info->event_handler(info->pdata, info->event, info->arg);
-	complete(&info->cmd_done);
-}
-
 int mdss_mdp_ctl_intf_event(struct mdss_mdp_ctl *ctl, int event, void *arg,
 	u32 flags)
 {
 	struct mdss_panel_data *pdata;
-	struct intf_handler_info *n, *info;
-	LIST_HEAD(handlers);
 	int rc = 0;
 
 	if (!ctl || !ctl->panel_data)
@@ -3695,30 +3672,11 @@ int mdss_mdp_ctl_intf_event(struct mdss_mdp_ctl *ctl, int event, void *arg,
 	pr_debug("sending ctl=%d event=%d flag=0x%x\n", ctl->num, event, flags);
 
 	do {
-		if (pdata->event_handler) {
-			info = kzalloc(sizeof(*info), GFP_KERNEL);
-			INIT_WORK(&info->work, intf_handler_work);
-			init_completion(&info->cmd_done);
-
-			info->event_handler = pdata->event_handler;
-			info->pdata = pdata;
-			info->event = event;
-			info->arg = arg;
-
-			list_add(&info->item, &handlers);
-
-			schedule_work(&info->work);
-		}
+		if (pdata->event_handler)
+			rc = pdata->event_handler(pdata, event, arg);
 		pdata = pdata->next;
-	} while (pdata && pdata->active &&
+	} while (rc == 0 && pdata && pdata->active &&
 		!(flags & CTL_INTF_EVENT_FLAG_SKIP_BROADCAST));
-
-	list_for_each_entry_safe(info, n, &handlers, item) {
-		wait_for_completion(&info->cmd_done);
-		if (!rc)
-			rc = info->rc;
-		kfree(info);
-	}
 
 	return rc;
 }
