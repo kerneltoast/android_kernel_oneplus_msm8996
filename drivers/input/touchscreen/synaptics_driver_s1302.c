@@ -1891,7 +1891,7 @@ bool s1302_is_keypad_stopped(void)
 {
 	struct synaptics_ts_data *ts = tc_g;
 
-	return ts->stop_keypad;
+	return ts ? ts->stop_keypad : false;
 }
 
 static void synaptics_input_event(struct input_handle *handle,
