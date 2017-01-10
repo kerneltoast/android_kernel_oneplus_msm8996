@@ -19,21 +19,21 @@
 #include <linux/input.h>
 #include <linux/slab.h>
 
-#define CPU_MASK(cpu)	(1U << (cpu))
+#define CPU_MASK(cpu) (1U << (cpu))
 
 /*
  * For MSM8996 (big.LITTLE). CPU0 and CPU1 are LITTLE CPUs; CPU2 and CPU3 are
  * big CPUs.
  */
-#define LITTLE_CPU_MASK	(CPU_MASK(0) | CPU_MASK(1))
-#define BIG_CPU_MASK	(CPU_MASK(2) | CPU_MASK(3))
+#define LITTLE_CPU_MASK (CPU_MASK(0) | CPU_MASK(1))
+#define BIG_CPU_MASK    (CPU_MASK(2) | CPU_MASK(3))
 
 /* Available bits for boost_policy state */
-#define DRIVER_ENABLED	(1U << 0)
-#define SCREEN_AWAKE	(1U << 1)
-#define WAKE_BOOST	(1U << 2)
-#define INPUT_BOOST	(1U << 3)
-#define INPUT_REBOOST	(1U << 4)
+#define DRIVER_ENABLED        (1U << 0)
+#define SCREEN_AWAKE          (1U << 1)
+#define WAKE_BOOST            (1U << 2)
+#define INPUT_BOOST           (1U << 3)
+#define INPUT_REBOOST         (1U << 4)
 
 /* The duration in milliseconds for the wake boost */
 #define FB_BOOST_MS (3000)
@@ -112,7 +112,7 @@ static void ib_boost_main(struct work_struct *work)
 	get_online_cpus();
 
 	/* Start from CPU1 since CPU0 is always boosted */
-	for (cpu = 1; cpu < NR_CPUS; cpu++) {
+	for (cpu = 1; cpu < num_possible_cpus(); cpu++) {
 		struct cpufreq_policy policy;
 		uint32_t boost_freq, freq;
 		int ret;
@@ -166,15 +166,14 @@ static void ib_unboost_main(struct work_struct *work)
 	struct ib_config *ib = &b->ib;
 	struct ib_pcpu *pcpu = container_of(work, typeof(*pcpu),
 						unboost_work.work);
-	uint32_t cpu = pcpu->cpu;
 
 	/* Unboost a single CPU */
-	ib->cpus_to_boost &= ~CPU_MASK(cpu);
+	ib->cpus_to_boost &= ~CPU_MASK(pcpu->cpu);
 
 	/* Update the CPU's min freq now if it's online */
 	get_online_cpus();
-	if (cpu_online(cpu))
-		cpufreq_update_policy(cpu);
+	if (cpu_online(pcpu->cpu))
+		cpufreq_update_policy(pcpu->cpu);
 	put_online_cpus();
 
 	/*
@@ -232,7 +231,7 @@ static int do_cpu_boost(struct notifier_block *nb,
 	struct cpufreq_policy *policy = data;
 	struct boost_policy *b = boost_policy_g;
 	struct ib_config *ib = &b->ib;
-	uint32_t cpu, state;
+	uint32_t state;
 
 	if (action != CPUFREQ_ADJUST)
 		return NOTIFY_OK;
@@ -253,14 +252,13 @@ static int do_cpu_boost(struct notifier_block *nb,
 		return NOTIFY_OK;
 	}
 
-	cpu = policy->cpu;
-
 	/*
 	 * Boost to policy->max if the boost frequency is higher than it. When
 	 * unboosting, set policy->min to the absolute min freq for the CPU.
 	 */
-	if (ib->cpus_to_boost & CPU_MASK(cpu))
-		policy->min = min(policy->max, get_boost_freq(ib, cpu));
+	if (ib->cpus_to_boost & CPU_MASK(policy->cpu))
+		policy->min =
+			min(policy->max, get_boost_freq(ib, policy->cpu));
 	else
 		policy->min = policy->cpuinfo.min_freq;
 
@@ -314,8 +312,8 @@ static int fb_notifier_callback(struct notifier_block *nb,
 }
 
 static struct notifier_block fb_notifier_callback_nb = {
-	.notifier_call	= fb_notifier_callback,
-	.priority	= INT_MAX,
+	.notifier_call = fb_notifier_callback,
+	.priority      = INT_MAX,
 };
 
 static void cpu_ib_input_event(struct input_handle *handle, unsigned int type,
@@ -338,7 +336,7 @@ static void cpu_ib_input_event(struct input_handle *handle, unsigned int type,
 		set_boost_bit(b, INPUT_REBOOST);
 		queue_work(b->wq, &ib->reboost_work);
 		return;
-  	}
+	}
 
 	set_boost_bit(b, INPUT_BOOST);
 	queue_work(b->wq, &ib->boost_work);
@@ -409,11 +407,11 @@ static const struct input_device_id cpu_ib_ids[] = {
 };
 
 static struct input_handler cpu_ib_input_handler = {
-	.event		= cpu_ib_input_event,
-	.connect	= cpu_ib_input_connect,
-	.disconnect	= cpu_ib_input_disconnect,
-	.name		= "cpu_ib_handler",
-	.id_table	= cpu_ib_ids,
+	.event      = cpu_ib_input_event,
+	.connect    = cpu_ib_input_connect,
+	.disconnect = cpu_ib_input_disconnect,
+	.name       = "cpu_ib_handler",
+	.id_table   = cpu_ib_ids,
 };
 
 /* Make sure calls to this are surrounded by get/put_online_cpus() */
@@ -506,7 +504,8 @@ static uint32_t get_valid_cpufreq(uint32_t cpu, uint32_t freq)
 {
 	struct cpufreq_frequency_table *table;
 	struct cpufreq_policy policy;
-	uint32_t index, ret;
+	uint32_t index;
+	int ret;
 
 	ret = cpufreq_get_policy(&policy, cpu);
 	if (ret)
@@ -531,8 +530,8 @@ static ssize_t enabled_write(struct device *dev,
 	uint32_t data;
 	int ret;
 
-	ret = sscanf(buf, "%u", &data);
-	if (ret != 1)
+	ret = kstrtou32(buf, 10, &data);
+	if (ret)
 		return -EINVAL;
 
 	if (data) {
@@ -575,17 +574,17 @@ static ssize_t ib_duration_ms_write(struct device *dev,
 {
 	struct boost_policy *b = boost_policy_g;
 	struct ib_config *ib = &b->ib;
-	uint32_t ms;
+	uint32_t data;
 	int ret;
 
-	ret = sscanf(buf, "%u", &ms);
-	if (ret != 1)
+	ret = kstrtou32(buf, 10, &data);
+	if (ret)
 		return -EINVAL;
 
-	if (!ms)
+	if (!data)
 		return -EINVAL;
 
-	ib->duration_ms = ms;
+	ib->duration_ms = data;
 
 	return size;
 }
@@ -661,10 +660,8 @@ static struct boost_policy *alloc_boost_policy(void)
 	struct boost_policy *b;
 
 	b = kzalloc(sizeof(*b), GFP_KERNEL);
-	if (!b) {
-		pr_err("Failed to allocate boost policy\n");
+	if (!b)
 		return NULL;
-	}
 
 	b->wq = alloc_workqueue("cpu_ib_wq", WQ_HIGHPRI, 0);
 	if (!b->wq) {
@@ -694,8 +691,10 @@ static int __init cpu_ib_init(void)
 	int ret;
 
 	b = alloc_boost_policy();
-	if (!b)
+	if (!b) {
+		pr_err("Failed to allocate boost policy\n");
 		return -ENOMEM;
+	}
 
 	ret = input_register_handler(&cpu_ib_input_handler);
 	if (ret) {
@@ -717,6 +716,7 @@ static int __init cpu_ib_init(void)
 
 	for_each_possible_cpu(cpu) {
 		struct ib_pcpu *pcpu = per_cpu_ptr(b->ib.boost_info, cpu);
+
 		pcpu->cpu = cpu;
 		INIT_DELAYED_WORK(&pcpu->unboost_work, ib_unboost_main);
 	}
