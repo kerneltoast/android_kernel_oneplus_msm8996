@@ -214,9 +214,6 @@ static void fb_boost_main(struct work_struct *work)
 	/* Immediately boost the online CPUs */
 	update_online_cpu_policy();
 
-	/* Enable sched boost (big CPUs are favored for scheduling) */
-	sched_set_boost(1);
-
 	queue_delayed_work(b->wq, &fb->unboost_work,
 				msecs_to_jiffies(FB_BOOST_MS));
 }
@@ -506,13 +503,6 @@ static void clear_boost_bit(struct boost_policy *b, uint32_t state)
 static void unboost_all_cpus(struct boost_policy *b)
 {
 	struct ib_config *ib = &b->ib;
-	uint32_t state;
-
-	state = get_boost_state(b);
-
-	/* Disable sched boost if it's enabled */
-	if (state & WAKE_BOOST)
-		sched_set_boost(0);
 
 	/* Clear wake boost bit */
 	clear_boost_bit(b, WAKE_BOOST);
