@@ -100,6 +100,14 @@ int post_n1_div_set_div(struct div_clk *clk, int div)
 	struct mdss_pll_resources *pll = clk->priv;
 	struct dsi_pll_db *pdb;
 	struct dsi_pll_output *pout;
+	int rc;
+	u32 n1div = 0;
+
+	rc = mdss_pll_resource_enable(pll, true);
+	if (rc) {
+		pr_err("Failed to enable mdss dsi pll resources\n");
+		return rc;
+	}
 
 	pdb = (struct dsi_pll_db *)pll->priv;
 	pout = &pdb->out;
@@ -117,10 +125,16 @@ int post_n1_div_set_div(struct div_clk *clk, int div)
 	pout->pll_postdiv = DSI_PLL_DEFAULT_POSTDIV;
 	pout->pll_n1div  = div;
 
+	n1div = MDSS_PLL_REG_R(pll->pll_base, DSIPHY_CMN_CLK_CFG0);
+	n1div &= ~0xf;
+	n1div |= (div & 0xf);
+	MDSS_PLL_REG_W(pll->pll_base, DSIPHY_CMN_CLK_CFG0, n1div);
+	/* ensure n1 divider is programed */
+	wmb();
 	pr_debug("ndx=%d div=%d postdiv=%x n1div=%x\n",
 			pll->index, div, pout->pll_postdiv, pout->pll_n1div);
 
-	/* registers commited at pll_db_commit_8996() */
+	mdss_pll_resource_enable(pll, false);
 
 	return 0;
 }
@@ -689,6 +703,10 @@ static void pll_db_commit_8996(struct mdss_pll_resources *pll,
 
 	MDSS_PLL_REG_W(pll_base, DSIPHY_CMN_CTRL_1, 0);
 	wmb();	/* make sure register committed */
+
+	MDSS_PLL_REG_W(pll_base, DSIPHY_PLL_PLL_VCO_TUNE, 0);
+	MDSS_PLL_REG_W(pll_base, DSIPHY_PLL_KVCO_CODE, 0);
+	wmb(); /* make sure register committed */
 
 	data = pdb->in.dsiclk_sel; /* set dsiclk_sel = 1  */
 	MDSS_PLL_REG_W(pll_base, DSIPHY_CMN_CLK_CFG1, data);
