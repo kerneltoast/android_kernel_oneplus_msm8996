@@ -134,13 +134,13 @@ struct test_header {
 #define Mgestrue            12  // M
 #define Wgestrue            13  // W
 
-#define KEY_DOUBLE_TAP          KEY_WAKEUP
-#define KEY_GESTURE_CIRCLE      250
-#define KEY_GESTURE_TWO_SWIPE	251
-#define KEY_GESTURE_DOWN_ARROW  252
-#define KEY_GESTURE_LEFT_V      253
-#define KEY_GESTURE_RIGHT_V     254
-#define KEY_GESTURE_UP_ARROW    255
+#define KEY_DOUBLE_TAP				KEY_WAKEUP
+#define KEY_GESTURE_CIRCLE			250
+#define KEY_GESTURE_TWO_SWIPE		251
+#define KEY_GESTURE_DOWN_ARROW		252
+#define KEY_GESTURE_LEFT_V			253
+#define KEY_GESTURE_RIGHT_V			254
+#define KEY_GESTURE_UP_ARROW		255
 
 #define BIT0 (0x1 << 0)
 #define BIT1 (0x1 << 1)
@@ -151,21 +151,21 @@ struct test_header {
 #define BIT6 (0x1 << 6)
 #define BIT7 (0x1 << 7)
 
-int LeftVee_gesture = 0; //">"
-int RightVee_gesture = 0; //"<"
-int DouSwip_gesture = 0; // "||"
-int Circle_gesture = 0; // "O"
-int UpVee_gesture = 0; //"V"
-int DownVee_gesture = 0; //"^"
-int DouTap_gesture = 0; //"double tap"
+int left_arrow_enable = 0; //">"
+int right_arrow_enable = 0; //"<"
+int double_swipe_enable = 0; // "||"
+int letter_o_enable = 0; // "O"
+int down_arrow_enable = 0; //"V"
+int up_arrow_enable = 0; //"^"
+int double_tap_enable = 0; //"double tap"
 
-int Left2RightSwip_gesture=0;//"(-->)"
-int Right2LeftSwip_gesture=0;//"(<--)"
-int Up2DownSwip_gesture =0;//"up to down |"
-int Down2UpSwip_gesture =0;//"down to up |"
+int right_swipe_enable=0;//"(-->)"
+int left_swipe_enable=0;//"(<--)"
+int down_swipe_enable =0;//"up to down |"
+int up_swipe_enable =0;//"down to up |"
 
-int Wgestrue_gesture =0;//"(W)"
-int Mgestrue_gesture =0;//"(M)"
+int letter_w_enable =0;//"(W)"
+int letter_m_enable =0;//"(M)"
 static int gesture_switch = 0;
 #endif
 
@@ -1228,7 +1228,8 @@ static void gesture_judge(struct synaptics_ts_data *ts)
 			break;
 	}
 
-	TPD_ERR("detect %s gesture\n", gesture == DouTap ? "(double tap)" :
+	TPD_ERR("detect %s gesture\n",
+			gesture == DouTap ? "(double tap)" :
 			gesture == UpVee ? "(V)" :
 			gesture == DownVee ? "(^)" :
 			gesture == LeftVee ? "(>)" :
@@ -1243,12 +1244,12 @@ static void gesture_judge(struct synaptics_ts_data *ts)
 			gesture == Wgestrue ? "(W)" : "[unknown]");
 	synaptics_get_coordinate_point(ts);
 
-    TPD_DEBUG("gesture suport LeftVee:%d RightVee:%d DouSwip:%d Circle:%d UpVee:%d DownVee:%d DouTap:%d\n",\
-        LeftVee_gesture,RightVee_gesture,DouSwip_gesture,Circle_gesture,UpVee_gesture,DownVee_gesture,DouTap_gesture);
-	if((gesture == DouTap && DouTap_gesture)||(gesture == RightVee && RightVee_gesture)\
-        ||(gesture == LeftVee && LeftVee_gesture)||(gesture == UpVee && UpVee_gesture)\
-		||(gesture == DownVee && DownVee_gesture)\
-        ||(gesture == Circle && Circle_gesture)||(gesture == DouSwip && DouSwip_gesture)){
+    TPD_DEBUG("gesture suport LeftVee:%d RightVee:%d DouSwip:%d Circle:%d UpVee:%d DownVee:%d DouTap:%d\n",
+        left_arrow_enable,right_arrow_enable,double_swipe_enable,letter_o_enable,down_arrow_enable,up_arrow_enable,double_tap_enable);
+	if ((gesture == DouTap && double_tap_enable) || (gesture == RightVee && right_arrow_enable)
+        || (gesture == LeftVee && left_arrow_enable) || (gesture == UpVee && down_arrow_enable)
+		|| (gesture == DownVee && up_arrow_enable) || (gesture == Circle && letter_o_enable)
+		|| (gesture == DouSwip && double_swipe_enable)) {
 		gesture_upload = gesture;
 		if (!ts->gestures_disabled || !q6voice_voice_call_active()) {
 			input_report_key(ts->input_dev, keyCode, 1);
@@ -1602,16 +1603,16 @@ static ssize_t tp_gesture_write_func(struct file *file, const char __user *buffe
 	}
 	TPD_ERR("%s write [0x%x]\n",__func__,buf[0]);
 
-    UpVee_gesture = (buf[0] & BIT0)?1:0; //"V"
-    DouSwip_gesture = (buf[0] & BIT1)?1:0;//"||"
-    DownVee_gesture = (buf[0] & BIT2)?1:0; //"^"
-    LeftVee_gesture = (buf[0] & BIT3)?1:0; //">"
-    RightVee_gesture = (buf[0] & BIT4)?1:0;//"<"
-    Circle_gesture = (buf[0] & BIT6)?1:0; //"O"
-    DouTap_gesture = (buf[0] & BIT7)?1:0; //double tap
+    down_arrow_enable = (buf[0] & BIT0)?1:0; //"V"
+    double_swipe_enable = (buf[0] & BIT1)?1:0;//"||"
+    up_arrow_enable = (buf[0] & BIT2)?1:0; //"^"
+    left_arrow_enable = (buf[0] & BIT3)?1:0; //">"
+    right_arrow_enable = (buf[0] & BIT4)?1:0;//"<"
+    letter_o_enable = (buf[0] & BIT6)?1:0; //"O"
+    double_tap_enable = (buf[0] & BIT7)?1:0; //double tap
 
-	if(DouTap_gesture||Circle_gesture||UpVee_gesture||DownVee_gesture||LeftVee_gesture\
-        ||RightVee_gesture||DouSwip_gesture)
+	if(double_tap_enable||letter_o_enable||down_arrow_enable||up_arrow_enable||left_arrow_enable\
+        ||right_arrow_enable||double_swipe_enable)
 	{
 		ts->gesture_enable = 1;
 	}
@@ -1686,177 +1687,10 @@ static ssize_t gesture_switch_write_func(struct file *file, const char __user *p
 
 static void gesture_enable(struct synaptics_ts_data *ts)
 {
-	ts->gesture_enable = DouTap_gesture || Circle_gesture || UpVee_gesture || DownVee_gesture
-                LeftVee_gesture || RightVee_gesture || DouSwip_gesture ? 1 : 0;
+	ts->gesture_enable = double_tap_enable || letter_o_enable || down_arrow_enable || up_arrow_enable
+			|| left_arrow_enable || right_arrow_enable || double_swipe_enable ? 1 : 0;
 }
 
-static ssize_t double_tap_enable_read_func(struct file *file, char __user *user_buf, size_t count, loff_t *ppos)
-{
-	int ret = 0;
-	char page[PAGESIZE];
-
-	ret = sprintf(page, "%d\n", DouTap_gesture);
-	ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page));
-
-	return ret;
-}
-
-static ssize_t double_tap_enable_write_func(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
-{
-	int ret = 0;
-	struct synaptics_ts_data *ts = ts_g;
-
-	sscanf(buf, "%d", &ret);
-
-	DouTap_gesture = ret;
-	gesture_enable(ts);
-
-	return count;
-}
-
-static ssize_t double_swipe_enable_read_func(struct file *file, char __user *user_buf, size_t count, loff_t *ppos)
-{
-	int ret = 0;
-	char page[PAGESIZE];
-
-	ret = sprintf(page, "%d\n", DouSwip_gesture);
-	ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page));
-
-	return ret;
-}
-
-static ssize_t double_swipe_enable_write_func(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
-{
-	int ret = 0;
-	struct synaptics_ts_data *ts = ts_g;
-
-	sscanf(buf, "%d", &ret);
-
-	DouSwip_gesture = ret;
-	gesture_enable(ts);
-
-	return count;
-}
-
-static ssize_t letter_o_enable_read_func(struct file *file, char __user *user_buf, size_t count, loff_t *ppos)
-{
-	int ret = 0;
-	char page[PAGESIZE];
-
-	ret = sprintf(page, "%d\n", Circle_gesture);
-	ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page));
-
-	return ret;
-}
-
-static ssize_t letter_o_enable_write_func(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
-{
-	int ret = 0;
-	struct synaptics_ts_data *ts = ts_g;
-
-	sscanf(buf, "%d", &ret);
-
-	Circle_gesture = ret;
-	gesture_enable(ts);
-
-	return count;
-}
-
-static ssize_t left_arrow_enable_read_func(struct file *file, char __user *user_buf, size_t count, loff_t *ppos)
-{
-	int ret = 0;
-	char page[PAGESIZE];
-
-	ret = sprintf(page, "%d\n", LeftVee_gesture);
-	ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page));
-
-	return ret;
-}
-
-static ssize_t left_arrow_enable_write_func(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
-{
-	int ret = 0;
-	struct synaptics_ts_data *ts = ts_g;
-
-	sscanf(buf, "%d", &ret);
-
-	LeftVee_gesture = ret;
-	gesture_enable(ts);
-
-	return count;
-}
-
-static ssize_t right_arrow_enable_read_func(struct file *file, char __user *user_buf, size_t count, loff_t *ppos)
-{
-	int ret = 0;
-	char page[PAGESIZE];
-
-	ret = sprintf(page, "%d\n", RightVee_gesture);
-	ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page));
-
-	return ret;
-}
-
-static ssize_t right_arrow_enable_write_func(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
-{
-	int ret = 0;
-	struct synaptics_ts_data *ts = ts_g;
-
-	sscanf(buf, "%d", &ret);
-
-	RightVee_gesture = ret;
-	gesture_enable(ts);
-
-	return count;
-}
-
-static ssize_t up_arrow_enable_read_func(struct file *file, char __user *user_buf, size_t count, loff_t *ppos)
-{
-	int ret = 0;
-	char page[PAGESIZE];
-
-	ret = sprintf(page, "%d\n", DownVee_gesture);
-	ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page));
-
-	return ret;
-}
-
-static ssize_t up_arrow_enable_write_func(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
-{
-	int ret = 0;
-	struct synaptics_ts_data *ts = ts_g;
-
-	sscanf(buf, "%d", &ret);
-
-	DownVee_gesture = ret;
-	gesture_enable(ts);
-
-	return count;
-}
-
-static ssize_t down_arrow_enable_read_func(struct file *file, char __user *user_buf, size_t count, loff_t *ppos)
-{
-	int ret = 0;
-	char page[PAGESIZE];
-
-	ret = sprintf(page, "%d\n", UpVee_gesture);
-	ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page));
-
-	return ret;
-}
-
-static ssize_t down_arrow_enable_write_func(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
-{
-	int ret = 0;
-	struct synaptics_ts_data *ts = ts_g;
-
-	sscanf(buf, "%d", &ret);
-
-	UpVee_gesture = ret;
-	gesture_enable(ts);
-
-	return count;
-}
 // chenggang.li@BSP.TP modified for oem 2014-08-08 create node
 /******************************start****************************/
 static const struct file_operations tp_gesture_proc_fops = {
@@ -1879,54 +1713,38 @@ static const struct file_operations coordinate_proc_fops = {
 	.owner = THIS_MODULE,
 };
 
-static const struct file_operations double_tap_enable_proc_fops = {
-	.write = double_tap_enable_write_func,
-	.read =  double_tap_enable_read_func,
-	.open = simple_open,
-	.owner = THIS_MODULE,
+#define TS_ENABLE_FOPS(type) \
+static ssize_t type##_read_func(struct file *file, char __user *user_buf, size_t count, loff_t *ppos) \
+{ \
+	int ret = 0; \
+	char page[PAGESIZE]; \
+	ret = sprintf(page, "%d\n", type##_enable); \
+	ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page)); \
+	return ret; \
+} \
+static ssize_t type##_write_func(struct file *file, const char __user *buf, size_t count, loff_t *ppos) \
+{ \
+	int ret = 0; \
+	struct synaptics_ts_data *ts = ts_g; \
+	sscanf(buf, "%d", &ret); \
+	type##_enable = ret; \
+	gesture_enable(ts); \
+	return count; \
+} \
+static const struct file_operations type##_proc_fops = { \
+	.write = type##_write_func, \
+	.read =  type##_read_func, \
+	.open = simple_open, \
+	.owner = THIS_MODULE, \
 };
 
-static const struct file_operations double_swipe_enable_proc_fops = {
-	.write = double_swipe_enable_write_func,
-	.read =  double_swipe_enable_read_func,
-	.open = simple_open,
-	.owner = THIS_MODULE,
-};
-
-static const struct file_operations letter_o_enable_proc_fops = {
-	.write = letter_o_enable_write_func,
-	.read =  letter_o_enable_read_func,
-	.open = simple_open,
-	.owner = THIS_MODULE,
-};
-
-static const struct file_operations left_arrow_enable_proc_fops = {
-	.write = left_arrow_enable_write_func,
-	.read =  left_arrow_enable_read_func,
-	.open = simple_open,
-	.owner = THIS_MODULE,
-};
-
-static const struct file_operations right_arrow_enable_proc_fops = {
-	.write = right_arrow_enable_write_func,
-	.read =  right_arrow_enable_read_func,
-	.open = simple_open,
-	.owner = THIS_MODULE,
-};
-
-static const struct file_operations up_arrow_enable_proc_fops = {
-	.write = up_arrow_enable_write_func,
-	.read =  up_arrow_enable_read_func,
-	.open = simple_open,
-	.owner = THIS_MODULE,
-};
-
-static const struct file_operations down_arrow_enable_proc_fops = {
-	.write = down_arrow_enable_write_func,
-	.read =  down_arrow_enable_read_func,
-	.open = simple_open,
-	.owner = THIS_MODULE,
-};
+TS_ENABLE_FOPS(double_swipe);
+TS_ENABLE_FOPS(double_tap);
+TS_ENABLE_FOPS(down_arrow);
+TS_ENABLE_FOPS(left_arrow);
+TS_ENABLE_FOPS(letter_o);
+TS_ENABLE_FOPS(right_arrow);
+TS_ENABLE_FOPS(up_arrow);
 #endif
 static int page ,address,block;
 static ssize_t synap_read_address(struct file *file, char __user *user_buf, size_t count, loff_t *ppos)
@@ -3325,43 +3143,43 @@ static int init_synaptics_proc(void)
 		TPD_ERR("Couldn't create coordinate\n");
 	}
 
-	prEntry_tmp = proc_create("double_tap_enable", 0666, prEntry_tp, &double_tap_enable_proc_fops);
+	prEntry_tmp = proc_create("double_tap_enable", 0666, prEntry_tp, &double_tap_proc_fops);
 	if(prEntry_tmp == NULL){
 		ret = -ENOMEM;
 		TPD_ERR("Couldn't create double_tap_enable\n");
 	}
 
-	prEntry_tmp = proc_create("double_swipe_enable", 0666, prEntry_tp, &double_swipe_enable_proc_fops);
+	prEntry_tmp = proc_create("double_swipe_enable", 0666, prEntry_tp, &double_swipe_proc_fops);
 	if(prEntry_tmp == NULL){
 		ret = -ENOMEM;
 		TPD_ERR("Couldn't create double_swipe_enable\n");
 	}
 
-	prEntry_tmp = proc_create("letter_o_enable", 0666, prEntry_tp, &letter_o_enable_proc_fops);
+	prEntry_tmp = proc_create("letter_o_enable", 0666, prEntry_tp, &letter_o_proc_fops);
 	if(prEntry_tmp == NULL){
 		ret = -ENOMEM;
 		TPD_ERR("Couldn't create letter_o_enable\n");
 	}
 
-	prEntry_tmp = proc_create("left_arrow_enable", 0666, prEntry_tp, &left_arrow_enable_proc_fops);
+	prEntry_tmp = proc_create("left_arrow_enable", 0666, prEntry_tp, &left_arrow_proc_fops);
 	if(prEntry_tmp == NULL){
 		ret = -ENOMEM;
 		TPD_ERR("Couldn't create left_arrow_enable\n");
 	}
 
-	prEntry_tmp = proc_create("right_arrow_enable", 0666, prEntry_tp, &right_arrow_enable_proc_fops);
+	prEntry_tmp = proc_create("right_arrow_enable", 0666, prEntry_tp, &right_arrow_proc_fops);
 	if(prEntry_tmp == NULL){
 		ret = -ENOMEM;
 		TPD_ERR("Couldn't create right_arrow_enable\n");
 	}
 
-	prEntry_tmp = proc_create("up_arrow_enable", 0666, prEntry_tp, &up_arrow_enable_proc_fops);
+	prEntry_tmp = proc_create("up_arrow_enable", 0666, prEntry_tp, &up_arrow_proc_fops);
 	if(prEntry_tmp == NULL){
 		ret = -ENOMEM;
 		TPD_ERR("Couldn't create up_arrow_enable\n");
 	}
 
-	prEntry_tmp = proc_create("down_arrow_enable", 0666, prEntry_tp, &down_arrow_enable_proc_fops);
+	prEntry_tmp = proc_create("down_arrow_enable", 0666, prEntry_tp, &down_arrow_proc_fops);
 	if(prEntry_tmp == NULL){
 		ret = -ENOMEM;
 		TPD_ERR("Couldn't create down_arrow_enable\n");
