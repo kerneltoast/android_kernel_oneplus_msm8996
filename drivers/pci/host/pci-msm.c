@@ -4778,6 +4778,9 @@ out:
 		uncorr_val || ep_uncorr_val)
 		PCIE_DBG(dev, "RC's PCIE20_AER_ROOT_ERR_STATUS_REG:0x%x\n",
 				rc_err_status);
+
+	panic("PCIe: RC%d received an AER.\n", dev->rc_idx);
+
 	msm_pcie_write_reg_field(dev->dm_core,
 			PCIE20_AER_UNCORR_ERR_STATUS_REG,
 			0x3fff031, 0x3fff031);
