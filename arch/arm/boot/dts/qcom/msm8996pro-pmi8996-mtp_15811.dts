@@ -34,3 +34,7 @@
 &pil_gpu {
 	qcom,firmware-name = "a530_zap-pro";
 };
+
+&msm_vidc {
+	qcom,firmware-name = "venus-pro";
+};
