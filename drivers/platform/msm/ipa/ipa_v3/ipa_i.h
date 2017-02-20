@@ -2457,6 +2457,6 @@ int ipa3_restore_suspend_handler(void);
 int ipa3_inject_dma_task_for_gsi(void);
 void ipa3_inc_acquire_wakelock(void);
 void ipa3_dec_release_wakelock(void);
-int ipa3_load_fws(const struct firmware *firmware);
+int ipa3_load_fws(const struct firmware *firmware, phys_addr_t gsi_mem_base);
 int ipa3_register_ipa_ready_cb(void (*ipa_ready_cb)(void *), void *user_data);
 #endif /* _IPA3_I_H_ */
