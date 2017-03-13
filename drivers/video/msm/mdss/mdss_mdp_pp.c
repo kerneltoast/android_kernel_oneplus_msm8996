@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2016, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2017, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -500,8 +500,9 @@ static void mdss_mdp_hist_irq_set_mask(u32 irq);
 static void mdss_mdp_hist_irq_clear_mask(u32 irq);
 static void mdss_mdp_hist_intr_notify(u32 disp);
 static int mdss_mdp_panel_default_dither_config(struct msm_fb_data_type *mfd,
-					u32 panel_bpp);
-static int mdss_mdp_limited_lut_igc_config(struct msm_fb_data_type *mfd);
+						u32 panel_bpp, bool enable);
+static int mdss_mdp_limited_lut_igc_config(struct msm_fb_data_type *mfd,
+					bool enable);
 static inline int pp_validate_dspp_mfd_block(struct msm_fb_data_type *mfd,
 					int block);
 static int pp_mfd_release_all(struct msm_fb_data_type *mfd);
@@ -2583,7 +2584,8 @@ int mdss_mdp_pp_overlay_init(struct msm_fb_data_type *mfd)
 }
 
 int mdss_mdp_pp_default_overlay_config(struct msm_fb_data_type *mfd,
-					struct mdss_panel_data *pdata)
+					struct mdss_panel_data *pdata,
+					bool enable)
 {
 	int ret = 0;
 
@@ -2592,13 +2594,14 @@ int mdss_mdp_pp_default_overlay_config(struct msm_fb_data_type *mfd,
 		return -EINVAL;
 	}
 
-	ret = mdss_mdp_panel_default_dither_config(mfd, pdata->panel_info.bpp);
+	ret = mdss_mdp_panel_default_dither_config(mfd, pdata->panel_info.bpp,
+						enable);
 	if (ret)
 		pr_err("Unable to configure default dither on fb%d ret %d\n",
 			mfd->index, ret);
 
 	if (pdata->panel_info.type == DTV_PANEL) {
-		ret = mdss_mdp_limited_lut_igc_config(mfd);
+		ret = mdss_mdp_limited_lut_igc_config(mfd, enable);
 		if (ret)
 			pr_err("Unable to configure DTV panel default IGC ret %d\n",
 				ret);
@@ -3288,7 +3291,8 @@ static void pp_update_igc_lut(struct mdp_igc_lut_data *cfg,
 		writel_relaxed((cfg->c2_data[i] & 0xFFF) | data, addr);
 }
 
-static int mdss_mdp_limited_lut_igc_config(struct msm_fb_data_type *mfd)
+static int mdss_mdp_limited_lut_igc_config(struct msm_fb_data_type *mfd,
+					bool enable)
 {
 	int ret = 0;
 	u32 copyback = 0;
@@ -3313,7 +3317,10 @@ static int mdss_mdp_limited_lut_igc_config(struct msm_fb_data_type *mfd)
 		pr_err("failed to get default IGC version, ret %d\n", ret);
 
 	config.version = igc_version.version_info;
-	config.ops = MDP_PP_OPS_WRITE | MDP_PP_OPS_ENABLE;
+	if (enable)
+		config.ops = MDP_PP_OPS_WRITE | MDP_PP_OPS_ENABLE;
+	else
+		config.ops = MDP_PP_OPS_DISABLE;
 	config.block = (mfd->index) + MDP_LOGICAL_BLOCK_DISP_0;
 	switch (config.version) {
 	case mdp_igc_v1_7:
@@ -3904,7 +3911,7 @@ enhist_config_exit:
 }
 
 static int mdss_mdp_panel_default_dither_config(struct msm_fb_data_type *mfd,
-					u32 panel_bpp)
+					u32 panel_bpp, bool enable)
 {
 	int ret = 0;
 	struct mdp_dither_cfg_data dither;
@@ -3929,29 +3936,32 @@ static int mdss_mdp_panel_default_dither_config(struct msm_fb_data_type *mfd,
 		return ret;
 	}
 	dither.version = dither_version.version_info;
+	dither.cfg_payload = NULL;
 
-	switch (panel_bpp) {
-	case 18:
-		dither.flags = MDP_PP_OPS_ENABLE | MDP_PP_OPS_WRITE;
-		switch (dither.version) {
-		case mdp_dither_v1_7:
-			dither_data.g_y_depth = 2;
-			dither_data.r_cr_depth = 2;
-			dither_data.b_cb_depth = 2;
-			dither.cfg_payload = &dither_data;
+	if (enable) {
+		switch (panel_bpp) {
+		case 18:
+			dither.flags = MDP_PP_OPS_ENABLE | MDP_PP_OPS_WRITE;
+			switch (dither.version) {
+			case mdp_dither_v1_7:
+				dither_data.g_y_depth = 2;
+				dither_data.r_cr_depth = 2;
+				dither_data.b_cb_depth = 2;
+				dither.cfg_payload = &dither_data;
+				break;
+			case mdp_pp_legacy:
+			default:
+				dither.g_y_depth = 2;
+				dither.r_cr_depth = 2;
+				dither.b_cb_depth = 2;
+				dither.cfg_payload = NULL;
+				break;
+			}
 			break;
-		case mdp_pp_legacy:
 		default:
-			dither.g_y_depth = 2;
-			dither.r_cr_depth = 2;
-			dither.b_cb_depth = 2;
 			dither.cfg_payload = NULL;
 			break;
 		}
-		break;
-	default:
-		dither.cfg_payload = NULL;
-		break;
 	}
 	ret = mdss_mdp_dither_config(mfd, &dither, NULL, true);
 	if (ret)
