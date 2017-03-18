@@ -1970,4 +1970,8 @@ void
 hdd_get_ibss_peer_info_cb(v_VOID_t *pUserData,
                                     tSirPeerInfoRspParams *pPeerInfo);
 
+
+void hdd_chip_pwr_save_fail_detected_cb(void *hddctx,
+					struct chip_pwr_save_fail_detected_params
+					*data);
 #endif    // end #if !defined( WLAN_HDD_MAIN_H )

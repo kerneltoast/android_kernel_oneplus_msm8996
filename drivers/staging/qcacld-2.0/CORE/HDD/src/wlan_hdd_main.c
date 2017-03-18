@@ -14762,6 +14762,10 @@ int hdd_wlan_startup(struct device *dev, v_VOID_t *hif_sc)
    else
       hddLog(LOG1, FL("Registered IPv4 notifier"));
 
+   /* set chip power save failure detected callback */
+   sme_set_chip_pwr_save_fail_cb(pHddCtx->hHal,
+                                 hdd_chip_pwr_save_fail_detected_cb);
+
    ol_pktlog_init(hif_sc);
    hdd_runtime_suspend_init(pHddCtx);
    pHddCtx->isLoadInProgress = FALSE;

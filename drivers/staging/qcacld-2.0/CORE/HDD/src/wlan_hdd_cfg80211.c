@@ -1340,6 +1340,10 @@ static const struct nl80211_vendor_cmd_info wlan_hdd_cfg80211_vendor_events[] =
         .vendor_id = QCA_NL80211_VENDOR_ID,
         .subcmd = QCA_NL80211_VENDOR_SUBCMD_MONITOR_RSSI
     },
+    [QCA_NL80211_VENDOR_SUBCMD_PWR_SAVE_FAIL_DETECTED_INDEX] = {
+        .vendor_id = QCA_NL80211_VENDOR_ID,
+        .subcmd = QCA_NL80211_VENDOR_SUBCMD_CHIP_PWRSAVE_FAILURE
+    }
 };
 
 /**
@@ -2759,6 +2763,11 @@ static int __wlan_hdd_cfg80211_extscan_set_bssid_hotlist(struct wiphy *wiphy,
     }
     pReqMsg->numAp = nla_get_u32(
               tb[QCA_WLAN_VENDOR_ATTR_EXTSCAN_BSSID_HOTLIST_PARAMS_NUM_AP]);
+    if (pReqMsg->numAp > WLAN_EXTSCAN_MAX_HOTLIST_APS) {
+        hddLog(LOGE, FL("Number of AP: %u exceeds max: %u"),
+               pReqMsg->numAp, WLAN_EXTSCAN_MAX_HOTLIST_APS);
+        goto fail;
+    }
     hddLog(LOG1, FL("Number of AP %d"), pReqMsg->numAp);
 
     /* Parse and fetch lost ap sample size */
@@ -2777,6 +2786,11 @@ static int __wlan_hdd_cfg80211_extscan_set_bssid_hotlist(struct wiphy *wiphy,
     i = 0;
     nla_for_each_nested(apTh,
                 tb[QCA_WLAN_VENDOR_ATTR_EXTSCAN_AP_THRESHOLD_PARAM], rem) {
+        if (i == pReqMsg->numAp) {
+            hddLog(LOGW, FL("Ignoring excess AP"));
+            break;
+        }
+
         if (nla_parse(tb2, QCA_WLAN_VENDOR_ATTR_EXTSCAN_SUBCMD_CONFIG_PARAM_MAX,
                 nla_data(apTh), nla_len(apTh),
                 wlan_hdd_extscan_config_policy)) {
@@ -2813,6 +2827,12 @@ static int __wlan_hdd_cfg80211_extscan_set_bssid_hotlist(struct wiphy *wiphy,
             tb2[QCA_WLAN_VENDOR_ATTR_EXTSCAN_AP_THRESHOLD_PARAM_RSSI_HIGH]);
         hddLog(LOG1, FL("RSSI High %d"), pReqMsg->ap[i].high);
         i++;
+    }
+
+    if (i < pReqMsg->numAp) {
+        hddLog(LOGW, FL("Number of AP %u less than expected %u"),
+               i, pReqMsg->numAp);
+        pReqMsg->numAp = i;
     }
 
     context = &pHddCtx->ext_scan_context;
@@ -3006,8 +3026,12 @@ __wlan_hdd_cfg80211_extscan_set_ssid_hotlist(struct wiphy *wiphy,
                 ssid_length = nla_strlcpy(ssid_string,
 			   tb2[PARAM_SSID],
 			   sizeof(ssid_string));
-		hddLog(LOG1, FL("SSID %s"),
-		       ssid_string);
+		/* nla_parse will detect overflow but not underflow */
+		if (0 == ssid_length) {
+			hddLog(LOGE, FL("zero ssid length"));
+			goto fail;
+		}
+		hddLog(LOG1, FL("SSID %s"), ssid_string);
 		ssid_len = strlen(ssid_string);
                 if (ssid_length > SIR_MAC_MAX_SSID_LENGTH) {
                         hddLog(LOGE, FL("Invalid ssid length"));
@@ -4959,11 +4983,19 @@ static int hdd_extscan_passpoint_fill_network_list(
 	struct nlattr *networks;
 	int rem1, len;
 	uint8_t index;
+	uint32_t expected_networks;
 
+	expected_networks = req_msg->num_networks;
 	index = 0;
 	nla_for_each_nested(networks,
 		tb[QCA_WLAN_VENDOR_ATTR_PNO_PASSPOINT_LIST_PARAM_NETWORK_ARRAY],
 		rem1) {
+
+		if (index == expected_networks) {
+			hddLog(LOGW, FL("ignoring excess networks"));
+			break;
+		}
+
 		if (nla_parse(network,
 			QCA_WLAN_VENDOR_ATTR_PNO_MAX,
 			nla_data(networks), nla_len(networks), NULL)) {
@@ -5025,6 +5057,7 @@ static int hdd_extscan_passpoint_fill_network_list(
 
 		index++;
 	}
+	req_msg->num_networks = index;
 	return 0;
 }
 
@@ -8290,6 +8323,70 @@ void wlan_hdd_cfg80211_acs_ch_select_evt(hdd_adapter_t *adapter)
 		clear_bit(ACS_PENDING, &con_sap_adapter->event_flags);
 	}
 
+	return;
+}
+
+#define PWR_SAVE_FAIL_CMD_INDEX \
+	QCA_NL80211_VENDOR_SUBCMD_PWR_SAVE_FAIL_DETECTED_INDEX
+/**
+ * hdd_chip_pwr_save_fail_detected() - chip power save failure detected
+ * NL event
+ * @hddctx: HDD context
+ * @data: chip power save failure detected
+ *
+ * This function reads the chip power save failure detected data and fill in
+ * the skb with NL attributes and send up the NL event.
+ * This callback execute in atomic context and must not invoke any
+ * blocking calls.
+ *
+ * Return: none
+ */
+void hdd_chip_pwr_save_fail_detected_cb(void *hddctx,
+					struct chip_pwr_save_fail_detected_params
+					*data)
+{
+	hdd_context_t *hdd_ctx  = hddctx;
+	struct sk_buff *skb;
+	int flags = vos_get_gfp_flags();
+
+	ENTER();
+
+	if (wlan_hdd_validate_context(hdd_ctx))
+		return;
+
+	if (!data) {
+		hddLog(LOGE, FL("data is null"));
+		return;
+	}
+
+	skb = cfg80211_vendor_event_alloc(hdd_ctx->wiphy,
+				  NULL,
+				  NLMSG_HDRLEN +
+				  sizeof(data-> failure_reason_code) +
+				  NLMSG_HDRLEN,
+				  PWR_SAVE_FAIL_CMD_INDEX,
+				  flags);
+
+	if (!skb) {
+		hddLog(LOGE, FL("cfg80211_vendor_event_alloc failed"));
+		return;
+	}
+
+	hddLog(LOG1, "failure reason code: %u, wake lock bitmap [0]: %u,wake lock bitmap[1] : %u wake lock bitmap [2]: %u wake lock bitmap [3]: %u",
+			data->failure_reason_code, data->wake_lock_bitmap[0],
+			data->wake_lock_bitmap[1], data->wake_lock_bitmap[2],
+			data->wake_lock_bitmap[3]);
+
+	if (nla_put_u32(skb,
+		QCA_ATTR_CHIP_POWER_SAVE_FAILURE_REASON,
+		data->failure_reason_code))
+		goto fail;
+
+	cfg80211_vendor_event(skb, flags);
+	return;
+
+fail:
+	kfree_skb(skb);
 	return;
 }
 
@@ -21259,6 +21356,12 @@ static int __wlan_hdd_cfg80211_testmode(struct wiphy *wiphy,
             if ((hb_params_temp->cmd == LPHB_SET_TCP_PARAMS_INDID) &&
                 (hb_params_temp->params.lphbTcpParamReq.timePeriodSec == 0))
                 return -EINVAL;
+
+            if (buf_len > sizeof(*hb_params)) {
+                hddLog(LOGE, FL("buf_len=%d exceeded hb_params size limit"),
+                       buf_len);
+                return -ERANGE;
+            }
 
             hb_params = (tSirLPHBReq *)vos_mem_malloc(sizeof(tSirLPHBReq));
             if (NULL == hb_params) {

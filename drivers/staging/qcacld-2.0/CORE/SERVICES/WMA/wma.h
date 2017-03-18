@@ -84,7 +84,7 @@
 #define WMA_TGT_WOW_TX_COMPLETE_TIMEOUT    2000
 #define MAX_MEM_CHUNKS                     32
 #define WMA_CRASH_INJECT_TIMEOUT           5000
-
+#define WOW_BITMAP_FIELD_SIZE              32
 /*
    In prima 12 HW stations are supported including BCAST STA(staId 0)
    and SELF STA(staId 1) so total ASSOC stations which can connect to Prima
@@ -838,6 +838,7 @@ typedef struct wma_handle {
 	uint32_t wow_gscan_wake_up_count;
 	uint32_t wow_low_rssi_wake_up_count;
 	uint32_t wow_rssi_breach_wake_up_count;
+	uint32_t wow_pwr_save_fail_detected_wake_up_count;
 	uint32_t wow_ucast_wake_up_count;
 	uint32_t wow_bcast_wake_up_count;
 	uint32_t wow_ipv4_mcast_wake_up_count;
@@ -845,9 +846,9 @@ typedef struct wma_handle {
 	uint32_t wow_ipv6_mcast_ra_stats;
 	uint32_t wow_ipv6_mcast_ns_stats;
 	uint32_t wow_ipv6_mcast_na_stats;
-	uint32_t wow_wakeup_enable_mask;
-	uint32_t wow_wakeup_disable_mask;
 	uint16_t max_mgmt_tx_fail_count;
+	uint32_t wow_wakeup_enable_mask[4];
+	uint32_t wow_wakeup_disable_mask[4];
 
 	struct wma_runtime_pm_context runtime_context;
 	uint32_t fine_time_measurement_cap;

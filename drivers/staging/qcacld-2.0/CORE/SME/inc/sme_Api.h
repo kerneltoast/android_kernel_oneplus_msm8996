@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2016 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2017 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -4486,4 +4486,8 @@ eHalStatus sme_delete_all_tdls_peers(tHalHandle hal, uint8_t session_id);
 VOS_STATUS sme_is_session_valid(tHalHandle hal_handle, uint8_t session_id);
 eHalStatus sme_register_p2p_ack_ind_callback(tHalHandle hal,
 					sir_p2p_ack_ind_callback callback);
+
+eHalStatus sme_set_chip_pwr_save_fail_cb(tHalHandle hal, void (*cb)( void *,
+				struct chip_pwr_save_fail_detected_params *));
+
 #endif //#if !defined( __SME_API_H )

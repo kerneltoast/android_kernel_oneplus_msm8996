@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2016 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2017 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -15813,6 +15813,36 @@ eHalStatus sme_set_rssi_threshold_breached_cb(tHalHandle hal,
 	}
 
 	mac->sme.rssi_threshold_breached_cb = cb;
+	sme_ReleaseGlobalLock(&mac->sme);
+	return status;
+}
+
+/**
+ * sme_set_chip_pwr_save_fail_cb() - set chip power save failure callback
+ * @hal: global hal handle
+ * @cb: callback function pointer
+ *
+ * This function stores the chip power save failure callback function.
+ *
+ * Return: eHalStatus enumeration.
+ */
+eHalStatus sme_set_chip_pwr_save_fail_cb(tHalHandle hal,
+				void (*cb)(
+				void *,
+				 struct chip_pwr_save_fail_detected_params *))
+{
+	eHalStatus status  = eHAL_STATUS_SUCCESS;
+	tpAniSirGlobal mac = PMAC_STRUCT(hal);
+
+	status = sme_AcquireGlobalLock(&mac->sme);
+	if (status != eHAL_STATUS_SUCCESS) {
+		smsLog(mac, LOGE,
+			FL("sme_AcquireGlobalLock failed!(status=%d)"),
+			status);
+		return status;
+	}
+
+	mac->sme.chip_power_save_fail_cb = cb;
 	sme_ReleaseGlobalLock(&mac->sme);
 	return status;
 }

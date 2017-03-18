@@ -605,6 +605,8 @@ typedef enum {
     WMITLV_TAG_STRUC_wmi_scpc_event_fixed_param,
     WMITLV_TAG_STRUC_wmi_ap_ps_egap_info_chainmask_list,
     WMITLV_TAG_STRUC_wmi_sta_smps_force_mode_complete_event_fixed_param,
+    WMITLV_TAG_STRUC_wmi_chip_power_save_failure_detected_fixed_param =
+    WMITLV_TAG_STRUC_wmi_sta_smps_force_mode_complete_event_fixed_param + 0xB3,
 } WMITLV_TAG_ID;
 
 /*
@@ -963,8 +965,8 @@ typedef enum {
     OP(WMI_TRANSFER_DATA_TO_FLASH_COMPLETE_EVENTID) \
     OP(WMI_OEM_RESPONSE_EVENTID) \
     OP(WMI_PDEV_UTF_SCPC_EVENTID) \
-    OP(WMI_STA_SMPS_FORCE_MODE_COMPLETE_EVENTID)
-
+    OP(WMI_STA_SMPS_FORCE_MODE_COMPLETE_EVENTID) \
+    OP(WMI_PDEV_CHIP_POWER_SAVE_FAILURE_DETECTED_EVENTID) \
 /* TLV definitions of WMI commands */
 
 /* Init Cmd */
@@ -3033,6 +3035,10 @@ WMITLV_CREATE_PARAM_STRUC(WMI_MAWC_ENABLE_SENSOR_EVENTID);
 #define WMITLV_TABLE_WMI_STA_SMPS_FORCE_MODE_COMPLETE_EVENTID(id,op,buf,len) \
     WMITLV_ELEM(id,op,buf,len, WMITLV_TAG_STRUC_wmi_sta_smps_force_mode_complete_event_fixed_param, wmi_sta_smps_force_mode_complete_event_fixed_param, fixed_param, WMITLV_SIZE_FIX)
 WMITLV_CREATE_PARAM_STRUC(WMI_STA_SMPS_FORCE_MODE_COMPLETE_EVENTID);
+
+#define WMITLV_TABLE_WMI_PDEV_CHIP_POWER_SAVE_FAILURE_DETECTED_EVENTID(id,op,buf,len) \
+    WMITLV_ELEM(id,op,buf,len, WMITLV_TAG_STRUC_wmi_chip_power_save_failure_detected_fixed_param, wmi_chip_power_save_failure_detected_fixed_param, fixed_param, WMITLV_SIZE_FIX)
+WMITLV_CREATE_PARAM_STRUC(WMI_PDEV_CHIP_POWER_SAVE_FAILURE_DETECTED_EVENTID);
 
 #ifdef __cplusplus
 }

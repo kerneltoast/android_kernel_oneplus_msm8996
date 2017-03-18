@@ -879,6 +879,9 @@ typedef enum {
 
     /** Extension of WMI_SERVICE_READY msg with extra target capability info */
     WMI_SERVICE_READY_EXT_EVENTID,
+   /** Power Save Failure Detected */
+    WMI_PDEV_CHIP_POWER_SAVE_FAILURE_DETECTED_EVENTID =
+                       WMI_EVT_GRP_START_ID(WMI_GRP_PDEV) + 20,
 
     /* VDEV specific events */
     /** VDEV started event in response to VDEV_START request */
@@ -6567,6 +6570,7 @@ typedef enum event_type_e {
     WOW_IOAC_SOCK_EVENT,
     WOW_NLO_SCAN_COMPLETE_EVENT,
     WOW_TDLS_CONN_TRACKER_EVENT,
+    WOW_CHIP_POWER_FAILURE_DETECT_EVENT = WOW_BMISS_EVENT + 0x21,
 } WOW_WAKE_EVENT_TYPE;
 
 typedef enum wake_reason_e {
@@ -6611,6 +6615,7 @@ typedef enum wake_reason_e {
     WOW_REASON_REASSOC_RES_RECV,
     WOW_REASON_ACTION_FRAME_RECV,
     WOW_REASON_TDLS_CONN_TRACKER_EVENT,
+    WOW_REASON_CHIP_POWER_FAILURE_DETECT = WOW_REASON_UNSPECIFIED + 0x2F,
     WOW_REASON_DEBUG_TEST = 0xFF,
 } WOW_WAKE_REASON_TYPE;
 
@@ -6788,11 +6793,15 @@ typedef struct {
     A_UINT32        pattern_type;
 }WMI_WOW_DEL_PATTERN_CMD_fixed_param;
 
+#define WMI_WOW_MAX_EVENT_BM_LEN 4
 typedef struct {
     A_UINT32    tlv_header;     /* TLV tag and len; tag equals WMITLV_TAG_STRUC_WMI_WOW_ADD_DEL_EVT_CMD_fixed_param  */
     A_UINT32    vdev_id;
     A_UINT32    is_add;
-    A_UINT32    event_bitmap;
+    union {
+        A_UINT32 event_bitmap;
+        A_UINT32 event_bitmaps[WMI_WOW_MAX_EVENT_BM_LEN];
+    };
 }WMI_WOW_ADD_DEL_EVT_CMD_fixed_param;
 
 /*
@@ -12057,6 +12066,18 @@ typedef struct {
     /** 1 to allow off-channel tx, 0 otherwise */
     A_UINT32 off_channel_tx; // Not supported
 } wmi_ocb_set_sched_cmd_fixed_param;
+
+typedef enum wmi_chip_power_save_failure_reason_code_type {
+    WMI_PROTOCOL_POWER_SAVE_FAILURE_REASON,
+    WMI_HW_POWER_SAVE_FAILURE_REASON,
+    WMI_POWER_SAVE_FAILURE_REASON_MAX = 0xf,
+} WMI_POWER_SAVE_FAILURE_REASON_TYPE;
+
+typedef struct {
+    A_UINT32 tlv_header; /* TLV tag and len; tag equals WMITLV_TAG_STRUC_wmi_chip_power_save_failure_detected_fixed_param */
+    A_UINT32 power_save_failure_reason_code; /* Chip power save failuire reason */
+    A_UINT32 protocol_wake_lock_bitmap[4]; /* bitmap with bits set for modules voting against sleep for prolonged duration */
+} wmi_chip_power_save_failure_detected_fixed_param;
 
 typedef struct {
     /** Return status. 0 for success, non-zero otherwise */
