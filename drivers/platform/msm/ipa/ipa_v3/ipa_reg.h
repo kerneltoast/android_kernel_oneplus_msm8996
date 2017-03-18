@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2017, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -314,5 +314,10 @@ Common Registers
 #define IPA_ENDP_GSI_CFG2_n_OFST(n) (0x858 + 0x70 * (n))
 #define IPA_ENDP_GSI_CFG1_n_OFST(n) (0x5504 + 0x4 * (n))
 #define IPA_ENABLE_GSI_OFST 0x5500
+
+#define IPA_DPS_SEQUENCER_FIRST_OFST (0x0001e000)
+#define IPA_DPS_SEQUENCER_SIZE (128)
+#define IPA_HPS_SEQUENCER_FIRST_OFST (0x0001e080)
+#define IPA_HPS_SEQUENCER_SIZE (320)
 
 #endif
