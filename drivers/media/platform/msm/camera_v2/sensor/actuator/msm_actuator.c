@@ -910,7 +910,11 @@ static int32_t msm_actuator_park_lens(struct msm_actuator_ctrl_t *a_ctrl)
 		}
 		a_ctrl->i2c_tbl_index = 0;
 		/* Use typical damping time delay to avoid tick sound */
+#ifdef CONFIG_MACH_MSM8996_15801
+		usleep_range(20000, 22000);
+#else
 		usleep_range(10000, 12000);
+#endif
 	}
 
 	return 0;
