@@ -1,7 +1,7 @@
 /*
  * SiI8620 Linux Driver
  *
- * Copyright (C) 2013-2014, 2016 Silicon Image, Inc.
+ * Copyright (C) 2013-2014 Silicon Image, Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License as
@@ -84,7 +84,7 @@ static void destroy_mouse(struct mhl_dev_context *dev_context)
 			dev_context->mdt_devs.dev_mouse);
 	input_unregister_device(dev_context->mdt_devs.dev_mouse);
 	MHL_TX_DBG_INFO("Freeing mouse: %pK\n",
-			 dev_context->mdt_devs.dev_mouse);
+		dev_context->mdt_devs.dev_mouse);
 	input_free_device(dev_context->mdt_devs.dev_mouse);
 	dev_context->mdt_devs.dev_mouse = NULL;
 }

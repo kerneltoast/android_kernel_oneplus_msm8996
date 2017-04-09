@@ -35,6 +35,7 @@
 #define MAX_REGULATOR 5
 
 #define MSM_V4L2_PIX_FMT_META v4l2_fourcc('M', 'E', 'T', 'A') /* META */
+#define MSM_V4L2_PIX_FMT_META10 v4l2_fourcc('M', 'E', '1', '0') /* META10 */
 #define MSM_V4L2_PIX_FMT_SBGGR14 v4l2_fourcc('B', 'G', '1', '4')
 	/* 14  BGBG.. GRGR.. */
 #define MSM_V4L2_PIX_FMT_SGBRG14 v4l2_fourcc('G', 'B', '1', '4')
@@ -82,6 +83,8 @@ enum sensor_sub_module_t {
 	SUB_MODULE_CSIPHY_3D,
 	SUB_MODULE_OIS,
 	SUB_MODULE_EXT,
+	SUB_MODULE_IR_LED,
+	SUB_MODULE_IR_CUT,
 	SUB_MODULE_MAX,
 };
 
@@ -285,6 +288,16 @@ struct msm_eeprom_info_t {
 	struct msm_eeprom_memory_map_array *mem_map_array;
 };
 
+struct msm_ir_led_cfg_data_t {
+	enum msm_ir_led_cfg_type_t cfg_type;
+	int32_t pwm_duty_on_ns;
+	int32_t pwm_period_ns;
+};
+
+struct msm_ir_cut_cfg_data_t {
+	enum msm_ir_cut_cfg_type_t cfg_type;
+};
+
 struct msm_eeprom_cfg_data {
 	enum eeprom_cfg_type_t cfgtype;
 	uint8_t is_supported;
@@ -342,12 +355,24 @@ enum msm_actuator_cfg_type_t {
 	CFG_ACTUATOR_INIT,
 };
 
+struct msm_ois_opcode {
+	uint32_t prog;
+	uint32_t coeff;
+	uint32_t pheripheral;
+	uint32_t memory;
+};
+
 enum msm_ois_cfg_type_t {
 	CFG_OIS_INIT,
 	CFG_OIS_POWERDOWN,
 	CFG_OIS_POWERUP,
 	CFG_OIS_CONTROL,
 	CFG_OIS_I2C_WRITE_SEQ_TABLE,
+};
+
+enum msm_ois_cfg_download_type_t {
+	CFG_OIS_DOWNLOAD,
+	CFG_OIS_DATA_CONFIG,
 };
 
 enum msm_ois_i2c_operation {
@@ -412,8 +437,8 @@ struct msm_actuator_params_t {
 	uint16_t init_setting_size;
 	uint32_t i2c_addr;
 	enum i2c_freq_mode_t i2c_freq_mode;
-	enum msm_actuator_addr_type i2c_addr_type;
-	enum msm_actuator_data_type i2c_data_type;
+	enum msm_camera_i2c_reg_addr_type i2c_addr_type;
+	enum msm_camera_i2c_data_type i2c_data_type;
 	struct msm_actuator_reg_params_t *reg_tbl_params;
 	struct reg_settings_t *init_settings;
 	struct park_lens_data_t park_lens;
@@ -451,12 +476,22 @@ enum af_camera_name {
 	ACTUATOR_WEB_CAM_2,
 };
 
+struct msm_ois_slave_info {
+	char ois_name[MAX_OIS_NAME_SIZE];
+	uint32_t i2c_addr;
+	struct msm_ois_opcode opcode;
+};
 struct msm_ois_cfg_data {
 	int cfgtype;
 	union {
 		struct msm_ois_set_info_t set_info;
 		struct msm_camera_i2c_seq_reg_setting *settings;
 	} cfg;
+};
+
+struct msm_ois_cfg_download_data {
+	int cfgtype;
+	struct msm_ois_slave_info slave_info;
 };
 
 struct msm_actuator_set_position_t {
@@ -562,6 +597,15 @@ struct sensor_init_cfg_data {
 
 #define VIDIOC_MSM_FLASH_CFG \
 	_IOWR('V', BASE_VIDIOC_PRIVATE + 13, struct msm_flash_cfg_data_t)
+
+#define VIDIOC_MSM_OIS_CFG_DOWNLOAD \
+	_IOWR('V', BASE_VIDIOC_PRIVATE + 14, struct msm_ois_cfg_download_data)
+
+#define VIDIOC_MSM_IR_LED_CFG \
+	_IOWR('V', BASE_VIDIOC_PRIVATE + 15, struct msm_ir_led_cfg_data_t)
+
+#define VIDIOC_MSM_IR_CUT_CFG \
+	_IOWR('V', BASE_VIDIOC_PRIVATE + 15, struct msm_ir_cut_cfg_data_t)
 
 #endif
 

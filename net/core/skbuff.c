@@ -443,6 +443,7 @@ EXPORT_SYMBOL(netdev_alloc_frag);
  *
  *	%NULL is returned if there is no free memory.
  */
+#ifndef CONFIG_DISABLE_NET_SKB_FRAG_CACHE
 struct sk_buff *__netdev_alloc_skb(struct net_device *dev,
 				   unsigned int length, gfp_t gfp_mask)
 {
@@ -473,6 +474,22 @@ struct sk_buff *__netdev_alloc_skb(struct net_device *dev,
 	}
 	return skb;
 }
+#else
+struct sk_buff *__netdev_alloc_skb(struct net_device *dev,
+				   unsigned int length, gfp_t gfp_mask)
+{
+	struct sk_buff *skb = NULL;
+
+	skb = __alloc_skb(length + NET_SKB_PAD, gfp_mask,
+			  SKB_ALLOC_RX, NUMA_NO_NODE);
+	if (likely(skb)) {
+		skb_reserve(skb, NET_SKB_PAD);
+		skb->dev = dev;
+	}
+	return skb;
+}
+#endif
+
 EXPORT_SYMBOL(__netdev_alloc_skb);
 
 void skb_add_rx_frag(struct sk_buff *skb, int i, struct page *page, int off,
@@ -2887,11 +2904,12 @@ EXPORT_SYMBOL(skb_append_datato_frags);
  */
 unsigned char *skb_pull_rcsum(struct sk_buff *skb, unsigned int len)
 {
+	unsigned char *data = skb->data;
+
 	BUG_ON(len > skb->len);
-	skb->len -= len;
-	BUG_ON(skb->len < skb->data_len);
-	skb_postpull_rcsum(skb, skb->data, len);
-	return skb->data += len;
+	__skb_pull(skb, len);
+	skb_postpull_rcsum(skb, data, len);
+	return skb->data;
 }
 EXPORT_SYMBOL_GPL(skb_pull_rcsum);
 
@@ -3604,7 +3622,8 @@ static void __skb_complete_tx_timestamp(struct sk_buff *skb,
 	serr->ee.ee_info = tstype;
 	if (sk->sk_tsflags & SOF_TIMESTAMPING_OPT_ID) {
 		serr->ee.ee_data = skb_shinfo(skb)->tskey;
-		if (sk->sk_protocol == IPPROTO_TCP)
+		if (sk->sk_protocol == IPPROTO_TCP &&
+		    sk->sk_type == SOCK_STREAM)
 			serr->ee.ee_data -= sk->sk_tskey;
 	}
 
@@ -4113,7 +4132,8 @@ static struct sk_buff *skb_reorder_vlan_header(struct sk_buff *skb)
 		return NULL;
 	}
 
-	memmove(skb->data - ETH_HLEN, skb->data - VLAN_ETH_HLEN, 2 * ETH_ALEN);
+	memmove(skb->data - ETH_HLEN, skb->data - skb->mac_len - VLAN_HLEN,
+		2 * ETH_ALEN);
 	skb->mac_header += VLAN_HLEN;
 	return skb;
 }

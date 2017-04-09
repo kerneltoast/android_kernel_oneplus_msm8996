@@ -1,4 +1,4 @@
-/* Copyright (c) 2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2015, 2016 The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -554,7 +554,7 @@ static void ipa3_uc_mhi_event_log_info_hdlr(
 	if (ipa3_uc_mhi_ctx->mhi_uc_stats_ofst +
 		sizeof(struct IpaHwStatsMhiInfoData_t) >=
 		ipa3_ctx->ctrl->ipa_reg_base_ofst +
-		IPA_SRAM_DIRECT_ACCESS_N_OFST_v3_0(0) +
+		ipahal_get_reg_n_ofst(IPA_SRAM_DIRECT_ACCESS_n, 0) +
 		ipa3_ctx->smem_sz) {
 		IPAERR("uc_mhi_stats 0x%x outside SRAM\n",
 			ipa3_uc_mhi_ctx->mhi_uc_stats_ofst);
@@ -622,7 +622,7 @@ int ipa3_uc_mhi_init_engine(struct ipa_mhi_msi_info *msi, u32 mmio_addr,
 	u32 first_evt_idx)
 {
 	int res;
-	struct ipa3_mem_buffer mem;
+	struct ipa_mem_buffer mem;
 	struct IpaHwMhiInitCmdData_t *init_cmd_data;
 	struct IpaHwMhiMsiCmdData_t *msi_cmd;
 
@@ -887,7 +887,7 @@ disable_clks:
 	return res;
 }
 
-int ipa3_uc_mhi_send_dl_ul_sync_info(union IpaHwMhiDlUlSyncCmdData_t cmd)
+int ipa3_uc_mhi_send_dl_ul_sync_info(union IpaHwMhiDlUlSyncCmdData_t *cmd)
 {
 	int res;
 
@@ -897,13 +897,14 @@ int ipa3_uc_mhi_send_dl_ul_sync_info(union IpaHwMhiDlUlSyncCmdData_t cmd)
 	}
 
 	IPADBG("isDlUlSyncEnabled=0x%x UlAccmVal=0x%x\n",
-		cmd.params.isDlUlSyncEnabled, cmd.params.UlAccmVal);
+		cmd->params.isDlUlSyncEnabled, cmd->params.UlAccmVal);
 	IPADBG("ulMsiEventThreshold=0x%x dlMsiEventThreshold=0x%x\n",
-		cmd.params.ulMsiEventThreshold, cmd.params.dlMsiEventThreshold);
+		cmd->params.ulMsiEventThreshold,
+		cmd->params.dlMsiEventThreshold);
 
 	IPA_ACTIVE_CLIENTS_INC_SIMPLE();
 
-	res = ipa3_uc_send_cmd(cmd.raw32b,
+	res = ipa3_uc_send_cmd(cmd->raw32b,
 		IPA_CPU_2_HW_CMD_MHI_DL_UL_SYNC_INFO, 0, false, HZ);
 	if (res) {
 		IPAERR("ipa3_uc_send_cmd failed %d\n", res);

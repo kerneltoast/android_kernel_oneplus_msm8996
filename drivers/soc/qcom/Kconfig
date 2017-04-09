@@ -58,6 +58,25 @@ config PANIC_ON_GLADIATOR_ERROR
 
 	  If unsure, say N.
 
+config MSM_GLADIATOR_ERP_V2
+	tristate "GLADIATOR coherency interconnect error reporting driver v2"
+	help
+	  Support dumping debug information for the GLADIATOR
+	  cache interconnect in the error interrupt handler.
+	  Meant to be used for debug scenarios only.
+
+	  If unsure, say N.
+
+config PANIC_ON_GLADIATOR_ERROR_V2
+	depends on MSM_GLADIATOR_ERP_V2
+	bool "Panic on GLADIATOR error report v2"
+	help
+	  Panic upon detection of an Gladiator coherency interconnect error
+	  in order to support dumping debug information.
+	  Meant to be used for debug scenarios only.
+
+	  If unsure, say N.
+
 config MSM_QDSP6_APRV3
 	bool "Audio QDSP6 APRv3 support"
 	depends on MSM_SMD
@@ -67,10 +86,29 @@ config MSM_QDSP6_APRV3
 	  used by audio driver to configure QDSP6v2's
 	  ASM, ADM and AFE.
 
+config MSM_QDSP6_APRV2_GLINK
+	bool "Audio QDSP6 APRv2 over Glink support"
+	depends on MSM_GLINK
+	help
+	  Enable APRv2 IPC protocol support over
+	  Glink between application processor and
+	  QDSP6. APR is used by audio driver to
+	  configure QDSP6's ASM, ADM and AFE.
+
+config MSM_QDSP6_APRV3_GLINK
+	bool "Audio QDSP6 APRv3 over Glink support"
+	depends on MSM_GLINK
+	help
+	  Enable APRv3 IPC protocol support over
+	  Glink between application processor and
+	  QDSP6. APR is used by audio driver to
+	  configure QDSP6v2's ASM, ADM and AFE.
+
 config MSM_ADSP_LOADER
 	tristate "ADSP loader support"
 	select SND_SOC_MSM_APRV2_INTF
-	depends on MSM_QDSP6_APRV2 || MSM_QDSP6_APRV3
+	depends on MSM_QDSP6_APRV2 || MSM_QDSP6_APRV3 || \
+		MSM_QDSP6_APRV2_GLINK || MSM_QDSP6_APRV3_GLINK
 	help
 	  Enable ADSP image loader.
 	  The ADSP loader brings ADSP out of reset
@@ -145,6 +183,16 @@ config MSM_BOOT_STATS
 	 display init, total boot time.
 	 This figures are reported in mpm sleep clock cycles and have a
 	 resolution of 31 bits as 1 bit is used as an overflow check.
+
+config MSM_BOOT_TIME_MARKER
+	bool "Use MSM boot time marker reporting"
+	depends on MSM_BOOT_STATS
+	help
+	 Use this to mark msm boot kpi for measurement.
+	 An instrumentation for boot time measurement.
+	 To create an entry, call "place_marker" function.
+	 At userspace, write marker name to "/sys/kernel/debug/bootkpi/kpi_values"
+	 If unsure, say N
 
 config MSM_CPUSS_DUMP
 	bool "CPU Subsystem Dumping support"
@@ -555,16 +603,6 @@ config MSM_IPC_ROUTER_GLINK_XPRT
 	  this layer registers a transport with IPC Router and enable
 	  message exchange.
 
-config MSM_IPC_ROUTER_MHI_XPRT
-	depends on MSM_MHI
-	depends on IPC_ROUTER
-	bool "MSM MHI XPRT Layer"
-	help
-	  MHI Transport Layer that enables off-chip communication of
-	  IPC Router. When the MHI endpoint becomes available, this layer
-	  registers the transport with IPC Router and enable message
-	  exchange.
-
 config MSM_SYSTEM_HEALTH_MONITOR
 	bool "System Health Monitor"
 	depends on MSM_QMI_INTERFACE && MSM_SUBSYSTEM_RESTART
@@ -587,7 +625,7 @@ config MSM_GLINK_PKT
 
 config MSM_TZ_SMMU
 	bool "Helper functions for SMMU configuration through TZ"
-	depends on ARCH_MSMTHULIUM
+	depends on ARCH_MSMTHULIUM || ARCH_MSM8953
 	help
 	  Say 'Y' here for targets that need to call into TZ to configure
 	  SMMUs for any reason (for example, for errata workarounds or
@@ -604,6 +642,14 @@ config MSM_SUBSYSTEM_RESTART
 	  shutdown, and restart subsystems with a reference counted API.
 	  It also notifies userspace of transitions between these states via
 	  sysfs.
+
+config MSM_SYSMON_COMM
+	bool "MSM System Monitor communication support"
+	depends on MSM_SMD && MSM_SUBSYSTEM_RESTART
+	help
+	  This option adds support for MSM System Monitor library, which
+	  provides an API that may be used for notifying subsystems within
+	  the SoC about other subsystems' power-up/down state-changes.
 
 config MSM_PIL
 	bool "Peripheral image loading"
@@ -690,6 +736,14 @@ config MSM_PERFORMANCE_HOTPLUG_ON
 	  compile out the nodes needed for core-control functionality through
 	  msm_performance.
 
+config MSM_POWER
+	tristate "Power driver to manage system resources"
+	help
+	  This driver monitors and manages system resources for better
+	  power efficiency. It keeps track of the current frequency of
+	  several resources (e.g. CPU and GPU) to manage other system
+	  resources (e.g. DDR frequency) more efficiently.
+
 config MSM_SERVICE_LOCATOR
 	bool "Service Locator"
 	depends on MSM_QMI_INTERFACE
@@ -723,7 +777,7 @@ config MSM_PACMAN
 	  peripheral (BLSP) ownership.
 
 config MSM_KERNEL_PROTECT
-	bool "Protect kernel text by removing write permissions in stage-2"
+	bool "Protect kernel text by removing write permissions"
         depends on !FUNCTION_TRACER
         help
           On hypervisor-enabled targets, this option will make a call into
@@ -736,6 +790,18 @@ config MSM_KERNEL_PROTECT
           aarch64_insn_patch_text_nosync, etc. including the various CPU
           errata workarounds in arch/arm64/kernel/cpu_errata.c).
 
+	  For MPU based protection-enabled targets please refer to
+	  MSM_KERNEL_PROTECT_MPU
+
+config MSM_KERNEL_PROTECT_MPU
+	bool "Protect kernel text from other masters by MPU"
+	depends on MSM_KERNEL_PROTECT
+	help
+	  On MPU based protection enabled targets, this option will make a call
+	  into TrustZone to request that the kernel text be ptotected for any
+	  write access from external bus masters. This protects against
+	  malicious devices rewriting kernel code.
+
 config MSM_KERNEL_PROTECT_TEST
 	bool "Bootup test of kernel protection (INTENTIONAL CRASH)"
         depends on MSM_KERNEL_PROTECT
@@ -743,6 +809,21 @@ config MSM_KERNEL_PROTECT_TEST
           Attempts to write to the kernel text after making the kernel text
           read-only.  This test is FATAL whether it passes or fails!
           Success is signaled by a stage-2 fault.
+
+config MSM_REMOTEQDSS
+	bool "Allow debug tools to enable events on other processors"
+	depends on MSM_SCM && DEBUG_FS
+	help
+	  Other onchip processors/execution environments may support debug
+	  events. Provide a sysfs interface for debug tools to dynamically
+	  enable/disable these events. Interface located in
+	  /sys/class/remoteqdss.
+
+config QCOM_SMCINVOKE
+	bool "Secure QSEE Support"
+	help
+	  Enable SMCInvoke driver which supports capability based secure
+	  communication between QSEE and HLOS.
 
 source "drivers/soc/qcom/memshare/Kconfig"
 

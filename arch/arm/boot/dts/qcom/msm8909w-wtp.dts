@@ -18,6 +18,7 @@
 #include "msm8909-pm8916.dtsi"
 #include "msm8909-pm8916-mtp.dtsi"
 #include "msm8909w.dtsi"
+#include "msm8909w-memory.dtsi"
 
 / {
 	model = "Qualcomm Technologies, Inc. MSM8909W-PM8916 MTP";
@@ -27,18 +28,6 @@
 			<275 0>,
 			<300 0>;
 	qcom,board-id= <8 0x105>;
-};
-
-&external_image_mem {
-	reg = <0x0 0x87a00000 0x0 0x0600000>;
-};
-
-&modem_adsp_mem {
-	reg = <0x0 0x88000000 0x0 0x05200000>;
-};
-
-&peripheral_mem {
-	reg = <0x0 0x8d200000 0x0 0x0500000>;
 };
 
 &soc {
@@ -71,8 +60,8 @@
 			ite,wakeup;
 			ite,palm-detect-en;
 			ite,palm-detect-keycode = <142>;
-			ite,fw-name = "it7260_fw.bin";
-			ite,cfg-name = "it7260_cfg.bin";
+			ite,fw-name = "it7260_fw_050D0014.bin";
+			ite,cfg-name = "it7260_cfg_62011E01.bin";
 			ite,avdd-lpm-cur = <3000>;
 		};
 	};
@@ -98,4 +87,12 @@
 	status = "ok";
 	pinctrl-names = "default";
 	pinctrl-0 = <&uart_console_sleep>;
+};
+
+&gdsc_oxili_gx {
+	clock-names = "core_root_clk";
+	clocks =<&clock_gcc clk_gfx3d_clk_src>;
+	qcom,enable-root-clk;
+	qcom,clk-dis-wait-val = <0x5>;
+	status = "okay";
 };

@@ -150,9 +150,9 @@ static int dwc3_core_reset(struct dwc3 *dwc)
 		return ret;
 	}
 
-	dwc3_notify_event(dwc, DWC3_CONTROLLER_RESET_EVENT);
+	dwc3_notify_event(dwc, DWC3_CONTROLLER_RESET_EVENT, 0);
 
-	dwc3_notify_event(dwc, DWC3_CONTROLLER_POST_RESET_EVENT);
+	dwc3_notify_event(dwc, DWC3_CONTROLLER_POST_RESET_EVENT, 0);
 
 	return 0;
 }
@@ -274,7 +274,7 @@ int dwc3_event_buffers_setup(struct dwc3 *dwc)
 
 	for (n = 0; n < dwc->num_event_buffers; n++) {
 		evt = dwc->ev_buffs[n];
-		dev_dbg(dwc->dev, "Event buf %p dma %08llx length %d\n",
+		dev_dbg(dwc->dev, "Event buf %pK dma %08llx length %d\n",
 				evt->buf, (unsigned long long) evt->dma,
 				evt->length);
 
@@ -698,24 +698,23 @@ static void dwc3_core_exit_mode(struct dwc3 *dwc)
 void dwc3_post_host_reset_core_init(struct dwc3 *dwc)
 {
 	dwc3_core_init(dwc);
-	dwc3_event_buffers_setup(dwc);
 	dwc3_gadget_restart(dwc);
-	dwc3_notify_event(dwc, DWC3_CONTROLLER_POST_INITIALIZATION_EVENT);
+	dwc3_notify_event(dwc, DWC3_CONTROLLER_POST_INITIALIZATION_EVENT, 0);
 }
 
-static void (*notify_event) (struct dwc3 *, unsigned);
-void dwc3_set_notifier(void (*notify)(struct dwc3 *, unsigned))
+static void (*notify_event)(struct dwc3 *, unsigned, unsigned);
+void dwc3_set_notifier(void (*notify)(struct dwc3 *, unsigned, unsigned))
 {
 	notify_event = notify;
 }
 EXPORT_SYMBOL(dwc3_set_notifier);
 
-int dwc3_notify_event(struct dwc3 *dwc, unsigned event)
+int dwc3_notify_event(struct dwc3 *dwc, unsigned event, unsigned value)
 {
 	int ret = 0;
 
 	if (dwc->notify_event)
-		dwc->notify_event(dwc, event);
+		dwc->notify_event(dwc, event, value);
 	else
 		ret = -ENODEV;
 
@@ -978,7 +977,7 @@ static int dwc3_probe(struct platform_device *pdev)
 			goto err_gadget_exit;
 		}
 	}
-	dwc3_notify_event(dwc, DWC3_CONTROLLER_POST_INITIALIZATION_EVENT);
+	dwc3_notify_event(dwc, DWC3_CONTROLLER_POST_INITIALIZATION_EVENT, 0);
 
 	return 0;
 
@@ -1020,7 +1019,7 @@ static int dwc3_prepare(struct device *dev)
 	unsigned long	flags;
 
 	/* Check if platform glue driver handling PM, if not then handle here */
-	if(!dwc3_notify_event(dwc, DWC3_CORE_PM_PREPARE_EVENT))
+	if (!dwc3_notify_event(dwc, DWC3_CORE_PM_PREPARE_EVENT, 0))
 		return 0;
 
 	spin_lock_irqsave(&dwc->lock, flags);
@@ -1047,7 +1046,7 @@ static void dwc3_complete(struct device *dev)
 	unsigned long	flags;
 
 	/* Check if platform glue driver handling PM, if not then handle here */
-	if(!dwc3_notify_event(dwc, DWC3_CORE_PM_COMPLETE_EVENT))
+	if (!dwc3_notify_event(dwc, DWC3_CORE_PM_COMPLETE_EVENT, 0))
 		return;
 
 	spin_lock_irqsave(&dwc->lock, flags);
@@ -1072,7 +1071,7 @@ static int dwc3_suspend(struct device *dev)
 	unsigned long	flags;
 
 	/* Check if platform glue driver handling PM, if not then handle here */
-	if(!dwc3_notify_event(dwc, DWC3_CORE_PM_SUSPEND_EVENT))
+	if (!dwc3_notify_event(dwc, DWC3_CORE_PM_SUSPEND_EVENT, 0))
 		return 0;
 
 	spin_lock_irqsave(&dwc->lock, flags);
@@ -1106,7 +1105,7 @@ static int dwc3_resume(struct device *dev)
 	int		ret;
 
 	/* Check if platform glue driver handling PM, if not then handle here */
-	if(!dwc3_notify_event(dwc, DWC3_CORE_PM_RESUME_EVENT))
+	if (!dwc3_notify_event(dwc, DWC3_CORE_PM_RESUME_EVENT, 0))
 		return 0;
 
 	usb_phy_init(dwc->usb3_phy);

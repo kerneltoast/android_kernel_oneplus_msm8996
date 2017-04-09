@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -2942,7 +2942,7 @@ int tomtom_codec_mclk_enable(struct snd_soc_codec *codec,
 			__func__, enable, dapm);
 		return __tomtom_mclk_enable(tomtom, enable);
 	} else if (tomtom->codec_ext_clk_en_cb)
-		return tomtom_codec_ext_clk_en(codec, true, false);
+		return tomtom_codec_ext_clk_en(codec, enable, dapm);
 	else {
 		dev_err(codec->dev,
 			"%s: Cannot turn on MCLK\n",
@@ -3269,7 +3269,7 @@ static int tomtom_codec_enable_dmic(struct snd_soc_dapm_widget *w,
 
 static int tomtom_codec_config_mad(struct snd_soc_codec *codec)
 {
-	int ret;
+	int ret = 0;
 	const struct firmware *fw;
 	struct firmware_cal *hwdep_cal = NULL;
 	struct mad_audio_cal *mad_cal;
@@ -5321,7 +5321,7 @@ static int tomtom_set_channel_map(struct snd_soc_dai *dai,
 	struct tomtom_priv *tomtom = snd_soc_codec_get_drvdata(dai->codec);
 	struct wcd9xxx *core = dev_get_drvdata(dai->codec->dev->parent);
 	if (!tx_slot || !rx_slot) {
-		pr_err("%s: Invalid tx_slot=%p, rx_slot=%p\n",
+		pr_err("%s: Invalid tx_slot=%pK, rx_slot=%pK\n",
 			__func__, tx_slot, rx_slot);
 		return -EINVAL;
 	}
@@ -5366,7 +5366,7 @@ static int tomtom_get_channel_map(struct snd_soc_dai *dai,
 	case AIF2_PB:
 	case AIF3_PB:
 		if (!rx_slot || !rx_num) {
-			pr_err("%s: Invalid rx_slot %p or rx_num %p\n",
+			pr_err("%s: Invalid rx_slot %pK or rx_num %pK\n",
 				 __func__, rx_slot, rx_num);
 			return -EINVAL;
 		}
@@ -5385,7 +5385,7 @@ static int tomtom_get_channel_map(struct snd_soc_dai *dai,
 	case AIF4_VIFEED:
 	case AIF4_MAD_TX:
 		if (!tx_slot || !tx_num) {
-			pr_err("%s: Invalid tx_slot %p or tx_num %p\n",
+			pr_err("%s: Invalid tx_slot %pK or tx_num %pK\n",
 				 __func__, tx_slot, tx_num);
 			return -EINVAL;
 		}
@@ -8075,7 +8075,7 @@ static void tomtom_compute_impedance(struct wcd9xxx_mbhc *mbhc, s16 *l, s16 *r,
 	struct tomtom_priv *tomtom;
 
 	if (!mbhc) {
-		pr_err("%s: Invalid parameters mbhc = %p\n",
+		pr_err("%s: Invalid parameters mbhc = %pK\n",
 			__func__,  mbhc);
 		return;
 	}
@@ -8134,7 +8134,7 @@ static void tomtom_zdet_error_approx(struct wcd9xxx_mbhc *mbhc, uint32_t *zl,
 	const int shift = TOMTOM_ZDET_ERROR_APPROX_SHIFT;
 
 	if (!zl || !zr || !mbhc) {
-		pr_err("%s: Invalid parameters zl = %p zr = %p, mbhc = %p\n",
+		pr_err("%s: Invalid parameters zl = %pK zr = %pK, mbhc = %pK\n",
 			__func__, zl, zr, mbhc);
 		return;
 	}
@@ -8321,7 +8321,10 @@ static int tomtom_post_reset_cb(struct wcd9xxx *wcd9xxx)
 		wcd9xxx_mbhc_deinit(&tomtom->mbhc);
 		tomtom->mbhc_started = false;
 
-		rco_clk_rate = TOMTOM_MCLK_CLK_9P6MHZ;
+		if (wcd9xxx->mclk_rate == TOMTOM_MCLK_CLK_12P288MHZ)
+			rco_clk_rate = TOMTOM_MCLK_CLK_12P288MHZ;
+		else
+			rco_clk_rate = TOMTOM_MCLK_CLK_9P6MHZ;
 
 		ret = wcd9xxx_mbhc_init(&tomtom->mbhc, &tomtom->resmgr, codec,
 					tomtom_enable_mbhc_micbias,
@@ -8448,7 +8451,7 @@ static int tomtom_codec_fll_enable(struct snd_soc_codec *codec,
 	struct wcd9xxx *wcd9xxx;
 
 	if (!codec || !codec->control_data) {
-		pr_err("%s: Invalid codec handle, %p\n",
+		pr_err("%s: Invalid codec handle, %pK\n",
 		       __func__, codec);
 		return -EINVAL;
 	}
@@ -8663,7 +8666,10 @@ static int tomtom_codec_probe(struct snd_soc_codec *codec)
 	tomtom->clsh_d.is_dynamic_vdd_cp = false;
 	wcd9xxx_clsh_init(&tomtom->clsh_d, &tomtom->resmgr);
 
-	rco_clk_rate = TOMTOM_MCLK_CLK_9P6MHZ;
+	if (wcd9xxx->mclk_rate == TOMTOM_MCLK_CLK_12P288MHZ)
+		rco_clk_rate = TOMTOM_MCLK_CLK_12P288MHZ;
+	else
+		rco_clk_rate = TOMTOM_MCLK_CLK_9P6MHZ;
 
 	tomtom->fw_data = kzalloc(sizeof(*(tomtom->fw_data)), GFP_KERNEL);
 	if (!tomtom->fw_data) {

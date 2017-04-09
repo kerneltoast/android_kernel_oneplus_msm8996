@@ -1,4 +1,4 @@
-/* Copyright (c) 2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -36,6 +36,18 @@
 			mux {
 				pins = "gpio8", "gpio9";
 				function = "blsp_uart3";
+			};
+			config {
+				pins = "gpio8", "gpio9";
+				drive-strength = <2>;
+				bias-disable;
+			};
+		};
+
+		uart3_console_sleep: uart3_console_sleep {
+			mux {
+				pins = "gpio8", "gpio9";
+				function = "gpio";
 			};
 			config {
 				pins = "gpio8", "gpio9";
@@ -158,7 +170,7 @@
 		};
 
 		cnss_pins {
-			cnss_default: cnss_default {
+			cnss_wlan_en_active: cnss_wlan_en_active {
 				mux {
 					pins = "gpio95";
 					function = "gpio";
@@ -167,6 +179,48 @@
 				config {
 					pins = "gpio95";
 					drive-strength = <16>;
+					output-high;
+					bias-pull-up;
+				};
+			};
+			cnss_wlan_en_sleep: cnss_wlan_en_sleep {
+				mux {
+					pins = "gpio95";
+					function = "gpio";
+				};
+
+				config {
+					pins = "gpio95";
+					drive-strength = <2>;
+					output-low;
+					bias-pull-down;
+				};
+			};
+
+			cnss_sdio_active: cnss_sdio_active {
+				mux {
+					pins = "gpio37";
+					function = "gpio";
+				};
+
+				config {
+					pins = "gpio37";
+					drive-strength = <16>;
+					output-high;
+					bias-pull-up;
+				};
+			};
+
+			cnss_sdio_sleep: cnss_sdio_sleep {
+				mux {
+					pins = "gpio37";
+					function = "gpio";
+				};
+
+				config {
+					pins = "gpio37";
+					drive-strength = <2>;
+					output-low;
 					bias-pull-down;
 				};
 			};
@@ -328,13 +382,13 @@
 
 			pcie0_wake_default: pcie0_wake_default {
 				mux {
-					pins = "gpio65";
+					pins = "gpio61";
 					function = "gpio";
 				};
 				config {
-					pins = "gpio65";
+					pins = "gpio61";
 					drive-strength = <2>;
-					bias-pull-down;
+					bias-disable;
 				};
 			};
 
@@ -345,6 +399,30 @@
 				};
 				config {
 					pins = "gpio16";
+					drive-strength = <2>;
+					bias-pull-down;
+				};
+			};
+
+			pcie_ep_perst_default: pcie_ep_perst_default {
+				mux {
+					pins = "gpio65";
+					function = "gpio";
+				};
+				config {
+					pins = "gpio65";
+					drive-strength = <2>;
+					bias-pull-down;
+				};
+			};
+
+			pcie_ep_wake_default: pcie_ep_wake_default {
+				mux {
+					pins = "gpio61";
+					function = "gpio";
+				};
+				config {
+					pins = "gpio61";
 					drive-strength = <2>;
 					bias-pull-down;
 				};
@@ -728,6 +806,117 @@
 			};
 		};
 
+		pmx_sec_mi2s_dout {
+			sec_mi2s_ws_sleep: sec_mi2s_ws_sleep {
+				mux {
+					pins = "gpio16";
+					function = "sec_mi2s_ws_a";
+				};
+
+				config {
+					pins = "gpio16";
+					drive-strength = <2>;	/* 2 mA */
+					bias-pull-down;		/* PULL DOWN */
+				};
+			};
+
+			sec_mi2s_sck_sleep: sec_mi2s_sck_sleep {
+				mux {
+					pins = "gpio19";
+					function = "sec_mi2s_sck_a";
+				};
+
+				config {
+					pins = "gpio19";
+					drive-strength = <2>;	/* 2 mA */
+					bias-pull-down;		/* PULL DOWN */
+				};
+			};
+
+			sec_mi2s_dout_sleep: sec_mi2s_dout_sleep {
+				mux {
+					pins = "gpio18";
+					function = "sec_mi2s_data1_a";
+				};
+
+				config {
+					pins = "gpio18";
+					drive-strength = <2>;	/* 2 mA */
+					bias-pull-down;		/* PULL DOWN */
+				};
+			};
+
+			sec_mi2s_ws_active: sec_mi2s_ws_active {
+				mux {
+					pins = "gpio16";
+					function = "sec_mi2s_ws_a";
+				};
+
+				config {
+					pins = "gpio16";
+					drive-strength = <8>;	/* 8 mA */
+					bias-disable;		/* NO PULL*/
+					output-high;
+				};
+			};
+
+			sec_mi2s_sck_active: sec_mi2s_sck_active {
+				mux {
+					pins = "gpio19";
+					function = "sec_mi2s_sck_a";
+				};
+
+				config {
+					pins = "gpio19";
+					drive-strength = <8>;	/* 8 mA */
+					bias-disable;		/* NO PULL*/
+					output-high;
+				};
+			};
+
+			sec_mi2s_dout_active: sec_mi2s_dout_active {
+				mux {
+					pins = "gpio18";
+					function = "sec_mi2s_data1_a";
+				};
+
+				config {
+					pins = "gpio18";
+					drive-strength = <8>;	/* 8 mA */
+					bias-disable;		/* NO PULL*/
+					output-high;
+				};
+			};
+		};
+
+		pmx_sec_mi2s_din {
+			sec_mi2s_din_sleep: sec_mi2s_din_sleep {
+				mux {
+					pins = "gpio17";
+					function = "sec_mi2s_data0_a";
+				};
+
+				config {
+					pins = "gpio17";
+					drive-strength = <2>;	/* 2 mA */
+					bias-pull-down;		/* PULL DOWN */
+				};
+			};
+
+			sec_mi2s_din_active: sec_mi2s_din_active {
+				mux {
+					pins = "gpio17";
+					function = "sec_mi2s_data0_a";
+				};
+
+				config {
+					pins = "gpio17";
+					drive-strength = <8>;	/* 8 mA */
+					bias-disable;		/* NO PULL */
+				};
+			};
+		};
+
 		sdc1_clk_on: sdc1_clk_on {
 			config {
 				pins = "sdc1_clk";
@@ -776,5 +965,36 @@
 				drive-strength = <2>;	/* 2 MA */
 			};
 		};
+
+		sdc1_wlan_gpio {
+			sdc1_wlan_gpio_active: sdc1_wlan_gpio_active {
+				mux {
+					pins = "gpio80";
+					function  = "gpio";
+				};
+
+				config {
+					pins  = "gpio80";
+					output-high;
+					drive-strength = <8>;
+					bias-pull-up;
+				};
+			};
+
+			sdc1_wlan_gpio_sleep: sdc1_wlan_gpio_sleep {
+				mux {
+					pins = "gpio80";
+					function  = "gpio";
+				};
+
+				config {
+					pins  = "gpio80";
+					drive-strength = <2>;
+					bias-pull-down;
+					output-low;
+				};
+			};
+		};
+
 	};
 };

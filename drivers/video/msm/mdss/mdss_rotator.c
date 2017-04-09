@@ -70,7 +70,7 @@ static struct msm_bus_scale_pdata rot_reg_bus_scale_table = {
 };
 
 static struct mdss_rot_mgr *rot_mgr;
-static void mdss_rotator_work_handler(struct kthread_work *work);
+static void mdss_rotator_wq_handler(struct work_struct *work);
 
 static int mdss_rotator_bus_scale_set_quota(struct mdss_rot_bus_data_type *bus,
 		u64 quota)
@@ -706,7 +706,7 @@ static struct mdss_rot_hw_resource *mdss_rotator_hw_alloc(
 		goto error;
 	}
 	hw->ctl->wb = hw->wb;
-	hw->mixer = mdss_mdp_mixer_assign(hw->wb->num, true);
+	hw->mixer = mdss_mdp_mixer_assign(hw->wb->num, true, true);
 
 	if (IS_ERR_OR_NULL(hw->mixer)) {
 		pr_err("unable to allocate wb mixer\n");
@@ -746,7 +746,8 @@ static struct mdss_rot_hw_resource *mdss_rotator_hw_alloc(
 		goto error;
 
 	pipe_ndx = mdata->dma_pipes[pipe_id].ndx;
-	hw->pipe = mdss_mdp_pipe_assign(mdata, hw->mixer, pipe_ndx);
+	hw->pipe = mdss_mdp_pipe_assign(mdata, hw->mixer,
+			pipe_ndx, MDSS_MDP_PIPE_RECT0);
 	if (IS_ERR_OR_NULL(hw->pipe)) {
 		pr_err("dma pipe allocation failed\n");
 		ret = -ENODEV;
@@ -831,7 +832,6 @@ static int mdss_rotator_init_queue(struct mdss_rot_mgr *mgr)
 {
 	int i, size, ret = 0;
 	char name[32];
-	struct sched_param param = { .sched_priority = 5 };
 
 	size = sizeof(struct mdss_rot_queue) * mgr->queue_count;
 	mgr->queues = devm_kzalloc(&mgr->pdev->dev, size, GFP_KERNEL);
@@ -839,18 +839,14 @@ static int mdss_rotator_init_queue(struct mdss_rot_mgr *mgr)
 		return -ENOMEM;
 
 	for (i = 0; i < mgr->queue_count; i++) {
-		snprintf(name, sizeof(name), "rot_thread_%d", i);
-		pr_info("work thread name=%s\n", name);
-		init_kthread_worker(&mgr->queues[i].worker);
-		mgr->queues[i].thread = kthread_run(kthread_worker_fn,
-						     &mgr->queues[i].worker,
-						     name);
-		if (IS_ERR(&mgr->queues[i].thread)) {
-			pr_err("Unable to start rotator thread: %d", i);
-			ret = -ENOMEM;
+		snprintf(name, sizeof(name), "rot_workq_%d", i);
+		pr_debug("work queue name=%s\n", name);
+		mgr->queues[i].rot_work_queue = alloc_ordered_workqueue("%s",
+				WQ_UNBOUND | WQ_MEM_RECLAIM | WQ_HIGHPRI, name);
+		if (!mgr->queues[i].rot_work_queue) {
+			ret = -EPERM;
 			break;
 		}
-		sched_setscheduler(mgr->queues[i].thread, SCHED_FIFO, &param);
 
 		snprintf(name, sizeof(name), "rot_timeline_%d", i);
 		pr_debug("timeline name=%s\n", name);
@@ -880,8 +876,8 @@ static void mdss_rotator_deinit_queue(struct mdss_rot_mgr *mgr)
 		return;
 
 	for (i = 0; i < mgr->queue_count; i++) {
-		if (mgr->queues[i].thread)
-			kthread_stop(mgr->queues[i].thread);
+		if (mgr->queues[i].rot_work_queue)
+			destroy_workqueue(mgr->queues[i].rot_work_queue);
 
 		if (mgr->queues[i].timeline.timeline) {
 			struct sync_timeline *obj;
@@ -1018,7 +1014,7 @@ static void mdss_rotator_queue_request(struct mdss_rot_mgr *mgr,
 		entry = req->entries + i;
 		queue = entry->queue;
 		entry->output_fence = NULL;
-		queue_kthread_work(&queue->worker, &entry->commit_work);
+		queue_work(queue->rot_work_queue, &entry->commit_work);
 	}
 }
 
@@ -1513,8 +1509,7 @@ static int mdss_rotator_add_request(struct mdss_rot_mgr *mgr,
 
 		entry->request = req;
 
-		init_kthread_work(&entry->commit_work,
-				  mdss_rotator_work_handler);
+		INIT_WORK(&entry->commit_work, mdss_rotator_wq_handler);
 
 		ret = mdss_rotator_create_fence(entry);
 		if (ret) {
@@ -1566,7 +1561,7 @@ static void mdss_rotator_cancel_request(struct mdss_rot_mgr *mgr,
 	 */
 	for (i = req->count - 1; i >= 0; i--) {
 		entry = req->entries + i;
-		flush_kthread_work(&entry->commit_work);
+		cancel_work_sync(&entry->commit_work);
 	}
 
 	for (i = req->count - 1; i >= 0; i--) {
@@ -1707,11 +1702,13 @@ static int mdss_rotator_config_hw(struct mdss_rot_hw_resource *hw,
 {
 	struct mdss_mdp_pipe *pipe;
 	struct mdp_rotation_item *item;
+	struct mdss_rot_perf *perf;
 	int ret;
 
 	ATRACE_BEGIN(__func__);
 	pipe = hw->pipe;
 	item = &entry->item;
+	perf = entry->perf;
 
 	pipe->flags = mdss_rotator_translate_flags(item->flags);
 	pipe->src_fmt = mdss_mdp_get_format_params(item->input.format);
@@ -1719,7 +1716,8 @@ static int mdss_rotator_config_hw(struct mdss_rot_hw_resource *hw,
 	pipe->img_height = item->input.height;
 	mdss_rotator_translate_rect(&pipe->src, &item->src_rect);
 	mdss_rotator_translate_rect(&pipe->dst, &item->src_rect);
-	pipe->scale.enable_pxl_ext = 0;
+	pipe->scaler.enable = 0;
+	pipe->frame_rate = perf->config.frame_rate;
 
 	pipe->params_changed++;
 
@@ -1833,7 +1831,7 @@ static int mdss_rotator_handle_entry(struct mdss_rot_hw_resource *hw,
 	return ret;
 }
 
-static void mdss_rotator_work_handler(struct kthread_work *work)
+static void mdss_rotator_wq_handler(struct work_struct *work)
 {
 	struct mdss_rot_entry *entry;
 	struct mdss_rot_entry_container *request;
@@ -2016,7 +2014,7 @@ static int mdss_rotator_close_session(struct mdss_rot_mgr *mgr,
 	ATRACE_BEGIN(__func__);
 	mutex_lock(&perf->work_dis_lock);
 	if (mdss_rotator_is_work_pending(mgr, perf)) {
-		pr_debug("Work is still pending, offload free to worker\n");
+		pr_debug("Work is still pending, offload free to wq\n");
 		mutex_lock(&mgr->bus_lock);
 		mgr->pending_close_bw_vote += perf->bw;
 		mutex_unlock(&mgr->bus_lock);
@@ -2527,6 +2525,7 @@ static const struct file_operations mdss_rotator_fops = {
 static int mdss_rotator_parse_dt_bus(struct mdss_rot_mgr *mgr,
 	struct platform_device *dev)
 {
+	struct device_node *node;
 	int ret = 0, i;
 	bool register_bus_needed;
 	int usecases;
@@ -2544,12 +2543,26 @@ static int mdss_rotator_parse_dt_bus(struct mdss_rot_mgr *mgr,
 	register_bus_needed = of_property_read_bool(dev->dev.of_node,
 		"qcom,mdss-has-reg-bus");
 	if (register_bus_needed) {
-		mgr->reg_bus.bus_scale_pdata = &rot_reg_bus_scale_table;
-		usecases = mgr->reg_bus.bus_scale_pdata->num_usecases;
-		for (i = 0; i < usecases; i++) {
-			rot_reg_bus_usecases[i].num_paths = 1;
-			rot_reg_bus_usecases[i].vectors =
-				&rot_reg_bus_vectors[i];
+		node = of_get_child_by_name(
+			    dev->dev.of_node, "qcom,mdss-rot-reg-bus");
+		if (!node) {
+			mgr->reg_bus.bus_scale_pdata = &rot_reg_bus_scale_table;
+			usecases = mgr->reg_bus.bus_scale_pdata->num_usecases;
+			for (i = 0; i < usecases; i++) {
+				rot_reg_bus_usecases[i].num_paths = 1;
+				rot_reg_bus_usecases[i].vectors =
+					&rot_reg_bus_vectors[i];
+			}
+		} else {
+			mgr->reg_bus.bus_scale_pdata =
+				msm_bus_pdata_from_node(dev, node);
+			if (IS_ERR_OR_NULL(mgr->reg_bus.bus_scale_pdata)) {
+				ret = PTR_ERR(mgr->reg_bus.bus_scale_pdata);
+				if (!ret)
+					ret = -EINVAL;
+				pr_err("reg_rot_bus failed rc=%d\n", ret);
+				mgr->reg_bus.bus_scale_pdata = NULL;
+			}
 		}
 	}
 	return ret;

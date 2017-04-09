@@ -84,7 +84,7 @@ static inline struct ipv6hdr *ipipv6_hdr(const struct sk_buff *skb)
 	return (struct ipv6hdr *)skb_transport_header(skb);
 }
 
-/* 
+/*
    This structure contains results of exthdrs parsing
    as offsets from skb->nh.
  */

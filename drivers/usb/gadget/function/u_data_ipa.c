@@ -1,4 +1,4 @@
-/* Copyright (c) 2014-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2014-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -166,6 +166,13 @@ static void ipa_data_disconnect_work(struct work_struct *w)
 	if (ret)
 		pr_err("usb_bam_disconnect_ipa failed: err:%d\n", ret);
 
+	if (port->ipa_params.prod_clnt_hdl)
+		usb_bam_free_fifos(port->usb_bam_type,
+						port->dst_connection_idx);
+	if (port->ipa_params.cons_clnt_hdl)
+		usb_bam_free_fifos(port->usb_bam_type,
+						port->src_connection_idx);
+
 	pr_debug("%s(): disconnect work completed.\n", __func__);
 }
 
@@ -185,7 +192,7 @@ void ipa_data_disconnect(struct gadget_ipa_port *gp, u8 port_num)
 	unsigned long flags;
 	struct usb_gadget *gadget = NULL;
 
-	pr_debug("dev:%p port number:%d\n", gp, port_num);
+	pr_debug("dev:%pK port number:%d\n", gp, port_num);
 	if (port_num >= n_ipa_ports) {
 		pr_err("invalid ipa portno#%d\n", port_num);
 		return;
@@ -253,9 +260,8 @@ static void configure_fifo(enum usb_ctrl bam_type, u8 idx, struct usb_ep *ep)
 	struct u_bam_data_connect_info bam_info;
 	struct sps_mem_buffer data_fifo = {0};
 
-	get_bam2bam_connection_info(bam_type, idx, &bam_info.usb_bam_handle,
+	get_bam2bam_connection_info(bam_type, idx,
 				&bam_info.usb_bam_pipe_idx,
-				&bam_info.peer_pipe_idx,
 				NULL, &data_fifo, NULL);
 	msm_data_fifo_config(ep, data_fifo.phys_base, data_fifo.size,
 			bam_info.usb_bam_pipe_idx);
@@ -343,6 +349,63 @@ static void ipa_data_connect_work(struct work_struct *w)
 	port->ipa_params.cons_clnt_hdl = -1;
 	port->ipa_params.prod_clnt_hdl = -1;
 
+
+	if (gport->out) {
+		usb_bam_alloc_fifos(port->usb_bam_type,
+						port->src_connection_idx);
+
+		if (gadget_is_dwc3(gadget)) {
+			sps_params = MSM_SPS_MODE | MSM_DISABLE_WB
+					| MSM_PRODUCER | port->src_pipe_idx;
+			port->rx_req->length = 32*1024;
+			port->rx_req->udc_priv = sps_params;
+			configure_fifo(port->usb_bam_type,
+					port->src_connection_idx,
+					port->port_usb->out);
+			ret = msm_ep_config(gport->out, port->rx_req);
+			if (ret) {
+				pr_err("msm_ep_config() failed for OUT EP\n");
+				usb_bam_free_fifos(port->usb_bam_type,
+						port->src_connection_idx);
+				goto free_rx_tx_req;
+			}
+		} else {
+			get_bam2bam_connection_info(port->usb_bam_type,
+					port->src_connection_idx,
+					&port->src_pipe_idx,
+					NULL, NULL, NULL);
+			sps_params = (MSM_SPS_MODE | port->src_pipe_idx |
+				       MSM_VENDOR_ID) & ~MSM_IS_FINITE_TRANSFER;
+			port->rx_req->udc_priv = sps_params;
+		}
+	}
+
+	if (gport->in) {
+		usb_bam_alloc_fifos(port->usb_bam_type,
+						port->dst_connection_idx);
+		if (gadget_is_dwc3(gadget)) {
+			sps_params = MSM_SPS_MODE | MSM_DISABLE_WB |
+							port->dst_pipe_idx;
+			port->tx_req->length = 32*1024;
+			port->tx_req->udc_priv = sps_params;
+			configure_fifo(port->usb_bam_type,
+					port->dst_connection_idx, gport->in);
+			ret = msm_ep_config(gport->in, port->tx_req);
+			if (ret) {
+				pr_err("msm_ep_config() failed for IN EP\n");
+				goto unconfig_msm_ep_out;
+			}
+		} else {
+			get_bam2bam_connection_info(port->usb_bam_type,
+					port->dst_connection_idx,
+					&port->dst_pipe_idx,
+					NULL, NULL, NULL);
+			sps_params = (MSM_SPS_MODE | port->dst_pipe_idx |
+				       MSM_VENDOR_ID) & ~MSM_IS_FINITE_TRANSFER;
+			port->tx_req->udc_priv = sps_params;
+		}
+	}
+
 	/*
 	 * Perform below operations for Tx from Device (OUT transfer)
 	 * 1. Connect with pipe of USB BAM with IPA BAM pipe
@@ -357,32 +420,10 @@ static void ipa_data_connect_work(struct work_struct *w)
 						&port->ipa_params);
 		if (ret) {
 			pr_err("usb_bam_connect_ipa out failed err:%d\n", ret);
-			goto free_rx_tx_req;
+			goto unconfig_msm_ep_in;
 		}
-		gadget->bam2bam_func_enabled = true;
 
 		gport->ipa_consumer_ep = port->ipa_params.ipa_cons_ep_idx;
-
-		if (gadget_is_dwc3(gadget)) {
-			sps_params = MSM_SPS_MODE | MSM_DISABLE_WB
-					| MSM_PRODUCER | port->src_pipe_idx;
-			port->rx_req->length = 32*1024;
-		} else {
-			sps_params = (MSM_SPS_MODE | port->src_pipe_idx |
-				       MSM_VENDOR_ID) & ~MSM_IS_FINITE_TRANSFER;
-		}
-		port->rx_req->udc_priv = sps_params;
-
-		if (gadget_is_dwc3(gadget)) {
-			configure_fifo(port->usb_bam_type,
-					port->src_connection_idx,
-					port->port_usb->out);
-			ret = msm_ep_config(port->port_usb->out);
-			if (ret) {
-				pr_err("msm_ep_config() failed for OUT EP\n");
-				goto disconnect_usb_bam_ipa_out;
-			}
-		}
 		is_ipa_disconnected = false;
 	}
 
@@ -394,30 +435,10 @@ static void ipa_data_connect_work(struct work_struct *w)
 						&port->ipa_params);
 		if (ret) {
 			pr_err("usb_bam_connect_ipa IN failed err:%d\n", ret);
-			goto unconfig_msm_ep_out;
+			goto disconnect_usb_bam_ipa_out;
 		}
-		gadget->bam2bam_func_enabled = true;
 
 		gport->ipa_producer_ep = port->ipa_params.ipa_prod_ep_idx;
-		if (gadget_is_dwc3(gadget)) {
-			sps_params = MSM_SPS_MODE | MSM_DISABLE_WB |
-							port->dst_pipe_idx;
-			port->tx_req->length = 32*1024;
-		} else {
-			sps_params = (MSM_SPS_MODE | port->dst_pipe_idx |
-				       MSM_VENDOR_ID) & ~MSM_IS_FINITE_TRANSFER;
-		}
-		port->tx_req->udc_priv = sps_params;
-
-		if (gadget_is_dwc3(gadget)) {
-			configure_fifo(port->usb_bam_type,
-					port->dst_connection_idx, gport->in);
-			ret = msm_ep_config(gport->in);
-			if (ret) {
-				pr_err("msm_ep_config() failed for IN EP\n");
-				goto disconnect_usb_bam_ipa_in;
-			}
-		}
 		is_ipa_disconnected = false;
 	}
 
@@ -437,21 +458,25 @@ static void ipa_data_connect_work(struct work_struct *w)
 	if (gport->in)
 		ipa_data_start_endless_xfer(port, true);
 
-	pr_debug("Connect workqueue done (port %p)", port);
+	pr_debug("Connect workqueue done (port %pK)", port);
 	return;
 
-disconnect_usb_bam_ipa_in:
-	if (!is_ipa_disconnected) {
-		usb_bam_disconnect_ipa(port->usb_bam_type, &port->ipa_params);
-		is_ipa_disconnected = true;
-	}
-unconfig_msm_ep_out:
-	if (gport->out)
-		msm_ep_unconfig(port->port_usb->out);
 disconnect_usb_bam_ipa_out:
 	if (!is_ipa_disconnected) {
 		usb_bam_disconnect_ipa(port->usb_bam_type, &port->ipa_params);
 		is_ipa_disconnected = true;
+	}
+unconfig_msm_ep_in:
+	if (gport->in)
+		msm_ep_unconfig(port->port_usb->in);
+unconfig_msm_ep_out:
+	if (gport->in)
+		usb_bam_free_fifos(port->usb_bam_type,
+						port->dst_connection_idx);
+	if (gport->out) {
+		msm_ep_unconfig(port->port_usb->out);
+		usb_bam_free_fifos(port->usb_bam_type,
+						port->src_connection_idx);
 	}
 free_rx_tx_req:
 	spin_lock_irqsave(&port->port_lock, flags);
@@ -482,7 +507,7 @@ int ipa_data_connect(struct gadget_ipa_port *gp, u8 port_num,
 	unsigned long flags;
 	int ret;
 
-	pr_debug("dev:%p port#%d src_connection_idx:%d dst_connection_idx:%d\n",
+	pr_debug("dev:%pK port#%d src_connection_idx:%d dst_connection_idx:%d\n",
 			gp, port_num, src_connection_idx, dst_connection_idx);
 
 	if (port_num >= n_ipa_ports) {
@@ -520,7 +545,7 @@ int ipa_data_connect(struct gadget_ipa_port *gp, u8 port_num,
 		port->port_usb->in->endless = true;
 		ret = usb_ep_enable(port->port_usb->in);
 		if (ret) {
-			pr_err("usb_ep_enable failed eptype:IN ep:%p",
+			pr_err("usb_ep_enable failed eptype:IN ep:%pK",
 						port->port_usb->in);
 			port->port_usb->in->endless = false;
 			goto err_usb_in;
@@ -531,7 +556,7 @@ int ipa_data_connect(struct gadget_ipa_port *gp, u8 port_num,
 		port->port_usb->out->endless = true;
 		ret = usb_ep_enable(port->port_usb->out);
 		if (ret) {
-			pr_err("usb_ep_enable failed eptype:OUT ep:%p",
+			pr_err("usb_ep_enable failed eptype:OUT ep:%pK",
 						port->port_usb->out);
 			port->port_usb->out->endless = false;
 			goto err_usb_out;
@@ -634,7 +659,7 @@ void ipa_data_suspend(struct gadget_ipa_port *gp, u8 port_num)
 	struct ipa_data_ch_info *port;
 	int ret;
 
-	pr_debug("dev:%p port number:%d\n", gp, port_num);
+	pr_debug("dev:%pK port number:%d\n", gp, port_num);
 
 	if (port_num >= n_ipa_ports) {
 		pr_err("invalid ipa portno#%d\n", port_num);
@@ -682,7 +707,7 @@ void ipa_data_resume(struct gadget_ipa_port *gp, u8 port_num)
 	struct usb_gadget *gadget = NULL;
 	int ret;
 
-	pr_debug("dev:%p port number:%d\n", gp, port_num);
+	pr_debug("dev:%pK port number:%d\n", gp, port_num);
 
 	if (port_num >= n_ipa_ports) {
 		pr_err("invalid ipa portno#%d\n", port_num);
@@ -758,7 +783,7 @@ static int ipa_data_port_alloc(int portno)
 
 	ipa_data_ports[portno] = port;
 
-	pr_debug("port:%p with portno:%d allocated\n", port, portno);
+	pr_debug("port:%pK with portno:%d allocated\n", port, portno);
 	return 0;
 }
 
@@ -793,6 +818,12 @@ void ipa_data_port_select(int portno, enum gadget_type gtype)
 	port->ipa_params.dst_client = IPA_CLIENT_USB_CONS;
 	port->gtype = gtype;
 };
+
+void ipa_data_flush_workqueue(void)
+{
+	pr_debug("%s(): Flushing workqueue\n", __func__);
+	flush_workqueue(ipa_data_wq);
+}
 
 /**
  * ipa_data_setup() - setup BAM2BAM IPA port

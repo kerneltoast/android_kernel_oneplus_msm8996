@@ -133,6 +133,8 @@
 #include <linux/vmalloc.h>
 #include <linux/if_macvlan.h>
 #include <linux/errqueue.h>
+#include <linux/tcp.h>
+#include <net/tcp.h>
 
 #include "net-sysfs.h"
 
@@ -2733,6 +2735,10 @@ static struct sk_buff *validate_xmit_skb(struct sk_buff *skb, struct net_device 
 	if (netif_needs_gso(dev, skb, features)) {
 		struct sk_buff *segs;
 
+		__be16 src_port = tcp_hdr(skb)->source;
+		__be16 dest_port = tcp_hdr(skb)->dest;
+
+		trace_print_skb_gso(skb, src_port, dest_port);
 		segs = skb_gso_segment(skb, features);
 		if (IS_ERR(segs)) {
 			goto out_kfree_skb;
@@ -3374,6 +3380,8 @@ static int enqueue_to_backlog(struct sk_buff *skb, int cpu,
 	local_irq_save(flags);
 
 	rps_lock(sd);
+	if (!netif_running(skb->dev))
+		goto drop;
 	qlen = skb_queue_len(&sd->input_pkt_queue);
 	if (qlen <= netdev_max_backlog && !skb_flow_limit(skb, qlen)) {
 		if (skb_queue_len(&sd->input_pkt_queue)) {
@@ -3395,6 +3403,7 @@ enqueue:
 		goto enqueue;
 	}
 
+drop:
 	sd->dropped++;
 	rps_unlock(sd);
 
@@ -3409,15 +3418,15 @@ static int netif_rx_internal(struct sk_buff *skb)
 {
 	int ret;
 
+	net_timestamp_check(netdev_tstamp_prequeue, skb);
+
+	trace_netif_rx(skb);
+#ifdef CONFIG_RPS
 #ifndef CONFIG_MACH_MSM8996_15801
 	WARN_ONCE(skb_cloned(skb), "Cloned packet from dev %s\n",
 		  skb->dev->name);
 #endif
 
-	net_timestamp_check(netdev_tstamp_prequeue, skb);
-
-	trace_netif_rx(skb);
-#ifdef CONFIG_RPS
 	if (static_key_false(&rps_needed)) {
 		struct rps_dev_flow voidflow, *rflow = &voidflow;
 		int cpu;
@@ -3716,8 +3725,6 @@ static int __netif_receive_skb_core(struct sk_buff *skb, bool pfmemalloc)
 
 	pt_prev = NULL;
 
-	rcu_read_lock();
-
 another_round:
 	skb->skb_iif = skb->dev->ifindex;
 
@@ -3727,7 +3734,7 @@ another_round:
 	    skb->protocol == cpu_to_be16(ETH_P_8021AD)) {
 		skb = skb_vlan_untag(skb);
 		if (unlikely(!skb))
-			goto unlock;
+			goto out;
 	}
 
 #ifdef CONFIG_NET_CLS_ACT
@@ -3753,7 +3760,7 @@ skip_taps:
 	if (fast_recv) {
 		if (fast_recv(skb)) {
 			ret = NET_RX_SUCCESS;
-			goto unlock;
+			goto out;
 		}
 	}
 
@@ -3764,7 +3771,7 @@ skip_taps:
 #ifdef CONFIG_NET_CLS_ACT
 	skb = handle_ing(skb, &pt_prev, &ret, orig_dev);
 	if (!skb)
-		goto unlock;
+		goto out;
 ncls:
 #endif
 
@@ -3779,7 +3786,7 @@ ncls:
 		if (vlan_do_receive(&skb))
 			goto another_round;
 		else if (unlikely(!skb))
-			goto unlock;
+			goto out;
 	}
 
 	rx_handler = rcu_dereference(skb->dev->rx_handler);
@@ -3791,7 +3798,7 @@ ncls:
 		switch (rx_handler(&skb)) {
 		case RX_HANDLER_CONSUMED:
 			ret = NET_RX_SUCCESS;
-			goto unlock;
+			goto out;
 		case RX_HANDLER_ANOTHER:
 			goto another_round;
 		case RX_HANDLER_EXACT:
@@ -3843,8 +3850,7 @@ drop:
 		ret = NET_RX_DROP;
 	}
 
-unlock:
-	rcu_read_unlock();
+out:
 	return ret;
 }
 
@@ -3875,29 +3881,30 @@ static int __netif_receive_skb(struct sk_buff *skb)
 
 static int netif_receive_skb_internal(struct sk_buff *skb)
 {
+	int ret;
+
 	net_timestamp_check(netdev_tstamp_prequeue, skb);
 
 	if (skb_defer_rx_timestamp(skb))
 		return NET_RX_SUCCESS;
 
+	rcu_read_lock();
+
 #ifdef CONFIG_RPS
 	if (static_key_false(&rps_needed)) {
 		struct rps_dev_flow voidflow, *rflow = &voidflow;
-		int cpu, ret;
-
-		rcu_read_lock();
-
-		cpu = get_rps_cpu(skb->dev, skb, &rflow);
+		int cpu = get_rps_cpu(skb->dev, skb, &rflow);
 
 		if (cpu >= 0) {
 			ret = enqueue_to_backlog(skb, cpu, &rflow->last_qtail);
 			rcu_read_unlock();
 			return ret;
 		}
-		rcu_read_unlock();
 	}
 #endif
-	return __netif_receive_skb(skb);
+	ret = __netif_receive_skb(skb);
+	rcu_read_unlock();
+	return ret;
 }
 
 /**
@@ -4025,6 +4032,7 @@ static void gro_list_prepare(struct napi_struct *napi, struct sk_buff *skb)
 		unsigned long diffs;
 
 		NAPI_GRO_CB(p)->flush = 0;
+		NAPI_GRO_CB(p)->flush_id = 0;
 
 		if (hash != skb_get_hash_raw(p)) {
 			NAPI_GRO_CB(p)->same_flow = 0;
@@ -4440,8 +4448,10 @@ static int process_backlog(struct napi_struct *napi, int quota)
 		struct sk_buff *skb;
 
 		while ((skb = __skb_dequeue(&sd->process_queue))) {
+			rcu_read_lock();
 			local_irq_enable();
 			__netif_receive_skb(skb);
+			rcu_read_unlock();
 			local_irq_disable();
 			input_queue_head_incr(sd);
 			if (++work >= quota) {
@@ -5978,6 +5988,7 @@ static void rollback_registered_many(struct list_head *head)
 		unlist_netdevice(dev);
 
 		dev->reg_state = NETREG_UNREGISTERING;
+		on_each_cpu(flush_backlog, dev, 1);
 	}
 
 	synchronize_net();
@@ -6239,7 +6250,8 @@ static int netif_alloc_netdev_queues(struct net_device *dev)
 	struct netdev_queue *tx;
 	size_t sz = count * sizeof(*tx);
 
-	BUG_ON(count < 1 || count > 0xffff);
+	if (count < 1 || count > 0xffff)
+		return -EINVAL;
 
 	tx = kzalloc(sz, GFP_KERNEL | __GFP_NOWARN | __GFP_REPEAT);
 	if (!tx) {
@@ -6596,8 +6608,6 @@ void netdev_run_todo(void)
 		}
 
 		dev->reg_state = NETREG_UNREGISTERED;
-
-		on_each_cpu(flush_backlog, dev, 1);
 
 		netdev_wait_allrefs(dev);
 

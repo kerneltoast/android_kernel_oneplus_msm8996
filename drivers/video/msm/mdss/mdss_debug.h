@@ -147,16 +147,22 @@ void mdss_debug_register_dump_range(struct platform_device *pdev,
 	const char *name_prop, const char *xin_prop);
 int panel_debug_register_base(const char *name, void __iomem *base,
 				    size_t max_offset);
-int mdss_misr_set(struct mdss_data_type *mdata, struct mdp_misr *req,
+int mdss_misr_set(struct mdss_data_type *mdata,
+			struct mdp_misr *req,
 			struct mdss_mdp_ctl *ctl);
-int mdss_misr_get(struct mdss_data_type *mdata, struct mdp_misr *resp,
+int mdss_misr_get(struct mdss_data_type *mdata,
+			struct mdp_misr *resp,
+			struct mdss_mdp_ctl *ctl,
+			bool is_video_mode);
+void mdss_misr_disable(struct mdss_data_type *mdata,
+			struct mdp_misr *req,
 			struct mdss_mdp_ctl *ctl);
-void mdss_misr_crc_collect(struct mdss_data_type *mdata, int block_id);
+void mdss_misr_crc_collect(struct mdss_data_type *mdata, int block_id,
+	bool is_video_mode);
 
 int mdss_create_xlog_debug(struct mdss_debug_data *mdd);
 void mdss_xlog(const char *name, int line, int flag, ...);
 void mdss_xlog_tout_handler_default(bool queue, const char *name, ...);
-int mdss_create_frc_debug(struct mdss_debug_data *mdd);
 u32 get_dump_range(struct dump_offset *range_node, size_t max_offset);
 void mdss_dump_reg(const char *dump_name, u32 reg_dump_flag, char *addr,
 	int len, u32 **dump_mem, bool from_isr);
@@ -185,10 +191,16 @@ static inline int mdss_misr_set(struct mdss_data_type *mdata,
 { return 0; }
 static inline int mdss_misr_get(struct mdss_data_type *mdata,
 					struct mdp_misr *resp,
-					struct mdss_mdp_ctl *ctl)
+					struct mdss_mdp_ctl *ctl,
+					bool is_video_mode)
 { return 0; }
+static inline void mdss_misr_disable(struct mdss_data_type *mdata,
+					struct mdp_misr *req,
+					struct mdss_mdp_ctl *ctl)
+{ return; }
+
 static inline void mdss_misr_crc_collect(struct mdss_data_type *mdata,
-						int block_id) { }
+					int block_id, bool is_video_mode) { }
 
 static inline int create_xlog_debug(struct mdss_data_type *mdata) { return 0; }
 static inline void mdss_xlog_dump(void) { }
@@ -197,12 +209,14 @@ static inline void mdss_xlog(const char *name, int line, int flag, ...) { }
 static inline void mdss_dsi_debug_check_te(struct mdss_panel_data *pdata) { }
 static inline void mdss_xlog_tout_handler_default(bool queue,
 	const char *name, ...) { }
-static inline u32 get_dump_range(struct dump_offset *range_node, size_t max_offset)
+u32 get_dump_range(struct dump_offset *range_node, size_t max_offset)
 	{ return 0; }
-static inline void mdss_dump_reg(const char *dump_name, u32 reg_dump_flag, char *addr,
+void mdss_dump_reg(const char *dump_name, u32 reg_dump_flag, char *addr,
 	int len, u32 **dump_mem, bool from_isr) { }
-static inline void mdss_mdp_debug_mid(u32 mid) { }
+void mdss_mdp_debug_mid(u32 mid) { }
 #endif
+
+int mdss_dump_misr_data(char **buf, u32 size);
 
 static inline int mdss_debug_register_io(const char *name,
 		struct dss_io_data *io_data, struct mdss_debug_base **dbg_blk)
@@ -210,27 +224,5 @@ static inline int mdss_debug_register_io(const char *name,
 	return mdss_debug_register_base(name, io_data->base, io_data->len,
 		dbg_blk);
 }
-
-#if defined(CONFIG_DEBUG_FS) && defined(CONFIG_FB_MSM_MDSS_FRC_DEBUG)
-void mdss_debug_frc_add_vsync_sample(struct mdss_mdp_ctl *ctl,
-	ktime_t vsync_time);
-void mdss_debug_frc_add_kickoff_sample_pre(struct mdss_mdp_ctl *ctl,
-	struct mdss_mdp_frc_info *frc_info, int remaining);
-void mdss_debug_frc_add_kickoff_sample_post(struct mdss_mdp_ctl *ctl,
-	struct mdss_mdp_frc_info *frc_info, int remaining);
-int mdss_debug_frc_frame_repeat_disabled(void);
-#else
-static inline void mdss_debug_frc_add_vsync_sample(
-	struct mdss_mdp_ctl *ctl, ktime_t vsync_time) {}
-static inline void mdss_debug_frc_add_kickoff_sample_pre(
-	struct mdss_mdp_ctl *ctl,
-	struct mdss_mdp_frc_info *frc_info,
-	int remaining) {}
-static inline void mdss_debug_frc_add_kickoff_sample_post(
-	struct mdss_mdp_ctl *ctl,
-	struct mdss_mdp_frc_info *frc_info,
-	int remaining) {}
-static inline int mdss_debug_frc_frame_repeat_disabled(void) {return false; }
-#endif
 
 #endif /* MDSS_DEBUG_H */

@@ -165,6 +165,7 @@ enum {
 
 #define SWAP_CLUSTER_MAX 32UL
 #define COMPACT_CLUSTER_MAX SWAP_CLUSTER_MAX
+#define SWAPFILE_CLUSTER	256
 
 /*
  * Ratio between zone->managed_pages and the "gap" that above the per-zone
@@ -255,6 +256,8 @@ struct swap_info_struct {
 	struct work_struct discard_work; /* discard worker */
 	struct swap_cluster_info discard_cluster_head; /* list head of discard clusters */
 	struct swap_cluster_info discard_cluster_tail; /* list tail of discard clusters */
+	unsigned int write_pending;
+	unsigned int max_writes;
 };
 
 /* linux/mm/workingset.c */
@@ -338,6 +341,8 @@ extern unsigned long mem_cgroup_shrink_node_zone(struct mem_cgroup *mem,
 						unsigned long *nr_scanned);
 extern unsigned long shrink_all_memory(unsigned long nr_pages);
 extern int vm_swappiness;
+extern int sysctl_swap_ratio;
+extern int sysctl_swap_ratio_enable;
 extern int remove_mapping(struct address_space *mapping, struct page *page);
 extern unsigned long vm_total_pages;
 
@@ -449,6 +454,7 @@ extern unsigned int count_swap_pages(int, int);
 extern sector_t map_swap_page(struct page *, struct block_device **);
 extern sector_t swapdev_block(int, pgoff_t);
 extern int page_swapcount(struct page *);
+extern int swp_swapcount(swp_entry_t entry);
 extern struct swap_info_struct *page_swap_info(struct page *);
 extern int reuse_swap_page(struct page *);
 extern int try_to_free_swap(struct page *);
@@ -546,6 +552,11 @@ static inline void delete_from_swap_cache(struct page *page)
 }
 
 static inline int page_swapcount(struct page *page)
+{
+	return 0;
+}
+
+static inline int swp_swapcount(swp_entry_t entry)
 {
 	return 0;
 }

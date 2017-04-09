@@ -46,7 +46,6 @@
 #include <linux/oom.h>
 #include <linux/prefetch.h>
 #include <linux/printk.h>
-#include <linux/debugfs.h>
 
 #include <asm/tlbflush.h>
 #include <asm/div64.h>
@@ -200,39 +199,6 @@ static unsigned long get_lru_size(struct lruvec *lruvec, enum lru_list lru)
 	return zone_page_state(lruvec_zone(lruvec), NR_LRU_BASE + lru);
 }
 
-struct dentry *debug_file;
-
-static int debug_shrinker_show(struct seq_file *s, void *unused)
-{
-	struct shrinker *shrinker;
-	struct shrink_control sc;
-
-	sc.gfp_mask = -1;
-	sc.nr_to_scan = 0;
-
-	down_read(&shrinker_rwsem);
-	list_for_each_entry(shrinker, &shrinker_list, list) {
-		int num_objs;
-
-		num_objs = shrinker->count_objects(shrinker, &sc);
-		seq_printf(s, "%pf %d\n", shrinker->scan_objects, num_objs);
-	}
-	up_read(&shrinker_rwsem);
-	return 0;
-}
-
-static int debug_shrinker_open(struct inode *inode, struct file *file)
-{
-        return single_open(file, debug_shrinker_show, inode->i_private);
-}
-
-static const struct file_operations debug_shrinker_fops = {
-        .open = debug_shrinker_open,
-        .read = seq_read,
-        .llseek = seq_lseek,
-        .release = single_release,
-};
-
 /*
  * Add a shrinker callback to be called from the vm.
  */
@@ -261,15 +227,6 @@ int register_shrinker(struct shrinker *shrinker)
 	return 0;
 }
 EXPORT_SYMBOL(register_shrinker);
-
-static int __init add_shrinker_debug(void)
-{
-	debugfs_create_file("shrinker", 0644, NULL, NULL,
-			    &debug_shrinker_fops);
-	return 0;
-}
-
-late_initcall(add_shrinker_debug);
 
 /*
  * Remove one
@@ -582,18 +539,6 @@ static pageout_t pageout(struct page *page, struct address_space *mapping,
 		if (!PageWriteback(page)) {
 			/* synchronous write or broken a_ops? */
 			ClearPageReclaim(page);
-			if (PageError(page) && PageSwapCache(page)) {
-				ClearPageError(page);
-				/*
-				 * We lock the page here because it is required
-				 * to free the swp space later in
-				 * shrink_page_list. But the page may be
-				 * unclocked by functions like
-				 * handle_write_error.
-				 */
-				__set_page_locked(page);
-				return PAGE_ACTIVATE;
-			}
 		}
 		trace_mm_vmscan_writepage(page, trace_reclaim_flags(page));
 		inc_zone_page_state(page, NR_VMSCAN_WRITE);
@@ -968,20 +913,16 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 		 *
 		 * 2) Global reclaim encounters a page, memcg encounters a
 		 *    page that is not marked for immediate reclaim or
-		 *    the caller does not have __GFP_IO. In this case mark
+		 *    the caller does not have __GFP_FS (or __GFP_IO if it's
+		 *    simply going to swap, not to fs). In this case mark
 		 *    the page for immediate reclaim and continue scanning.
 		 *
-		 *    __GFP_IO is checked  because a loop driver thread might
+		 *    Require may_enter_fs because we would wait on fs, which
+		 *    may not have submitted IO yet. And the loop driver might
 		 *    enter reclaim, and deadlock if it waits on a page for
 		 *    which it is needed to do the write (loop masks off
 		 *    __GFP_IO|__GFP_FS for this reason); but more thought
 		 *    would probably show more reasons.
-		 *
-		 *    Don't require __GFP_FS, since we're not going into the
-		 *    FS, just waiting on its writeback completion. Worryingly,
-		 *    ext4 gfs2 and xfs allocate pages with
-		 *    grab_cache_page_write_begin(,,AOP_FLAG_NOFS), so testing
-		 *    may_enter_fs here is liable to OOM on them.
 		 *
 		 * 3) memcg encounters a page that is not already marked
 		 *    PageReclaim. memcg does not have any dirty pages
@@ -999,7 +940,7 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 
 			/* Case 2 above */
 			} else if (global_reclaim(sc) ||
-			    !PageReclaim(page) || !(sc->gfp_mask & __GFP_IO)) {
+			    !PageReclaim(page) || !may_enter_fs) {
 				/*
 				 * This is slightly racy - end_page_writeback()
 				 * might have just cleared PageReclaim, then

@@ -49,7 +49,10 @@ void msm_isp_reset_framedrop(struct vfe_device *vfe_dev,
 	struct msm_vfe_axi_stream *stream_info);
 
 int msm_isp_request_axi_stream(struct vfe_device *vfe_dev, void *arg);
+void msm_isp_get_avtimer_ts(struct msm_isp_timestamp *time_stamp);
 int msm_isp_cfg_axi_stream(struct vfe_device *vfe_dev, void *arg);
+int msm_isp_update_stream_bandwidth(struct vfe_device *vfe_dev,
+	enum msm_vfe_hw_state hw_state);
 int msm_isp_release_axi_stream(struct vfe_device *vfe_dev, void *arg);
 int msm_isp_update_axi_stream(struct vfe_device *vfe_dev, void *arg);
 void msm_isp_axi_cfg_update(struct vfe_device *vfe_dev,
@@ -72,7 +75,7 @@ void msm_isp_notify(struct vfe_device *vfe_dev, uint32_t event_type,
 
 void msm_isp_process_axi_irq(struct vfe_device *vfe_dev,
 	uint32_t irq_status0, uint32_t irq_status1,
-	struct msm_isp_timestamp *ts);
+	uint32_t pingpong_status, struct msm_isp_timestamp *ts);
 
 void msm_isp_axi_disable_all_wm(struct vfe_device *vfe_dev);
 
@@ -117,4 +120,7 @@ static inline void msm_isp_cfg_stream_scratch(struct vfe_device *vfe_dev,
 	stream_info->buf[pingpong_bit] = NULL;
 }
 
+int msm_isp_cfg_offline_ping_pong_address(struct vfe_device *vfe_dev,
+	struct msm_vfe_axi_stream *stream_info, uint32_t pingpong_status,
+	uint32_t buf_idx);
 #endif /* __MSM_ISP_AXI_UTIL_H__ */

@@ -20,6 +20,7 @@
 #include <linux/mmc/core.h>
 #include <linux/mmc/card.h>
 #include <linux/mmc/pm.h>
+#include <linux/mmc/ring_buffer.h>
 
 #define MMC_AUTOSUSPEND_DELAY_MS	3000
 
@@ -497,6 +498,10 @@ struct mmc_host {
 	const struct mmc_bus_ops *bus_ops;	/* current bus driver */
 	unsigned int		bus_refs;	/* reference counter */
 
+	unsigned int		bus_resume_flags;
+#define MMC_BUSRESUME_MANUAL_RESUME	(1 << 0)
+#define MMC_BUSRESUME_NEEDS_RESUME	(1 << 1)
+
 	unsigned int		sdio_irqs;
 	struct task_struct	*sdio_irq_thread;
 	bool			sdio_irq_pending;
@@ -553,6 +558,7 @@ struct mmc_host {
 	} perf;
 	bool perf_enable;
 #endif
+	struct mmc_trace_buffer trace_buf;
 	enum dev_state dev_status;
 	bool			wakeup_on_idle;
 	struct mmc_cmdq_context_info	cmdq_ctx;
@@ -600,6 +606,20 @@ static inline void *mmc_cmdq_private(struct mmc_host *host)
 #define mmc_dev(x)	((x)->parent)
 #define mmc_classdev(x)	(&(x)->class_dev)
 #define mmc_hostname(x)	(dev_name(&(x)->class_dev))
+#define mmc_bus_needs_resume(host) ((host)->bus_resume_flags & \
+				    MMC_BUSRESUME_NEEDS_RESUME)
+#define mmc_bus_manual_resume(host) ((host)->bus_resume_flags & \
+				MMC_BUSRESUME_MANUAL_RESUME)
+
+static inline void mmc_set_bus_resume_policy(struct mmc_host *host, int manual)
+{
+	if (manual)
+		host->bus_resume_flags |= MMC_BUSRESUME_MANUAL_RESUME;
+	else
+		host->bus_resume_flags &= ~MMC_BUSRESUME_MANUAL_RESUME;
+}
+
+extern int mmc_resume_bus(struct mmc_host *host);
 
 int mmc_power_save_host(struct mmc_host *host);
 int mmc_power_restore_host(struct mmc_host *host);

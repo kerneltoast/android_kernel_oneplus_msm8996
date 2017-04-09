@@ -280,6 +280,7 @@ static int xhci_plat_remove(struct platform_device *dev)
 	pm_runtime_disable(&dev->dev);
 
 	device_remove_file(&dev->dev, &dev_attr_config_imod);
+	xhci->xhc_state |= XHCI_STATE_REMOVING;
 	usb_remove_hcd(xhci->shared_hcd);
 	usb_put_hcd(xhci->shared_hcd);
 
@@ -314,13 +315,19 @@ static int xhci_plat_runtime_suspend(struct device *dev)
 {
 	struct usb_hcd *hcd = dev_get_drvdata(dev);
 	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
+	int ret;
 
 	if (!xhci)
 		return 0;
 
 	dev_dbg(dev, "xhci-plat runtime suspend\n");
 
-	return xhci_suspend(xhci, true);
+	disable_irq(hcd->irq);
+	ret = xhci_suspend(xhci, true);
+	if (ret)
+		enable_irq(hcd->irq);
+
+	return ret;
 }
 
 static int xhci_plat_runtime_resume(struct device *dev)
@@ -335,6 +342,7 @@ static int xhci_plat_runtime_resume(struct device *dev)
 	dev_dbg(dev, "xhci-plat runtime resume\n");
 
 	ret = xhci_resume(xhci, false);
+	enable_irq(hcd->irq);
 	pm_runtime_mark_last_busy(dev);
 
 	return ret;

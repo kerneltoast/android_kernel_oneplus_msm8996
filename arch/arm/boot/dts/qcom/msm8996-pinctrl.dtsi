@@ -20,6 +20,21 @@
 		interrupt-controller;
 		#interrupt-cells = <2>;
 
+		/* pin governing mux between QSPI and modem on auto boards */
+		modem_mux: mdm_mux {
+			mux {
+				pins = "gpio121";
+				function = "gpio";
+			};
+
+			config {
+				pins = "gpio121";
+				drive-strength = <2>;
+				bias-pull-up;
+				output-high;
+			};
+		};
+
 		uart_console_active: uart_console_active {
 			mux {
 				pins = "gpio4", "gpio5";
@@ -179,7 +194,6 @@
 			};
 		};
 
-		/*yankelong add*/
 		mdss_exits_active: mdss_exits_active {
 			mux {
 				pins = "gpio33";
@@ -229,7 +243,6 @@
 				bias-pull-down; /* pull down */
 			};
 		};
-		/*end*/
 		mdss_disp_bkl_active: mdss_disp_bkl_active {
 		/*	config {
 				pins = "gpio135";
@@ -246,7 +259,6 @@
 				bias-pull-down; // pull down 
 			};*/
 		};
-        //ruanbanmao modify for NFC spi.
 		mdss_hdmi_hpd_active: mdss_hdmi_hpd_active {
 		/*	mux {
 				pins = "gpio34";
@@ -341,7 +353,7 @@
 				bias-disable= <0>; /* no pull */
 			};
 		};
-        
+
 		sdc1_clk_on: sdc1_clk_on {
 		/*	config {
 				pins = "sdc1_clk";
@@ -1331,7 +1343,7 @@
 		};
 
 		cnss_pins {
-			cnss_default: cnss_default {
+			cnss_bootstrap_active: cnss_bootstrap_active {
 				mux {
 					pins = "gpio46";
 					function = "gpio";
@@ -1340,6 +1352,20 @@
 				config {
 					pins = "gpio46";
 					drive-strength = <16>;
+					output-high;
+					bias-pull-up;
+				};
+			};
+			cnss_bootstrap_sleep: cnss_bootstrap_sleep {
+				mux {
+					pins = "gpio46";
+					function = "gpio";
+				};
+
+				config {
+					pins = "gpio46";
+					drive-strength = <2>;
+					output-low;
 					bias-pull-down;
 				};
 			};
@@ -1616,7 +1642,63 @@
 				};
 			};
 		};
+		ap_mclk_en {
+			ap_mclk_sleep: ap_mclk_sleep {
+				mux {
+					pins = "gpio133";
+					function = "gpio";
+				};
 
+				config {
+					pins = "gpio133";
+					drive-strength = <2>;
+					bias-pull-down;
+					output-low;
+				};
+			};
+			ap_mclk_active: ap_mclk_active {
+				mux {
+					pins = "gpio133";
+					function = "gpio";
+				};
+
+				config {
+					pins = "gpio133";
+					drive-strength = <2>;
+					bias-disable;
+					output-high;
+				};
+			};
+		};
+
+		mdm_mclk_en {
+			mdm_mclk_sleep: mdm_mclk_sleep {
+				mux {
+					pins = "gpio134";
+					function = "gpio";
+				};
+
+				config {
+					pins = "gpio134";
+					drive-strength = <2>;
+					bias-pull-down;
+					output-low;
+				};
+			};
+			mdm_mclk_active: mdm_mclk_active {
+				mux {
+					pins = "gpio134";
+					function = "gpio";
+				};
+
+				config {
+					pins = "gpio134";
+					drive-strength = <2>;
+					bias-disable;
+					output-high;
+				};
+			};
+		};
 
 		cci0_active: cci0_active {
 			mux {
@@ -1857,7 +1939,7 @@
 			config {
 				pins = "gpio15";
 				bias-disable; /* No PULL */
-				drive-strength = <2>; /* 2 MA */
+				drive-strength = <6>; /* 2 MA */
 			};
 		};
 
@@ -1872,7 +1954,7 @@
 			config {
 				pins = "gpio15";
 				bias-pull-down; /* PULL DOWN */
-				drive-strength = <2>; /* 2 MA */
+				drive-strength = <6>; /* 2 MA */
 			};
 		};
 
@@ -2126,7 +2208,6 @@
 				bias-disable;
 			};
 		};
-/*ruanbanmao modify 2015.12.25. gpio 90 is uesed as SPI cs, so we should remove from here.*/
 		seta_18: seta_18 {
 			mux {
 				//pins = "gpio90";
@@ -2139,7 +2220,6 @@
 				//bias-disable;
 			};
 		};
-/*ruanbanmao modify 2015.12.25. gpio 90 is uesed as SPI cs, so we should remove from here.*/
 		setb_1: setb_1 {
 			mux {
 				pins = "gpio13";
@@ -2386,7 +2466,6 @@
 				bias-disable;
 			};
 		};
-/*ruanbanmao modify 2015.12.25. gpio 90 is uesed as SPI cs, so we should remove from here.*/
 		tsif0_signals_active: tsif0_signals_active {
 			tsif1_clk {
 				pins = "gpio89"; /* TSIF0 CLK */
@@ -2406,7 +2485,6 @@
 				bias-pull-down;		/* pull down */
 			};
 		};
-/*ruanbanmao modify 2015.12.25. gpio 90 is uesed as SPI cs, so we should remove from here.*/
 		/* sync signal is only used if configured to mode-2 */
 		tsif0_sync_active: tsif0_sync_active {
 			tsif1_sync {

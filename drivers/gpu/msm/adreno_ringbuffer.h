@@ -14,6 +14,7 @@
 #define __ADRENO_RINGBUFFER_H
 
 #include "kgsl_iommu.h"
+#include "adreno_iommu.h"
 #include "adreno_dispatch.h"
 
 /* Given a ringbuffer, return the adreno device that owns it */
@@ -72,13 +73,16 @@ struct adreno_ringbuffer_pagetable_info {
 	unsigned int contextidr;
 };
 
+#define PT_INFO_OFFSET(_field) \
+	offsetof(struct adreno_ringbuffer_pagetable_info, _field)
+
 /**
  * struct adreno_ringbuffer - Definition for an adreno ringbuffer object
  * @flags: Internal control flags for the ringbuffer
- * @buffer_desc: Pointer to the ringbuffer memory descriptor
- * @wptr: Local copy of the wptr offset
- * @rptr: Read pointer offset in dwords from baseaddr
- * @last_wptr: offset of the last H/W committed wptr
+ * @buffer_desc: Pointer to the ringbuffer memory descripto
+ * @_wptr: The next value of wptr to be written to the hardware on submit
+ * @wptr: Local copy of the wptr offset last written to hardware
+ * @last_wptr: offset of the last wptr that was written to CFF
  * @rb_ctx: The context that represents a ringbuffer
  * @id: Priority level of the ringbuffer, also used as an ID
  * @fault_detect_ts: The last retired global timestamp read during fault detect
@@ -90,8 +94,6 @@ struct adreno_ringbuffer_pagetable_info {
  * preemption info written/read by CP
  * @pagetable_desc: Memory to hold information about the pagetables being used
  * and the commands to switch pagetable on the RB
- * @pt_update_desc: The memory descriptor containing commands that update
- * pagetable
  * @dispatch_q: The dispatcher side queue for this ringbuffer
  * @ts_expire_waitq: Wait queue to wait for rb timestamp to expire
  * @ts_expire_waitq: Wait q to wait for rb timestamp to expire
@@ -102,13 +104,13 @@ struct adreno_ringbuffer_pagetable_info {
  * @sched_timer: Timer that tracks how long RB has been waiting to be scheduled
  * or how long it has been scheduled for after preempting in
  * @starve_timer_state: Indicates the state of the wait.
+ * @preempt_lock: Lock to protect the wptr pointer while it is being updated
  */
 struct adreno_ringbuffer {
 	uint32_t flags;
 	struct kgsl_memdesc buffer_desc;
-	unsigned int sizedwords;
+	unsigned int _wptr;
 	unsigned int wptr;
-	unsigned int rptr;
 	unsigned int last_wptr;
 	int id;
 	unsigned int fault_detect_ts;
@@ -117,7 +119,6 @@ struct adreno_ringbuffer {
 	struct adreno_context *drawctxt_active;
 	struct kgsl_memdesc preemption_desc;
 	struct kgsl_memdesc pagetable_desc;
-	struct kgsl_memdesc pt_update_desc;
 	struct adreno_dispatcher_cmdqueue dispatch_q;
 	wait_queue_head_t ts_expire_waitq;
 	unsigned int wptr_preempt_end;
@@ -125,23 +126,11 @@ struct adreno_ringbuffer {
 	int preempted_midway;
 	unsigned long sched_timer;
 	enum adreno_dispatcher_starve_timer_states starve_timer_state;
+	spinlock_t preempt_lock;
 };
-
-/* enable timestamp (...scratch0) memory shadowing */
-#define GSL_RB_MEMPTRS_SCRATCH_MASK 0x1
-
-/*
- * protected mode error checking below register address 0x800
- * note: if CP_INTERRUPT packet is used then checking needs
- * to change to below register address 0x7C8
- */
-#define GSL_RB_PROTECTED_MODE_CONTROL		0x200001F2
 
 /* Returns the current ringbuffer */
 #define ADRENO_CURRENT_RINGBUFFER(a)	((a)->cur_rb)
-
-#define KGSL_MEMSTORE_RB_OFFSET(rb, field)	\
-	KGSL_MEMSTORE_OFFSET((rb->id + KGSL_MEMSTORE_MAX), field)
 
 int cp_secure_mode(struct adreno_device *adreno_dev, uint *cmds, int set);
 
@@ -154,7 +143,7 @@ int adreno_ringbuffer_submitcmd(struct adreno_device *adreno_dev,
 		struct kgsl_cmdbatch *cmdbatch,
 		struct adreno_submit_time *time);
 
-int adreno_ringbuffer_init(struct adreno_device *adreno_dev, bool nopreempt);
+int adreno_ringbuffer_probe(struct adreno_device *adreno_dev, bool nopreempt);
 
 int adreno_ringbuffer_start(struct adreno_device *adreno_dev,
 		unsigned int start_type);
@@ -183,9 +172,6 @@ void adreno_ringbuffer_read_pfp_ucode(struct kgsl_device *device);
 
 void adreno_ringbuffer_read_pm4_ucode(struct kgsl_device *device);
 
-void adreno_ringbuffer_mmu_disable_clk_on_ts(struct kgsl_device *device,
-			struct adreno_ringbuffer *rb, unsigned int ts);
-
 int adreno_ringbuffer_waittimestamp(struct adreno_ringbuffer *rb,
 					unsigned int timestamp,
 					unsigned int msecs);
@@ -193,9 +179,6 @@ int adreno_ringbuffer_waittimestamp(struct adreno_ringbuffer *rb,
 int adreno_rb_readtimestamp(struct adreno_device *adreno_dev,
 	void *priv, enum kgsl_timestamp_type type,
 	unsigned int *timestamp);
-
-int adreno_ringbuffer_submit_preempt_token(struct adreno_ringbuffer *rb,
-					struct adreno_ringbuffer *incoming_rb);
 
 static inline int adreno_ringbuffer_count(struct adreno_ringbuffer *rb,
 	unsigned int rptr)
@@ -217,6 +200,13 @@ static inline unsigned int adreno_ringbuffer_dec_wrapped(unsigned int val,
 							unsigned int size)
 {
 	return (val + size - sizeof(unsigned int)) % size;
+}
+
+static inline int adreno_ringbuffer_set_pt_ctx(struct adreno_ringbuffer *rb,
+		struct kgsl_pagetable *pt, struct adreno_context *context,
+		unsigned long flags)
+{
+	return adreno_iommu_set_pt_ctx(rb, pt, context, flags);
 }
 
 #endif  /* __ADRENO_RINGBUFFER_H */

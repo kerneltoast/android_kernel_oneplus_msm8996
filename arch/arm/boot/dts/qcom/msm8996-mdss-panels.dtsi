@@ -34,8 +34,6 @@
 #include "dsi-panel-sharp-1080p-cmd.dtsi"
 #include "dsi-panel-sharp-dsc-4k-video.dtsi"
 #include "dsi-panel-sharp-dsc-4k-cmd.dtsi"
-#include "dsi-panel-truly-1080p-video.dtsi"
-#include "dsi-panel-truly-1080p-cmd.dtsi"
 
 &soc {
 	dsi_panel_pwr_supply: dsi_panel_pwr_supply {
@@ -136,7 +134,7 @@
 };
 
 &dsi_nt35950_4k_dsc_cmd {
-	qcom,mdss-dsi-panel-timings-8996 = [21 1e 06 08 04 03 04 a0
+	qcom,mdss-dsi-panel-timings-phy-v2 = [21 1e 06 08 04 03 04 a0
 		21 1e 06 08 04 03 04 a0
 		21 1e 06 08 04 03 04 a0
 		21 1e 06 08 04 03 04 a0
@@ -144,7 +142,7 @@
 };
 
 &dsi_sharp_4k_dsc_video {
-	qcom,mdss-dsi-panel-timings-8996 = [21 1e 06 08 04 03 04 a0
+	qcom,mdss-dsi-panel-timings-phy-v2 = [21 1e 06 08 04 03 04 a0
 		21 1e 06 08 04 03 04 a0
 		21 1e 06 08 04 03 04 a0
 		21 1e 06 08 04 03 04 a0
@@ -152,7 +150,7 @@
 };
 
 &dsi_sharp_4k_dsc_cmd {
-	qcom,mdss-dsi-panel-timings-8996 = [21 1e 06 08 04 03 04 a0
+	qcom,mdss-dsi-panel-timings-phy-v2 = [21 1e 06 08 04 03 04 a0
 		21 1e 06 08 04 03 04 a0
 		21 1e 06 08 04 03 04 a0
 		21 1e 06 08 04 03 04 a0
@@ -160,7 +158,7 @@
 };
 
 &dsi_dual_sharp_video {
-	qcom,mdss-dsi-panel-timings-8996 = [23 20 06 09 05 03 04 a0
+	qcom,mdss-dsi-panel-timings-phy-v2 = [23 20 06 09 05 03 04 a0
 			23 20 06 09 05 03 04 a0
 			23 20 06 09 05 03 04 a0
 			23 20 06 09 05 03 04 a0
@@ -168,7 +166,7 @@
 };
 
 &dsi_dual_jdi_cmd {
-	qcom,mdss-dsi-panel-timings-8996 = [22 1e 06 08 04 03 04 a0
+	qcom,mdss-dsi-panel-timings-phy-v2 = [22 1e 06 08 04 03 04 a0
 			22 1e 06 08 04 03 04 a0
 			22 1e 06 08 04 03 04 a0
 			22 1e 06 08 04 03 04 a0
@@ -178,7 +176,7 @@
 };
 
 &dsi_dual_jdi_video {
-	qcom,mdss-dsi-panel-timings-8996 = [22 1e 06 08 04 03 04 a0
+	qcom,mdss-dsi-panel-timings-phy-v2 = [22 1e 06 08 04 03 04 a0
 			22 1e 06 08 04 03 04 a0
 			22 1e 06 08 04 03 04 a0
 			22 1e 06 08 04 03 04 a0
@@ -186,7 +184,7 @@
 };
 
 &dsi_dual_sharp_1080_120hz_cmd {
-	qcom,mdss-dsi-panel-timings-8996 = [23 1e 07 08 05 03 04 a0
+	qcom,mdss-dsi-panel-timings-phy-v2 = [23 1e 07 08 05 03 04 a0
 			23 1e 07 08 05 03 04 a0
 			23 1e 07 08 05 03 04 a0
 			23 1e 07 08 05 03 04 a0
@@ -194,7 +192,7 @@
 };
 
 &dsi_dual_nt35597_video {
-	qcom,mdss-dsi-panel-timings-8996 = [23 1e 07 08 05 03 04 a0
+	qcom,mdss-dsi-panel-timings-phy-v2 = [23 1e 07 08 05 03 04 a0
 		23 1e 07 08 05 03 04 a0
 		23 1e 07 08 05 03 04 a0
 		23 1e 07 08 05 03 04 a0
@@ -204,7 +202,7 @@
 };
 
 &dsi_dual_nt35597_cmd {
-	qcom,mdss-dsi-panel-timings-8996 = [23 1e 07 08 05 03 04 a0
+	qcom,mdss-dsi-panel-timings-phy-v2 = [23 1e 07 08 05 03 04 a0
 		23 1e 07 08 05 03 04 a0
 		23 1e 07 08 05 03 04 a0
 		23 1e 07 08 05 03 04 a0
@@ -214,7 +212,7 @@
 };
 
 &dsi_nt35597_dsc_video {
-	qcom,mdss-dsi-panel-timings-8996 = [20 1d 05 07 03 03 04 a0
+	qcom,mdss-dsi-panel-timings-phy-v2 = [20 1d 05 07 03 03 04 a0
 		20 1d 05 07 03 03 04 a0
 		20 1d 05 07 03 03 04 a0
 		20 1d 05 07 03 03 04 a0
@@ -224,7 +222,7 @@
 };
 
 &dsi_nt35597_dsc_cmd {
-	qcom,mdss-dsi-panel-timings-8996 = [20 1d 05 07 03 03 04 a0
+	qcom,mdss-dsi-panel-timings-phy-v2 = [20 1d 05 07 03 03 04 a0
 		20 1d 05 07 03 03 04 a0
 		20 1d 05 07 03 03 04 a0
 		20 1d 05 07 03 03 04 a0
@@ -234,7 +232,7 @@
 };
 
 &dsi_dual_jdi_4k_nofbc_video {
-	qcom,mdss-dsi-panel-timings-8996 = [
+	qcom,mdss-dsi-panel-timings-phy-v2 = [
 		2c 27 0e 10 0a 03 04 a0
 		2c 27 0e 10 0a 03 04 a0
 		2c 27 0e 10 0a 03 04 a0
@@ -243,38 +241,22 @@
 };
 
 &dsi_hx8379a_fwvga_truly_vid {
-	qcom,mdss-dsi-panel-timings-8996 = [23 20 06 09 05 03 04 a0
+	qcom,mdss-dsi-panel-timings-phy-v2 = [23 20 06 09 05 03 04 a0
 		23 20 06 09 05 03 04 a0
 		23 20 06 09 05 03 04 a0
 		23 20 06 09 05 03 04 a0
 		23 2e 06 08 05 03 04 a0];
 };
 &dsi_r69007_wqxga_cmd {
-	qcom,mdss-dsi-panel-timings-8996 = [23 1f 07 09 05 03 04 a0
+	qcom,mdss-dsi-panel-timings-phy-v2 = [23 1f 07 09 05 03 04 a0
 		23 1f 07 09 05 03 04 a0
 		23 1f 07 09 05 03 04 a0
 		23 1f 07 09 05 03 04 a0
 		23 19 08 08 05 03 04 a0];
 };
 
-&dsi_truly_1080_vid {
-	qcom,mdss-dsi-panel-timings-8996 = [23 1e 08 09 05 03 04 a0
-		23 1e 08 09 05 03 04 a0
-		23 1e 08 09 05 03 04 a0
-		23 1e 08 09 05 03 04 a0
-		23 1a 08 09 05 03 04 a0];
-};
-
-&dsi_truly_1080_cmd {
-	qcom,mdss-dsi-panel-timings-8996 = [23 1e 08 09 05 03 04 a0
-		23 1e 08 09 05 03 04 a0
-		23 1e 08 09 05 03 04 a0
-		23 1e 08 09 05 03 04 a0
-		23 1a 08 09 05 03 04 a0];
-};
-
 &dsi_sharp_1080_cmd {
-	qcom,mdss-dsi-panel-timings-8996 = [23 1f 07 09 05 03 04 a0
+	qcom,mdss-dsi-panel-timings-phy-v2 = [23 1f 07 09 05 03 04 a0
 		23 1f 07 09 05 03 04 a0
 		23 1f 07 09 05 03 04 a0
 		23 1f 07 09 05 03 04 a0

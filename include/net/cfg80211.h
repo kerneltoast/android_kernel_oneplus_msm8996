@@ -64,7 +64,10 @@ struct wiphy;
 
 #define SUPPORT_WDEV_CFG80211_VENDOR_EVENT_ALLOC 1
 #define CFG80211_DEL_STA_V2 1
+#define CFG80211_SCAN_BSSID 1
+#define CFG80211_CONNECT_PREV_BSSID 1
 #define CFG80211_CONNECT_BSS 1
+#define CFG80211_ABORT_SCAN 1
 #define CFG80211_DISCONNECTED_V2 1
 
 /*
@@ -1465,6 +1468,7 @@ struct cfg80211_ssid {
  * @aborted: (internal) scan request was notified as aborted
  * @notified: (internal) scan request was notified as done or aborted
  * @no_cck: used to send probe requests at non CCK rate in 2GHz band
+ * @bssid: BSSID to scan for (most commonly, the wildcard BSSID)
  */
 struct cfg80211_scan_request {
 	struct cfg80211_ssid *ssids;
@@ -1478,6 +1482,8 @@ struct cfg80211_scan_request {
 	u32 rates[IEEE80211_NUM_BANDS];
 
 	struct wireless_dev *wdev;
+
+	u8 bssid[ETH_ALEN] __aligned(2);
 
 	/* internal */
 	struct wiphy *wiphy;
@@ -1522,6 +1528,8 @@ struct cfg80211_match_set {
  * @channels: channels to scan
  * @min_rssi_thold: for drivers only supporting a single threshold, this
  *	contains the minimum over all matchsets
+ * @owner_nlportid: netlink portid of owner (if this should is a request
+ *	owned by a particular socket)
  */
 struct cfg80211_sched_scan_request {
 	struct cfg80211_ssid *ssids;
@@ -1540,6 +1548,7 @@ struct cfg80211_sched_scan_request {
 	struct wiphy *wiphy;
 	struct net_device *dev;
 	unsigned long scan_start;
+	u32 owner_nlportid;
 
 	/* keep last */
 	struct ieee80211_channel *channels[0];
@@ -1835,6 +1844,7 @@ struct cfg80211_ibss_params {
  * @vht_capa_mask: The bits of vht_capa which are to be used.
  * @pbss: if set, connect to a PCP instead of AP. Valid for DMG
  *	networks.
+ * @prev_bssid: previous BSSID, if not %NULL use reassociate frame
  */
 struct cfg80211_connect_params {
 	struct ieee80211_channel *channel;
@@ -1858,6 +1868,7 @@ struct cfg80211_connect_params {
 	struct ieee80211_vht_cap vht_capa;
 	struct ieee80211_vht_cap vht_capa_mask;
 	bool pbss;
+	const u8 *prev_bssid;
 };
 
 /**
@@ -2234,6 +2245,8 @@ struct cfg80211_qos_map {
  *	the driver, and will be valid until passed to cfg80211_scan_done().
  *	For scan results, call cfg80211_inform_bss(); you can call this outside
  *	the scan/scan_done bracket too.
+ * @abort_scan: Tell the driver to abort an ongoing scan. The driver shall
+ *	indicate the status of the scan through cfg80211_scan_done().
  *
  * @auth: Request to authenticate with the specified peer
  *	(invoked with the wireless_dev mutex held)
@@ -2482,6 +2495,7 @@ struct cfg80211_ops {
 
 	int	(*scan)(struct wiphy *wiphy,
 			struct cfg80211_scan_request *request);
+	void	(*abort_scan)(struct wiphy *wiphy, struct wireless_dev *wdev);
 
 	int	(*auth)(struct wiphy *wiphy, struct net_device *dev,
 			struct cfg80211_auth_request *req);
@@ -2904,6 +2918,24 @@ struct wiphy_vendor_command {
 };
 
 /**
+ * struct wiphy_iftype_ext_capab - extended capabilities per interface type
+ * @iftype: interface type
+ * @extended_capabilities: extended capabilities supported by the driver,
+ *	additional capabilities might be supported by userspace; these are the
+ *	802.11 extended capabilities ("Extended Capabilities element") and are
+ *	in the same format as in the information element. See IEEE Std
+ *	802.11-2012 8.4.2.29 for the defined fields.
+ * @extended_capabilities_mask: mask of the valid values
+ * @extended_capabilities_len: length of the extended capabilities
+ */
+struct wiphy_iftype_ext_capab {
+	enum nl80211_iftype iftype;
+	const u8 *extended_capabilities;
+	const u8 *extended_capabilities_mask;
+	u8 extended_capabilities_len;
+};
+
+/**
  * struct wiphy - wireless hardware description
  * @reg_notifier: the driver's regulatory notification callback,
  *	note that if your driver uses wiphy_apply_custom_regulatory()
@@ -3012,9 +3044,14 @@ struct wiphy_vendor_command {
  *	additional capabilities might be supported by userspace; these are
  *	the 802.11 extended capabilities ("Extended Capabilities element")
  *	and are in the same format as in the information element. See
- *	802.11-2012 8.4.2.29 for the defined fields.
+ *	802.11-2012 8.4.2.29 for the defined fields. These are the default
+ *	extended capabilities to be used if the capabilities are not specified
+ *	for a specific interface type in iftype_ext_capab.
  * @extended_capabilities_mask: mask of the valid values
  * @extended_capabilities_len: length of the extended capabilities
+ * @iftype_ext_capab: array of extended capabilities per interface type
+ * @num_iftype_ext_capab: number of interface types for which extended
+ *	capabilities are specified separately.
  * @coalesce: packet coalescing support information
  *
  * @vendor_commands: array of vendor commands supported by the hardware
@@ -3106,6 +3143,9 @@ struct wiphy {
 
 	const u8 *extended_capabilities, *extended_capabilities_mask;
 	u8 extended_capabilities_len;
+
+	const struct wiphy_iftype_ext_capab *iftype_ext_capab;
+	unsigned int num_iftype_ext_capab;
 
 	/* If multiple wiphys are registered and you're handed e.g.
 	 * a regular netdev with assigned ieee80211_ptr, you won't

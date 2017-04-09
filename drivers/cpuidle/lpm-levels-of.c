@@ -601,6 +601,13 @@ static int parse_cluster_level(struct device_node *node,
 	if (ret)
 		goto failed;
 
+	key = "qcom,reset-level";
+	ret = of_property_read_u32(node, key, &level->reset_level);
+	if (ret == -EINVAL)
+		level->reset_level = LPM_RESET_LVL_NONE;
+	else if (ret)
+		goto failed;
+
 	cluster->nlevels++;
 	return 0;
 failed:
@@ -713,7 +720,7 @@ static int calculate_residency(struct power_params *base_pwr,
 	residency /= (int32_t)(base_pwr->ss_power  - next_pwr->ss_power);
 
 	if (residency < 0) {
-		__WARN_printf("%s: Incorrect power attributes for LPM\n",
+		pr_err("%s: residency < 0 for LPM\n",
 				__func__);
 		return next_pwr->time_overhead_us;
 	}
@@ -775,6 +782,13 @@ static int parse_cpu_levels(struct device_node *node, struct lpm_cluster *c)
 
 		key = "qcom,jtag-save-restore";
 		l->jtag_save_restore = of_property_read_bool(n, key);
+
+		key = "qcom,reset-level";
+		ret = of_property_read_u32(n, key, &l->reset_level);
+		if (ret == -EINVAL)
+			l->reset_level = LPM_RESET_LVL_NONE;
+		else if (ret)
+			goto failed;
 	}
 	for (i = 0; i < c->cpu->nlevels; i++) {
 		for (j = 0; j < c->cpu->nlevels; j++) {

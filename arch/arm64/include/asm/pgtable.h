@@ -34,7 +34,7 @@
 /*
  * VMALLOC and SPARSEMEM_VMEMMAP ranges.
  *
- * VMEMAP_SIZE: allows the whole VA space to be covered by a struct page array
+ * VMEMAP_SIZE: allows the whole linear region to be covered by a struct page array
  *	(rounded up to PUD_SIZE).
  * VMALLOC_START: beginning of the kernel VA space
  * VMALLOC_END: extends to the available space below vmmemmap, PCI I/O space,
@@ -51,7 +51,9 @@
 
 #define VMALLOC_END		(PAGE_OFFSET - PUD_SIZE - VMEMMAP_SIZE - SZ_64K)
 
-#define vmemmap			((struct page *)(VMALLOC_END + SZ_64K))
+#define VMEMMAP_START		(VMALLOC_END + SZ_64K)
+#define vmemmap			((struct page *)VMEMMAP_START - \
+				 SECTION_ALIGN_DOWN(memstart_addr >> PAGE_SHIFT))
 
 #define FIRST_USER_ADDRESS	0
 
@@ -69,6 +71,7 @@ extern void __pgd_error(const char *file, int line, unsigned long val);
 #define PROT_SECT_DEFAULT	(PMD_TYPE_SECT | PMD_SECT_AF)
 #endif
 
+#define PROT_DEVICE_nGnRnE	(PROT_DEFAULT | PTE_PXN | PTE_UXN | PTE_ATTRINDX(MT_DEVICE_nGnRnE))
 #define PROT_DEVICE_nGnRE	(PROT_DEFAULT | PTE_PXN | PTE_UXN | PTE_ATTRINDX(MT_DEVICE_nGnRE))
 #define PROT_NORMAL_NC		(PROT_DEFAULT | PTE_PXN | PTE_UXN | PTE_ATTRINDX(MT_NORMAL_NC))
 #define PROT_NORMAL		(PROT_DEFAULT | PTE_PXN | PTE_UXN | PTE_ATTRINDX(MT_NORMAL))

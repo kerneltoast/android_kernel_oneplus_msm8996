@@ -126,7 +126,10 @@ static const struct adreno_debugbus_block a5xx_debugbus_blocks[] = {
 };
 
 #define A5XX_NUM_AXI_ARB_BLOCKS	2
-#define A5XX_NUM_XIN_BLOCKS	5
+#define A5XX_NUM_XIN_BLOCKS	4
+
+/* Width of A5XX_CP_DRAW_STATE_ADDR is 8 bits */
+#define A5XX_CP_DRAW_STATE_ADDR_WIDTH 8
 
 /* a5xx_snapshot_cp_pm4() - Dump PM4 data in snapshot */
 static size_t a5xx_snapshot_cp_pm4(struct kgsl_device *device, u8 *buf,
@@ -202,11 +205,11 @@ static size_t a5xx_snapshot_vbif_debugbus(struct kgsl_device *device,
 	/*
 	 * Total number of VBIF data words considering 3 sections:
 	 * 2 arbiter blocks of 16 words
-	 * 5 AXI XIN blocks of 4 dwords each
-	 * 5 core clock side XIN blocks of 5 dwords each
+	 * 4 AXI XIN blocks of 18 dwords each
+	 * 4 core clock side XIN blocks of 12 dwords each
 	 */
 	unsigned int dwords = (16 * A5XX_NUM_AXI_ARB_BLOCKS) +
-			(4 * A5XX_NUM_XIN_BLOCKS) + (5 * A5XX_NUM_XIN_BLOCKS);
+			(18 * A5XX_NUM_XIN_BLOCKS) + (12 * A5XX_NUM_XIN_BLOCKS);
 	unsigned int *data = (unsigned int *)(buf + sizeof(*header));
 	size_t size;
 	unsigned int reg_clk;
@@ -244,7 +247,7 @@ static size_t a5xx_snapshot_vbif_debugbus(struct kgsl_device *device,
 	/* XIN blocks AXI side */
 	for (i = 0; i < A5XX_NUM_XIN_BLOCKS; i++) {
 		kgsl_regwrite(device, A5XX_VBIF_TEST_BUS2_CTRL0, 1 << i);
-		for (j = 0; j < 4; j++) {
+		for (j = 0; j < 18; j++) {
 			kgsl_regwrite(device, A5XX_VBIF_TEST_BUS2_CTRL1,
 				((j & A5XX_VBIF_TEST_BUS2_CTRL1_DATA_SEL_MASK)
 				<< A5XX_VBIF_TEST_BUS2_CTRL1_DATA_SEL_SHIFT));
@@ -257,7 +260,7 @@ static size_t a5xx_snapshot_vbif_debugbus(struct kgsl_device *device,
 	/* XIN blocks core clock side */
 	for (i = 0; i < A5XX_NUM_XIN_BLOCKS; i++) {
 		kgsl_regwrite(device, A5XX_VBIF_TEST_BUS1_CTRL0, 1 << i);
-		for (j = 0; j < 5; j++) {
+		for (j = 0; j < 12; j++) {
 			kgsl_regwrite(device, A5XX_VBIF_TEST_BUS1_CTRL1,
 				((j & A5XX_VBIF_TEST_BUS1_CTRL1_DATA_SEL_MASK)
 				<< A5XX_VBIF_TEST_BUS1_CTRL1_DATA_SEL_SHIFT));
@@ -326,8 +329,7 @@ static void a5xx_snapshot_debugbus(struct kgsl_device *device,
 	}
 }
 
-static const unsigned int a5xx_vbif_ver_20040000_registers[] = {
-	/* VBIF version 0x20040000*/
+static const unsigned int a5xx_vbif_ver_20xxxxxx_registers[] = {
 	0x3000, 0x3007, 0x300C, 0x3014, 0x3018, 0x302C, 0x3030, 0x3030,
 	0x3034, 0x3036, 0x3038, 0x3038, 0x303C, 0x303D, 0x3040, 0x3040,
 	0x3042, 0x3042, 0x3049, 0x3049, 0x3058, 0x3058, 0x305A, 0x3061,
@@ -341,10 +343,8 @@ static const unsigned int a5xx_vbif_ver_20040000_registers[] = {
 
 static const struct adreno_vbif_snapshot_registers
 a5xx_vbif_snapshot_registers[] = {
-	{ 0x20040000, a5xx_vbif_ver_20040000_registers,
-				ARRAY_SIZE(a5xx_vbif_ver_20040000_registers)/2},
-	{ 0x20040001, a5xx_vbif_ver_20040000_registers,
-				ARRAY_SIZE(a5xx_vbif_ver_20040000_registers)/2},
+	{ 0x20000000, 0xFF000000, a5xx_vbif_ver_20xxxxxx_registers,
+				ARRAY_SIZE(a5xx_vbif_ver_20xxxxxx_registers)/2},
 };
 
 /*
@@ -379,7 +379,7 @@ static const unsigned int a5xx_registers[] = {
 	/* VPC */
 	0x0E60, 0x0E7C,
 	/* UCHE */
-	0x0E80, 0x0E8E, 0x0E90, 0x0E96, 0xEA0, 0xEA8, 0xEB0, 0xEB2,
+	0x0E80, 0x0E8F, 0x0E90, 0x0E96, 0xEA0, 0xEA8, 0xEB0, 0xEB2,
 
 	/* RB CTX 0 */
 	0xE140, 0xE147, 0xE150, 0xE187, 0xE1A0, 0xE1A9, 0xE1B0, 0xE1B6,
@@ -704,6 +704,34 @@ out:
 	return (count * 8) + sizeof(*header);
 }
 
+/* Snapshot a preemption record buffer */
+static size_t snapshot_preemption_record(struct kgsl_device *device, u8 *buf,
+	size_t remain, void *priv)
+{
+	struct kgsl_memdesc *memdesc = priv;
+
+	struct kgsl_snapshot_gpu_object_v2 *header =
+		(struct kgsl_snapshot_gpu_object_v2 *)buf;
+
+	u8 *ptr = buf + sizeof(*header);
+
+	if (remain < (SZ_64K + sizeof(*header))) {
+		SNAPSHOT_ERR_NOMEM(device, "PREEMPTION RECORD");
+		return 0;
+	}
+
+	header->size = SZ_64K >> 2;
+	header->gpuaddr = memdesc->gpuaddr;
+	header->ptbase =
+		kgsl_mmu_pagetable_get_ttbr0(device->mmu.defaultpagetable);
+	header->type = SNAPSHOT_GPU_OBJECT_GLOBAL;
+
+	memcpy(ptr, memdesc->hostptr, SZ_64K);
+
+	return SZ_64K + sizeof(*header);
+}
+
+
 static void _a5xx_do_crashdump(struct kgsl_device *device)
 {
 	unsigned long wait_time;
@@ -801,7 +829,8 @@ void a5xx_snapshot(struct adreno_device *adreno_dev,
 	struct kgsl_device *device = KGSL_DEVICE(adreno_dev);
 	struct adreno_gpudev *gpudev = ADRENO_GPU_DEVICE(adreno_dev);
 	struct adreno_snapshot_data *snap_data = gpudev->snapshot_data;
-	unsigned int reg;
+	unsigned int reg, i;
+	struct adreno_ringbuffer *rb;
 
 	/* Disable Clock gating temporarily for the debug bus to work */
 	a5xx_hwcg_set(adreno_dev, false);
@@ -833,7 +862,7 @@ void a5xx_snapshot(struct adreno_device *adreno_dev,
 	 /* CP_DRAW_STATE */
 	 kgsl_snapshot_indexed_registers(device, snapshot,
 		A5XX_CP_DRAW_STATE_ADDR, A5XX_CP_DRAW_STATE_DATA,
-		0, 128);
+		0, 1 << A5XX_CP_DRAW_STATE_ADDR_WIDTH);
 
 	 /*
 	  * CP needs to be halted on a530v1 before reading CP_PFP_UCODE_DBG_DATA
@@ -881,6 +910,15 @@ void a5xx_snapshot(struct adreno_device *adreno_dev,
 
 	/* Debug bus */
 	a5xx_snapshot_debugbus(device, snapshot);
+
+	/* Preemption record */
+	FOR_EACH_RINGBUFFER(adreno_dev, rb, i) {
+		kgsl_snapshot_add_section(device,
+			KGSL_SNAPSHOT_SECTION_GPU_OBJECT_V2,
+			snapshot, snapshot_preemption_record,
+			&rb->preemption_desc);
+	}
+
 }
 
 static int _a5xx_crashdump_init_shader(struct a5xx_shader_block *block,
@@ -995,11 +1033,11 @@ void a5xx_crashdump_init(struct adreno_device *adreno_dev)
 	/* The script buffers needs 2 extra qwords on the end */
 	if (kgsl_allocate_global(device, &capturescript,
 		script_size + 16, KGSL_MEMFLAGS_GPUREADONLY,
-		KGSL_MEMDESC_PRIVILEGED))
+		KGSL_MEMDESC_PRIVILEGED, "capturescript"))
 		return;
 
 	if (kgsl_allocate_global(device, &registers, data_size, 0,
-		KGSL_MEMDESC_PRIVILEGED)) {
+		KGSL_MEMDESC_PRIVILEGED, "capturescript_regs")) {
 		kgsl_free_global(KGSL_DEVICE(adreno_dev), &capturescript);
 		return;
 	}

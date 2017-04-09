@@ -26,6 +26,7 @@
 #include "msm-pcm-routing-v2.h"
 #include <sound/audio_cal_utils.h>
 #include <sound/adsp_err.h>
+#include <linux/qdsp6v2/apr_tal.h>
 
 #define WAKELOCK_TIMEOUT	5000
 enum {
@@ -283,6 +284,23 @@ static int32_t afe_callback(struct apr_client_data *data, void *priv)
 		pr_debug("%s: task_name = %s pid = %d\n",
 			__func__,
 			this_afe.task->comm, this_afe.task->pid);
+
+		/*
+		 * Pass reset events to proxy driver, if cb is registered
+		 */
+		if (this_afe.tx_cb) {
+			this_afe.tx_cb(data->opcode, data->token,
+					data->payload,
+					this_afe.tx_private_data);
+			this_afe.tx_cb = NULL;
+		}
+		if (this_afe.rx_cb) {
+			this_afe.rx_cb(data->opcode, data->token,
+					data->payload,
+					this_afe.rx_private_data);
+			this_afe.rx_cb = NULL;
+		}
+
 		return 0;
 	}
 	afe_callback_debug_print(data);
@@ -1125,8 +1143,14 @@ static int afe_send_hw_delay(u16 port_id, u32 rate)
 	else if (afe_get_port_type(port_id) == MSM_AFE_PORT_TYPE_RX)
 		ret = afe_get_cal_hw_delay(RX_DEVICE, &delay_entry);
 
+	/*
+	 * HW delay is only used for IMS calls to sync audio with video
+	 * It is only needed for devices & sample rates used for IMS video
+	 * calls. Values are received from ACDB calbration files
+	 */
 	if (ret != 0) {
-		pr_debug("%s: Failed to get hw delay info %d\n", __func__, ret);
+		pr_debug("%s: debug: HW delay info not available %d\n",
+			__func__, ret);
 		goto fail_cmd;
 	}
 
@@ -1497,53 +1521,75 @@ static int afe_send_codec_reg_page_config(
 static int afe_send_codec_reg_config(
 	struct afe_param_cdc_reg_cfg_data *cdc_reg_cfg)
 {
-	int i, ret;
-	int pkt_size, payload_size;
+	int i, j, ret = 0;
+	int pkt_size, payload_size, reg_per_pkt, num_pkts, num_regs;
 	struct afe_svc_cmd_cdc_reg_cfg *config;
 	struct afe_svc_cmd_set_param *param;
 
-	payload_size = sizeof(struct afe_param_cdc_reg_cfg_payload) *
-		       cdc_reg_cfg->num_registers;
-	pkt_size = sizeof(*config) + payload_size;
-
-	pr_debug("%s: pkt_size %d, payload_size %d\n", __func__, pkt_size,
-		 payload_size);
-	config = kzalloc(pkt_size, GFP_KERNEL);
-	if (!config) {
-		pr_warn("%s: Not enought memory, pkt_size %d\n", __func__,
-			pkt_size);
-		return -ENOMEM;
+	reg_per_pkt = (APR_MAX_BUF - sizeof(*config)) /
+			sizeof(struct afe_param_cdc_reg_cfg_payload);
+	if (reg_per_pkt > 0) {
+		num_pkts = (cdc_reg_cfg->num_registers / reg_per_pkt) +
+			(cdc_reg_cfg->num_registers % reg_per_pkt == 0 ? 0 : 1);
+	} else {
+		pr_err("%s: Failed to build codec reg config APR packet\n",
+			__func__);
+		return -EINVAL;
 	}
 
-	config->hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
-					      APR_HDR_LEN(APR_HDR_SIZE),
-					      APR_PKT_VER);
-	config->hdr.pkt_size = pkt_size;
-	config->hdr.src_port = 0;
-	config->hdr.dest_port = 0;
-	config->hdr.token = IDX_GLOBAL_CFG;
-	config->hdr.opcode = AFE_SVC_CMD_SET_PARAM;
+	for (j = 0; j < num_pkts; ++j) {
+		/*
+		 * num_regs is set to reg_per_pkt on each pass through the loop
+		 * except the last, when it is set to the number of registers
+		 * remaining from the total
+		 */
+		num_regs = (j < (num_pkts - 1) ? reg_per_pkt :
+				cdc_reg_cfg->num_registers - (reg_per_pkt * j));
+		payload_size = sizeof(struct afe_param_cdc_reg_cfg_payload) *
+				num_regs;
+		pkt_size = sizeof(*config) + payload_size;
+		pr_debug("%s: pkt_size %d, payload_size %d\n", __func__,
+			 pkt_size, payload_size);
+		config = kzalloc(pkt_size, GFP_KERNEL);
+		if (!config)
+			return -ENOMEM;
 
-	param = &config->param;
-	param->payload_size = payload_size;
-	param->payload_address_lsw = 0x00;
-	param->payload_address_msw = 0x00;
-	param->mem_map_handle = 0x00;
+		config->hdr.hdr_field = APR_HDR_FIELD(APR_MSG_TYPE_SEQ_CMD,
+						      APR_HDR_LEN(APR_HDR_SIZE),
+						      APR_PKT_VER);
+		config->hdr.pkt_size = pkt_size;
+		config->hdr.src_port = 0;
+		config->hdr.dest_port = 0;
+		config->hdr.token = IDX_GLOBAL_CFG;
+		config->hdr.opcode = AFE_SVC_CMD_SET_PARAM;
 
-	for (i = 0; i < cdc_reg_cfg->num_registers; i++) {
-		config->reg_data[i].common.module_id = AFE_MODULE_CDC_DEV_CFG;
-		config->reg_data[i].common.param_id = AFE_PARAM_ID_CDC_REG_CFG;
-		config->reg_data[i].common.param_size =
-		    sizeof(config->reg_data[i].reg_cfg);
-		config->reg_data[i].reg_cfg = cdc_reg_cfg->reg_data[i];
+		param = &config->param;
+		param->payload_size = payload_size;
+		param->payload_address_lsw = 0x00;
+		param->payload_address_msw = 0x00;
+		param->mem_map_handle = 0x00;
+
+		for (i = 0; i < num_regs; i++) {
+			config->reg_data[i].common.module_id =
+						AFE_MODULE_CDC_DEV_CFG;
+			config->reg_data[i].common.param_id =
+						AFE_PARAM_ID_CDC_REG_CFG;
+			config->reg_data[i].common.param_size =
+			    sizeof(config->reg_data[i].reg_cfg);
+			config->reg_data[i].reg_cfg =
+				cdc_reg_cfg->reg_data[i + (j * reg_per_pkt)];
+		}
+
+		ret = afe_apr_send_pkt(config, &this_afe.wait[IDX_GLOBAL_CFG]);
+		if (ret) {
+			pr_err("%s: AFE_PARAM_ID_CDC_REG_CFG failed %d\n",
+				__func__, ret);
+			kfree(config);
+			break;
+		}
+		kfree(config);
 	}
 
-	ret = afe_apr_send_pkt(config, &this_afe.wait[IDX_GLOBAL_CFG]);
-	if (ret)
-		pr_err("%s: AFE_PARAM_ID_CDC_REG_CFG failed %d\n", __func__,
-		       ret);
-
-	kfree(config);
 	return ret;
 }
 
@@ -2700,6 +2746,7 @@ int afe_port_start(u16 port_id, union afe_port_config *afe_config,
 		cfg_type = AFE_PARAM_ID_RT_PROXY_CONFIG;
 		break;
 	case INT_BT_SCO_RX:
+	case INT_BT_A2DP_RX:
 	case INT_BT_SCO_TX:
 	case INT_FM_RX:
 	case INT_FM_TX:
@@ -3170,7 +3217,7 @@ int afe_loopback(u16 enable, u16 rx_port, u16 tx_port)
 				  sizeof(struct afe_port_param_data_v2);
 
 	lb_cmd.dst_port_id = rx_port;
-	lb_cmd.routing_mode = LB_MODE_EC_REF_VOICE_AUDIO;
+	lb_cmd.routing_mode = LB_MODE_DEFAULT;
 	lb_cmd.enable = (enable ? 1 : 0);
 	lb_cmd.loopback_cfg_minor_version = AFE_API_VERSION_LOOPBACK_CONFIG;
 
@@ -4230,7 +4277,7 @@ static ssize_t afe_debug_write(struct file *filp,
 
 	lbuf[cnt] = '\0';
 
-	if (!strncmp(lb_str, "afe_loopback", 12)) {
+	if (!strcmp(lb_str, "afe_loopback")) {
 		rc = afe_get_parameters(lbuf, param, 3);
 		if (!rc) {
 			pr_info("%s: %lu %lu %lu\n", lb_str, param[0], param[1],
@@ -4259,7 +4306,7 @@ static ssize_t afe_debug_write(struct file *filp,
 			rc = -EINVAL;
 		}
 
-	} else if (!strncmp(lb_str, "afe_loopback_gain", 17)) {
+	} else if (!strcmp(lb_str, "afe_loopback_gain")) {
 		rc = afe_get_parameters(lbuf, param, 2);
 		if (!rc) {
 			pr_info("%s: %s %lu %lu\n",
@@ -5418,6 +5465,9 @@ int afe_spk_prot_get_calib_data(struct afe_spkr_prot_get_vi_calib *calib_resp)
 		pr_err("%s: Invalid params\n", __func__);
 		goto fail_cmd;
 	}
+	if (this_afe.vi_tx_port != -1)
+		port = this_afe.vi_tx_port;
+
 	ret = q6audio_validate_port(port);
 	if (ret < 0) {
 		pr_err("%s: invalid port 0x%x ret %d\n", __func__, port, ret);
@@ -5968,6 +6018,7 @@ static int afe_map_cal_data(int32_t cal_type,
 	}
 
 
+	mutex_lock(&this_afe.afe_cmd_lock);
 	atomic_set(&this_afe.mem_map_cal_index, cal_index);
 	ret = afe_cmd_memory_map(cal_block->cal_data.paddr,
 			cal_block->map_data.map_size);
@@ -5980,10 +6031,12 @@ static int afe_map_cal_data(int32_t cal_type,
 			__func__,
 			&cal_block->cal_data.paddr,
 			cal_block->map_data.map_size);
+		mutex_unlock(&this_afe.afe_cmd_lock);
 		goto done;
 	}
 	cal_block->map_data.q6map_handle = atomic_read(&this_afe.
 		mem_map_cal_handles[cal_index]);
+	mutex_unlock(&this_afe.afe_cmd_lock);
 done:
 	return ret;
 }

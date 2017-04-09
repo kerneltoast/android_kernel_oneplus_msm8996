@@ -37,7 +37,6 @@
 #include <linux/fs_stack.h>
 #include <linux/slab.h>
 #include <linux/magic.h>
-#include <linux/mm.h>
 #include "ecryptfs_kernel.h"
 
 /**

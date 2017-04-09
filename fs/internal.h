@@ -106,6 +106,7 @@ extern struct file *do_file_open_root(struct dentry *, struct vfsmount *,
 extern long do_handle_open(int mountdirfd,
 			   struct file_handle __user *ufh, int open_flag);
 extern int open_check_o_direct(struct file *f);
+extern int vfs_open(const struct path *, struct file *, const struct cred *);
 
 /*
  * inode.c
@@ -147,3 +148,29 @@ extern const struct file_operations pipefifo_fops;
  */
 extern void sb_pin_kill(struct super_block *sb);
 extern void mnt_pin_kill(struct mount *m);
+
+#ifdef CONFIG_FILE_TABLE_DEBUG
+void global_filetable_print_warning_once(void);
+void global_filetable_add(struct file *filp);
+void global_filetable_del(struct file *filp);
+void global_filetable_delayed_print(struct mount *mnt);
+
+#else /* i.e NOT CONFIG_FILE_TABLE_DEBUG */
+
+static inline void global_filetable_print_warning_once(void)
+{
+}
+
+static inline void global_filetable_add(struct file *filp)
+{
+}
+
+static inline void global_filetable_del(struct file *filp)
+{
+}
+
+static inline void global_filetable_delayed_print(struct mount *mnt)
+{
+}
+
+#endif /* CONFIG_FILE_TABLE_DEBUG */

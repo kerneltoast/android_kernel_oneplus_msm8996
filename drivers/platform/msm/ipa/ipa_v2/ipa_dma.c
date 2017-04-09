@@ -1,4 +1,4 @@
-/* Copyright (c) 2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -149,7 +149,7 @@ int ipa2_dma_init(void)
 	}
 
 	ipa_dma_ctx_t->ipa_dma_xfer_wrapper_cache =
-		kmem_cache_create("IPA DMA XFER WRAPPER",
+		kmem_cache_create("IPA_DMA_XFER_WRAPPER",
 			sizeof(struct ipa_dma_xfer_wrapper), 0, 0, NULL);
 	if (!ipa_dma_ctx_t->ipa_dma_xfer_wrapper_cache) {
 		IPAERR(":failed to create ipa dma xfer wrapper cache.\n");
@@ -274,7 +274,7 @@ int ipa2_dma_enable(void)
 		mutex_unlock(&ipa_dma_ctx->enable_lock);
 		return -EPERM;
 	}
-	IPA2_ACTIVE_CLIENTS_INC_SPECIAL("DMA");
+	IPA_ACTIVE_CLIENTS_INC_SPECIAL("DMA");
 	ipa_dma_ctx->is_enabled = true;
 	mutex_unlock(&ipa_dma_ctx->enable_lock);
 
@@ -337,7 +337,7 @@ int ipa2_dma_disable(void)
 	}
 	ipa_dma_ctx->is_enabled = false;
 	spin_unlock_irqrestore(&ipa_dma_ctx->pending_lock, flags);
-	IPA2_ACTIVE_CLIENTS_DEC_SPECIAL("DMA");
+	IPA_ACTIVE_CLIENTS_DEC_SPECIAL("DMA");
 	mutex_unlock(&ipa_dma_ctx->enable_lock);
 	IPADMA_FUNC_EXIT();
 	return 0;

@@ -12,6 +12,7 @@
 #define pr_fmt(fmt) "SMB:%s: " fmt, __func__
 
 #include <linux/i2c.h>
+#include <linux/delay.h>
 #include <linux/errno.h>
 #include <linux/module.h>
 #include <linux/interrupt.h>
@@ -194,7 +195,6 @@ static int hot_bat_decidegc_table[] = {
 				(RIGHT_BIT_POS))
 
 /* register mapping definitions */
-
 #define CFG_REG_0		0x00
 #define USBIN_ICL_MASK		SMB_MASK(4, 2)
 #define USBIN_ICL_OFFSET	2
@@ -363,15 +363,23 @@ enum {
 
 static irqreturn_t smb23x_stat_handler(int irq, void *dev_id);
 
+#define MAX_RW_RETRIES		3
 static int __smb23x_read(struct smb23x_chip *chip, u8 reg, u8 *val)
 {
-	int rc;
+	int rc, i;
 
-	rc = i2c_smbus_read_byte_data(chip->client, reg);
+	for (i = 0; i < MAX_RW_RETRIES; i++) {
+		rc = i2c_smbus_read_byte_data(chip->client, reg);
+		if (rc >= 0)
+			break;
+		/* delay between i2c retries */
+		msleep(20);
+	}
 	if (rc < 0) {
 		pr_err("Reading 0x%02x failed, rc = %d\n", reg, rc);
 		return rc;
 	}
+
 	*val = rc;
 	pr_debug("Reading 0x%02x = 0x%02x\n", reg, *val);
 
@@ -380,14 +388,21 @@ static int __smb23x_read(struct smb23x_chip *chip, u8 reg, u8 *val)
 
 static int __smb23x_write(struct smb23x_chip *chip, u8 reg, u8 val)
 {
-	int rc;
+	int rc, i;
 
-	rc = i2c_smbus_write_byte_data(chip->client, reg, val);
+	for (i = 0; i < MAX_RW_RETRIES; i++) {
+		rc = i2c_smbus_write_byte_data(chip->client, reg, val);
+		if (!rc)
+			break;
+		/* delay between i2c retries */
+		msleep(20);
+	}
 	if (rc < 0) {
 		pr_err("Writing val 0x%02x to reg 0x%02x failed, rc = %d\n",
 			val, reg, rc);
 		return rc;
 	}
+
 	pr_debug("Writing 0x%02x = 0x%02x\n", reg, val);
 
 	return 0;
@@ -1232,6 +1247,9 @@ static int src_detect_irq_handler(struct smb23x_chip *chip, u8 rt_sts)
 {
 	bool usb_present = !!rt_sts;
 
+	if (!chip->apsd_enabled)
+		return 0;
+
 	pr_debug("chip->usb_present = %d, usb_present = %d\n",
 					chip->usb_present, usb_present);
 
@@ -1249,15 +1267,12 @@ static int src_detect_irq_handler(struct smb23x_chip *chip, u8 rt_sts)
 static int aicl_done_irq_handler(struct smb23x_chip *chip, u8 rt_sts)
 {
 	pr_debug("rt_sts = 0x02%x\n", rt_sts);
-	/* TBD: get the AICL result here for debug purpose? */
 	return 0;
 }
 
 static int chg_timeout_irq_handler(struct smb23x_chip *chip, u8 rt_sts)
 {
 	pr_debug("rt_sts = 0x02%x\n", rt_sts);
-	/* TBD: what's the difference between timedout and chg_error
-	 * Anything that we could update from this IRQ? */
 	return 0;
 }
 
@@ -1969,9 +1984,8 @@ static void smb23x_external_power_changed(struct power_supply *psy)
 	if (chip->usb_present && chip->usb_psy_ma != 0) {
 		if (!online && !chip->apsd_enabled)
 			power_supply_set_online(chip->usb_psy, true);
-	} else {
-		if (online && !chip->apsd_enabled)
-			power_supply_set_online(chip->usb_psy, false);
+	} else if (online && !chip->apsd_enabled) {
+		power_supply_set_online(chip->usb_psy, false);
 	}
 }
 
@@ -2251,6 +2265,7 @@ static int smb23x_probe(struct i2c_client *client,
 	mutex_init(&chip->chg_disable_lock);
 	mutex_init(&chip->usb_suspend_lock);
 	mutex_init(&chip->icl_set_lock);
+	smb23x_wakeup_src_init(chip);
 	INIT_DELAYED_WORK(&chip->irq_polling_work, smb23x_irq_polling_work_fn);
 
 	rc = smb23x_parse_dt(chip);
@@ -2259,14 +2274,23 @@ static int smb23x_probe(struct i2c_client *client,
 		goto destroy_mutex;
 	}
 
-	smb23x_wakeup_src_init(chip);
-	smb23x_irq_polling_wa_check(chip);
+	/*
+	 * Enable register based battery charging as the hw_init moves CHG_EN
+	 * control from pin-based to register based.
+	 */
+	rc = smb23x_charging_disable(chip, USER, false);
+	if (rc < 0) {
+		pr_err("Register control based charging enable failed\n");
+		goto destroy_mutex;
+	}
 
 	rc = smb23x_hw_init(chip);
 	if (rc < 0) {
 		pr_err("Initialize hardware failed!\n");
 		goto destroy_mutex;
 	}
+
+	smb23x_irq_polling_wa_check(chip);
 
 	/*
 	 * Disable charging if device tree (USER) requested:
@@ -2277,7 +2301,7 @@ static int smb23x_probe(struct i2c_client *client,
 	if (rc < 0) {
 		pr_err("%suspend USB failed\n",
 			chip->cfg_charging_disabled ? "S" : "Un-s");
-		return rc;
+		goto destroy_mutex;
 	}
 
 	rc = smb23x_determine_initial_status(chip);
@@ -2330,6 +2354,7 @@ static int smb23x_probe(struct i2c_client *client,
 unregister_batt_psy:
 	power_supply_unregister(&chip->batt_psy);
 destroy_mutex:
+	wakeup_source_trash(&chip->smb23x_ws.source);
 	mutex_destroy(&chip->read_write_lock);
 	mutex_destroy(&chip->irq_complete);
 	mutex_destroy(&chip->chg_disable_lock);
@@ -2403,6 +2428,7 @@ static int smb23x_remove(struct i2c_client *client)
 	struct smb23x_chip *chip = i2c_get_clientdata(client);
 
 	power_supply_unregister(&chip->batt_psy);
+	wakeup_source_trash(&chip->smb23x_ws.source);
 	mutex_destroy(&chip->read_write_lock);
 	mutex_destroy(&chip->irq_complete);
 	mutex_destroy(&chip->chg_disable_lock);

@@ -572,6 +572,15 @@ config TI_DRV2667
 	  To compile this driver as a module, choose M here: the
 	  module will be called ti_drv2667.
 
+config QPNP_MISC
+	tristate "QPNP Misc Peripheral"
+	depends on SPMI || MSM_SPMI
+	help
+	  Say 'y' here to include support for the QTI QPNP MISC
+	  peripheral. The MISC peripheral holds the USB ID interrupt
+	  and the driver provides an API to check if this interrupt
+	  is available on the current PMIC chip.
+
 config TUSB320_TYPE_C
 	tristate "USB Type-C charger detection support using external chip"
 	depends on I2C && POWER_SUPPLY

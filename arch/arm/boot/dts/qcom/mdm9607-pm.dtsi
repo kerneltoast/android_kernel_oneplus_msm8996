@@ -10,6 +10,8 @@
  * GNU General Public License for more details.
  */
 
+#include <dt-bindings/msm/pm.h>
+
 &soc {
 	qcom,spm@b009000 {
 		compatible = "qcom,spm-v2";
@@ -22,7 +24,6 @@
 		qcom,saw2-cfg = <0x1>;
 		qcom,saw2-spm-dly= <0x3c102800>;
 		qcom,saw2-spm-ctl = <0xe>;
-		qcom,supports-rpm-hs;
 		qcom,mode0 {
 			qcom,label = "qcom,saw2-spm-cmd-wfi";
 			qcom,sequence = [04 03 04 0f];
@@ -75,6 +76,7 @@
 				qcom,time-overhead = <540>;
 				qcom,min-child-idx = <2>;
 				qcom,notify-rpm;
+				qcom,reset-level = <LPM_RESET_LVL_PC>;
 			};
 
 			qcom,pm-cpu {
@@ -99,6 +101,7 @@
 					qcom,time-overhead = <420>;
 					qcom,use-broadcast-timer;
 					qcom,is-reset;
+					qcom,reset-level = <LPM_RESET_LVL_PC>;
 				};
 
 				qcom,pm-cpu-level@2 {
@@ -110,6 +113,7 @@
 					qcom,time-overhead = <500>;
 					qcom,use-broadcast-timer;
 					qcom,is-reset;
+					qcom,reset-level = <LPM_RESET_LVL_PC>;
 				};
 			};
 		};

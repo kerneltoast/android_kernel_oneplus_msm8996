@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2015, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -383,7 +383,7 @@ static int gport_rmnet_connect(struct f_rmnet *dev, unsigned intf)
 	enum usb_ctrl		usb_bam_type;
 	void			*net;
 
-	pr_debug("%s: ctrl xport: %s data xport: %s dev: %p portno: %d\n",
+	pr_debug("%s: ctrl xport: %s data xport: %s dev: %pK portno: %d\n",
 			__func__, xport_to_str(cxport), xport_to_str(dxport),
 			dev, dev->port_num);
 
@@ -504,7 +504,7 @@ static int gport_rmnet_disconnect(struct f_rmnet *dev)
 	enum transport_type	cxport = rmnet_ports[dev->port_num].ctrl_xport;
 	enum transport_type	dxport = rmnet_ports[dev->port_num].data_xport;
 
-	pr_debug("%s: ctrl xport: %s data xport: %s dev: %p portno: %d\n",
+	pr_debug("%s: ctrl xport: %s data xport: %s dev: %pK portno: %d\n",
 			__func__, xport_to_str(cxport), xport_to_str(dxport),
 			dev, dev->port_num);
 
@@ -553,6 +553,7 @@ static int gport_rmnet_disconnect(struct f_rmnet *dev)
 static void frmnet_unbind(struct usb_configuration *c, struct usb_function *f)
 {
 	struct f_rmnet *dev = func_to_rmnet(f);
+	enum transport_type	dxport = rmnet_ports[dev->port_num].data_xport;
 
 	pr_debug("%s: portno:%d\n", __func__, dev->port_num);
 	if (gadget_is_superspeed(c->cdev->gadget))
@@ -562,7 +563,10 @@ static void frmnet_unbind(struct usb_configuration *c, struct usb_function *f)
 	usb_free_descriptors(f->fs_descriptors);
 
 	frmnet_free_req(dev->notify, dev->notify_req);
-
+	if (dxport == USB_GADGET_XPORT_BAM2BAM_IPA) {
+		gbam_data_flush_workqueue();
+		c->cdev->gadget->bam2bam_func_enabled = false;
+	}
 	kfree(f->name);
 }
 
@@ -597,7 +601,7 @@ static void frmnet_suspend(struct usb_function *f)
 	else
 		remote_wakeup_allowed = f->config->cdev->gadget->remote_wakeup;
 
-	pr_debug("%s: data xport: %s dev: %p portno: %d remote_wakeup: %d\n",
+	pr_debug("%s: data xport: %s dev: %pK portno: %d remote_wakeup: %d\n",
 		__func__, xport_to_str(dxport),
 		dev, dev->port_num, remote_wakeup_allowed);
 
@@ -621,9 +625,13 @@ static void frmnet_suspend(struct usb_function *f)
 			 */
 			dev->in_ep_desc_backup  = dev->port.in->desc;
 			dev->out_ep_desc_backup  = dev->port.out->desc;
-			pr_debug("in_ep_desc_bkup = %p, out_ep_desc_bkup = %p",
+			pr_debug("in_ep_desc_bkup = %pK, out_ep_desc_bkup = %pK",
 			       dev->in_ep_desc_backup, dev->out_ep_desc_backup);
 			pr_debug("%s(): Disconnecting\n", __func__);
+			if (gadget_is_dwc3(f->config->cdev->gadget)) {
+				msm_ep_unconfig(dev->port.out);
+				msm_ep_unconfig(dev->port.in);
+			}
 			gport_rmnet_disconnect(dev);
 		}
 		break;
@@ -654,7 +662,7 @@ static void frmnet_resume(struct usb_function *f)
 	else
 		remote_wakeup_allowed = f->config->cdev->gadget->remote_wakeup;
 
-	pr_debug("%s: data xport: %s dev: %p portno: %d remote_wakeup: %d\n",
+	pr_debug("%s: data xport: %s dev: %pK portno: %d remote_wakeup: %d\n",
 		__func__, xport_to_str(dxport),
 		dev, dev->port_num, remote_wakeup_allowed);
 
@@ -717,12 +725,11 @@ static int
 frmnet_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 {
 	struct f_rmnet			*dev = func_to_rmnet(f);
-	enum transport_type	dxport = rmnet_ports[dev->port_num].data_xport;
 	struct usb_composite_dev	*cdev = dev->cdev;
 	int				ret;
 	struct list_head *cpkt;
 
-	pr_debug("%s:dev:%p port#%d\n", __func__, dev, dev->port_num);
+	pr_debug("%s:dev:%pK port#%d\n", __func__, dev, dev->port_num);
 
 	if (dev->notify->driver_data) {
 		pr_debug("%s: reset port:%d\n", __func__, dev->port_num);
@@ -757,23 +764,11 @@ frmnet_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 		dev->port.gadget = dev->cdev->gadget;
 	}
 
-	if (dxport == USB_GADGET_XPORT_BAM2BAM_IPA &&
-			gadget_is_dwc3(cdev->gadget)) {
-		if (msm_ep_config(dev->port.in) ||
-		    msm_ep_config(dev->port.out)) {
-			pr_err("%s: msm_ep_config failed\n", __func__);
-			ret = -EINVAL;
-			goto err_disable_ep;
-		}
-	} else {
-		pr_debug("Rmnet is being used with non DWC3 core\n");
-	}
-
 	ret = gport_rmnet_connect(dev, intf);
 	if (ret) {
 		pr_err("%s(): gport_rmnet_connect fail with err:%d\n",
 							__func__, ret);
-		goto err_unconfig_ep;
+		goto err_disable_ep;
 	}
 
 	atomic_set(&dev->online, 1);
@@ -784,14 +779,6 @@ frmnet_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 		frmnet_ctrl_response_available(dev);
 
 	return ret;
-
-err_unconfig_ep:
-	if (dxport == USB_GADGET_XPORT_BAM2BAM_IPA &&
-		gadget_is_dwc3(cdev->gadget)) {
-		msm_ep_unconfig(dev->port.in);
-		msm_ep_unconfig(dev->port.out);
-	}
-
 err_disable_ep:
 	dev->port.in->desc = NULL;
 	dev->port.out->desc = NULL;
@@ -808,7 +795,7 @@ static void frmnet_ctrl_response_available(struct f_rmnet *dev)
 	int				ret;
 	struct rmnet_ctrl_pkt	*cpkt;
 
-	pr_debug("%s:dev:%p portno#%d\n", __func__, dev, dev->port_num);
+	pr_debug("%s:dev:%pK portno#%d\n", __func__, dev, dev->port_num);
 
 	spin_lock_irqsave(&dev->lock, flags);
 	if (!atomic_read(&dev->online) || !req || !req->buf) {
@@ -857,7 +844,7 @@ static void frmnet_connect(struct grmnet *gr)
 	struct f_rmnet			*dev;
 
 	if (!gr) {
-		pr_err("%s: Invalid grmnet:%p\n", __func__, gr);
+		pr_err("%s: Invalid grmnet:%pK\n", __func__, gr);
 		return;
 	}
 
@@ -873,7 +860,7 @@ static void frmnet_disconnect(struct grmnet *gr)
 	int				status;
 
 	if (!gr) {
-		pr_err("%s: Invalid grmnet:%p\n", __func__, gr);
+		pr_err("%s: Invalid grmnet:%pK\n", __func__, gr);
 		return;
 	}
 
@@ -915,7 +902,7 @@ frmnet_send_cpkt_response(void *gr, void *buf, size_t len)
 	unsigned long		flags;
 
 	if (!gr || !buf) {
-		pr_err("%s: Invalid grmnet/buf, grmnet:%p buf:%p\n",
+		pr_err("%s: Invalid grmnet/buf, grmnet:%pK buf:%pK\n",
 				__func__, gr, buf);
 		return -ENODEV;
 	}
@@ -929,7 +916,7 @@ frmnet_send_cpkt_response(void *gr, void *buf, size_t len)
 
 	dev = port_to_rmnet(gr);
 
-	pr_debug("%s: dev:%p port#%d\n", __func__, dev, dev->port_num);
+	pr_debug("%s: dev:%pK port#%d\n", __func__, dev, dev->port_num);
 
 	if (!atomic_read(&dev->online) || !atomic_read(&dev->ctrl_online)) {
 		rmnet_free_ctrl_pkt(cpkt);
@@ -957,7 +944,7 @@ frmnet_cmd_complete(struct usb_ep *ep, struct usb_request *req)
 		return;
 	}
 
-	pr_debug("%s: dev:%p port#%d\n", __func__, dev, dev->port_num);
+	pr_debug("%s: dev:%pK port#%d\n", __func__, dev, dev->port_num);
 
 	cdev = dev->cdev;
 
@@ -974,7 +961,7 @@ static void frmnet_notify_complete(struct usb_ep *ep, struct usb_request *req)
 	unsigned long		flags;
 	struct rmnet_ctrl_pkt	*cpkt;
 
-	pr_debug("%s: dev:%p port#%d\n", __func__, dev, dev->port_num);
+	pr_debug("%s: dev:%pK port#%d\n", __func__, dev, dev->port_num);
 
 	switch (status) {
 	case -ECONNRESET:
@@ -1043,7 +1030,7 @@ frmnet_setup(struct usb_function *f, const struct usb_ctrlrequest *ctrl)
 	u16				w_length = le16_to_cpu(ctrl->wLength);
 	int				ret = -EOPNOTSUPP;
 
-	pr_debug("%s:dev:%p port#%d\n", __func__, dev, dev->port_num);
+	pr_debug("%s:dev:%pK port#%d\n", __func__, dev, dev->port_num);
 
 	if (!atomic_read(&dev->online)) {
 		pr_warning("%s: usb cable is not connected\n", __func__);
@@ -1269,7 +1256,7 @@ static int frmnet_bind_config(struct usb_configuration *c, unsigned portno)
 	struct usb_function	*f;
 	unsigned long		flags;
 
-	pr_debug("%s: usb config:%p\n", __func__, c);
+	pr_debug("%s: usb config:%pK\n", __func__, c);
 
 	if (portno >= nr_rmnet_ports) {
 		pr_err("%s: supporting ports#%u port_id:%u\n", __func__,
@@ -1335,6 +1322,9 @@ static int frmnet_bind_config(struct usb_configuration *c, unsigned portno)
 		kfree(f->name);
 		return status;
 	}
+	if (rmnet_ports[portno].data_xport ==
+			USB_GADGET_XPORT_BAM2BAM_IPA)
+		c->cdev->gadget->bam2bam_func_enabled = true;
 
 	pr_debug("%s: complete\n", __func__);
 

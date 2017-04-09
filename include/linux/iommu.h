@@ -21,6 +21,7 @@
 
 #include <linux/errno.h>
 #include <linux/err.h>
+#include <linux/of.h>
 #include <linux/types.h>
 #include <trace/events/iommu.h>
 
@@ -53,6 +54,10 @@ struct iommu_domain_geometry {
 	dma_addr_t aperture_start; /* First address that can be mapped    */
 	dma_addr_t aperture_end;   /* Last address that can be mapped     */
 	bool force_aperture;       /* DMA only allowed in mappable range? */
+};
+
+struct iommu_pgtbl_info {
+	void *pmds;
 };
 
 struct iommu_domain {
@@ -100,6 +105,9 @@ enum iommu_attr {
 	DOMAIN_ATTR_PROCID,
 	DOMAIN_ATTR_DYNAMIC,
 	DOMAIN_ATTR_NON_FATAL_FAULTS,
+	DOMAIN_ATTR_S1_BYPASS,
+	DOMAIN_ATTR_FAST,
+	DOMAIN_ATTR_PGTBL_INFO,
 	DOMAIN_ATTR_MAX,
 };
 
@@ -123,10 +131,17 @@ extern struct dentry *iommu_debugfs_top;
  * @remove_device: remove device from iommu grouping
  * @domain_get_attr: Query domain attributes
  * @domain_set_attr: Change domain attributes
+ * @of_xlate: add OF master IDs to iommu grouping
  * @pgsize_bitmap: bitmap of supported page sizes
+ * @get_pgsize_bitmap: gets a bitmap of supported page sizes for a domain
+ *                     This takes precedence over @pgsize_bitmap.
  * @trigger_fault: trigger a fault on the device attached to an iommu domain
  * @reg_read: read an IOMMU register
  * @reg_write: write an IOMMU register
+ * @tlbi_domain: Invalidate all TLBs covering an iommu domain
+ * @enable_config_clocks: Enable all config clocks for this domain's IOMMU
+ * @disable_config_clocks: Disable all config clocks for this domain's IOMMU
+ * @priv: per-instance data private to the iommu driver
  */
 struct iommu_ops {
 	bool (*capable)(enum iommu_cap);
@@ -171,8 +186,17 @@ struct iommu_ops {
 				  unsigned long offset);
 	void (*reg_write)(struct iommu_domain *domain, unsigned long val,
 			  unsigned long offset);
+	void (*tlbi_domain)(struct iommu_domain *domain);
+	int (*enable_config_clocks)(struct iommu_domain *domain);
+	void (*disable_config_clocks)(struct iommu_domain *domain);
 
+#ifdef CONFIG_OF_IOMMU
+	int (*of_xlate)(struct device *dev, struct of_phandle_args *args);
+#endif
+
+	unsigned long (*get_pgsize_bitmap)(struct iommu_domain *domain);
 	unsigned long pgsize_bitmap;
+	void *priv;
 };
 
 #define IOMMU_GROUP_NOTIFY_ADD_DEVICE		1 /* Device added */
@@ -318,6 +342,25 @@ static inline size_t iommu_map_sg(struct iommu_domain *domain,
 
 extern int iommu_dma_supported(struct iommu_domain *domain, struct device *dev,
 			       u64 mask);
+
+static inline void iommu_tlbiall(struct iommu_domain *domain)
+{
+	if (domain->ops->tlbi_domain)
+		domain->ops->tlbi_domain(domain);
+}
+
+static inline int iommu_enable_config_clocks(struct iommu_domain *domain)
+{
+	if (domain->ops->enable_config_clocks)
+		return domain->ops->enable_config_clocks(domain);
+	return 0;
+}
+
+static inline void iommu_disable_config_clocks(struct iommu_domain *domain)
+{
+	if (domain->ops->disable_config_clocks)
+		domain->ops->disable_config_clocks(domain);
+}
 
 #else /* CONFIG_IOMMU_API */
 
@@ -553,6 +596,19 @@ static inline int iommu_dma_supported(struct iommu_domain *domain,
 		struct device *dev, u64 mask)
 {
 	return -EINVAL;
+}
+
+static inline void iommu_tlbiall(struct iommu_domain *domain)
+{
+}
+
+static inline int iommu_enable_config_clocks(struct iommu_domain *domain)
+{
+	return 0;
+}
+
+static inline void iommu_disable_config_clocks(struct iommu_domain *domain)
+{
 }
 
 #endif /* CONFIG_IOMMU_API */

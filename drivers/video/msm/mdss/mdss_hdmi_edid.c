@@ -2284,7 +2284,7 @@ end:
 	return scaninfo;
 } /* hdmi_edid_get_sink_scaninfo */
 
-u32 hdmi_edid_get_sink_mode(void *input, u32 mode)
+u32 hdmi_edid_get_sink_mode(void *input)
 {
 	struct hdmi_edid_ctrl *edid_ctrl = (struct hdmi_edid_ctrl *)input;
 	bool sink_mode;
@@ -2297,13 +2297,8 @@ u32 hdmi_edid_get_sink_mode(void *input, u32 mode)
 	if (edid_ctrl->edid_override &&
 		(edid_ctrl->override_data.sink_mode != -1))
 		sink_mode = edid_ctrl->override_data.sink_mode;
-	else {
-		if (edid_ctrl->sink_mode &&
-			(mode > 0 && mode <= HDMI_EVFRMT_END))
-			sink_mode = SINK_MODE_HDMI;
-		else
-			sink_mode = SINK_MODE_DVI;
-	}
+	else
+		sink_mode = edid_ctrl->sink_mode;
 
 	return sink_mode;
 } /* hdmi_edid_get_sink_mode */

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2015, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2014-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -168,6 +168,8 @@
 
 #define clk_pixel_clk_src			0x8b6f83d8
 #define clk_byte_clk_src			0x3a911c53
+#define clk_dsi_pll0_byte_clk_src		0x44539836
+#define clk_dsi_pll0_pixel_clk_src		0x5767c287
 
 /* RPM */
 #define clk_pcnoc_clk				0xc1296d0f
@@ -224,5 +226,8 @@
 #define clk_apc2_m_clk				0x252cd4ae
 #define clk_apc3_m_clk				0x78c64486
 #define clk_l2_m_clk                            0x4bedf4d0
+
+#define clk_audio_ap_clk                        0x312ac429
+#define clk_audio_pmi_clk                       0xb7ba2274
 
 #endif

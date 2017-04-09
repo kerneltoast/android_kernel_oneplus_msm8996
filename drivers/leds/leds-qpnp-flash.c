@@ -1,4 +1,4 @@
-/* Copyright (c) 2014-2015, 2017, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2014-2017, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -116,7 +116,6 @@
 #define	FLASH_LED_MODULE_CTRL_DEFAULT				0x60
 #define	FLASH_LED_CURRENT_READING_DELAY_MIN			5000
 #define	FLASH_LED_CURRENT_READING_DELAY_MAX			5001
-#define PMI8996_SUBTYPE						19
 #define	FLASH_LED_OPEN_FAULT_DETECTED				0xC
 
 #define FLASH_UNLOCK_SECURE					0xA5
@@ -887,7 +886,7 @@ static struct device_attribute qpnp_flash_led_attrs[] = {
 				qpnp_flash_led_die_temp_store),
 };
 
-static int qpnp_flash_led_get_thermal_derate_rate(const char *rate)
+static u32 qpnp_flash_led_get_thermal_derate_rate(const char *rate)
 {
 	/*
 	 * return 5% derate as default value if user specifies
@@ -907,7 +906,7 @@ static int qpnp_flash_led_get_thermal_derate_rate(const char *rate)
 		return RATE_5_PERCENT;
 }
 
-static int qpnp_flash_led_get_ramp_step(const char *step)
+static u32 qpnp_flash_led_get_ramp_step(const char *step)
 {
 	/*
 	 * return 27 us as default value if user specifies
@@ -1243,29 +1242,30 @@ static void qpnp_flash_led_work(struct work_struct *work)
 	struct qpnp_flash_led *led =
 			dev_get_drvdata(&flash_node->spmi_dev->dev);
 	union power_supply_propval psy_prop;
-	int rc, brightness = flash_node->cdev.brightness;
+	int rc, brightness;
 	int max_curr_avail_ma = 0;
 	int total_curr_ma = 0;
 	int i;
 	u8 val;
 
+	/* Global lock is to synchronize between the flash leds and torch */
 	mutex_lock(&led->flash_led_lock);
+	/* Local lock is to synchronize for one led instance */
+	mutex_lock(&flash_node->cdev.led_access);
 
+	brightness = flash_node->cdev.brightness;
 	if (!brightness)
 		goto turn_off;
 
 	if (led->open_fault) {
 		dev_err(&led->spmi_dev->dev, "Open fault detected\n");
-		mutex_unlock(&led->flash_led_lock);
-		return;
+		goto unlock_mutex;
 	}
 
 	if (!flash_node->flash_on && flash_node->num_regulators > 0) {
 		rc = flash_regulator_enable(led, flash_node, true);
-		if (rc) {
-			mutex_unlock(&led->flash_led_lock);
-			return;
-		}
+		if (rc)
+			goto unlock_mutex;
 	}
 
 	if (!led->gpio_enabled && led->pinctrl) {
@@ -1721,6 +1721,8 @@ static void qpnp_flash_led_work(struct work_struct *work)
 	}
 
 	flash_node->flash_on = true;
+unlock_mutex:
+	mutex_unlock(&flash_node->cdev.led_access);
 	mutex_unlock(&led->flash_led_lock);
 
 	return;
@@ -1741,7 +1743,7 @@ turn_off:
 			goto exit_flash_led_work;
 		}
 
-		led->open_fault = (val & FLASH_LED_OPEN_FAULT_DETECTED);
+		led->open_fault |= (val & FLASH_LED_OPEN_FAULT_DETECTED);
 	}
 
 	rc = qpnp_led_masked_write(led->spmi_dev,
@@ -1789,15 +1791,15 @@ exit_flash_hdrm_sns:
 	}
 exit_flash_led_work:
 	rc = qpnp_flash_led_module_disable(led, flash_node);
-	if (rc) {
+	if (rc)
 		dev_err(&led->spmi_dev->dev, "Module disable failed\n");
-		goto exit_flash_led_work;
-	}
+
 error_enable_gpio:
 	if (flash_node->flash_on && flash_node->num_regulators > 0)
 		flash_regulator_enable(led, flash_node, false);
 
 	flash_node->flash_on = false;
+	mutex_unlock(&flash_node->cdev.led_access);
 	mutex_unlock(&led->flash_led_lock);
 
 	return;
@@ -2228,12 +2230,6 @@ static int qpnp_flash_led_parse_common_dt(
 		if (!rc) {
 			temp_val =
 				qpnp_flash_led_get_thermal_derate_rate(temp);
-			if (temp_val < 0) {
-				dev_err(&led->spmi_dev->dev,
-					"Invalid thermal derate rate\n");
-				return -EINVAL;
-			}
-
 			led->pdata->thermal_derate_rate = (u8)temp_val;
 		} else {
 			dev_err(&led->spmi_dev->dev,
@@ -2262,11 +2258,6 @@ static int qpnp_flash_led_parse_common_dt(
 		rc = of_property_read_string(node, "qcom,ramp_up_step", &temp);
 		if (!rc) {
 			temp_val = qpnp_flash_led_get_ramp_step(temp);
-			if (temp_val < 0) {
-				dev_err(&led->spmi_dev->dev,
-					"Invalid ramp up step values\n");
-				return -EINVAL;
-			}
 			led->pdata->ramp_up_step = (u8)temp_val;
 		} else if (rc != -EINVAL) {
 			dev_err(&led->spmi_dev->dev,
@@ -2278,11 +2269,6 @@ static int qpnp_flash_led_parse_common_dt(
 		rc = of_property_read_string(node, "qcom,ramp_dn_step", &temp);
 		if (!rc) {
 			temp_val = qpnp_flash_led_get_ramp_step(temp);
-			if (temp_val < 0) {
-				dev_err(&led->spmi_dev->dev,
-					"Invalid ramp down step values\n");
-				return rc;
-			}
 			led->pdata->ramp_dn_step = (u8)temp_val;
 		} else if (rc != -EINVAL) {
 			dev_err(&led->spmi_dev->dev,
@@ -2486,12 +2472,12 @@ static int qpnp_flash_led_probe(struct spmi_device *spmi)
 		return -ENOMEM;
 	}
 
-	led->peripheral_type =
-			(u8)qpnp_flash_led_get_peripheral_type(led);
-	if (led->peripheral_type < 0) {
+	rc = qpnp_flash_led_get_peripheral_type(led);
+	if (rc < 0) {
 		dev_err(&spmi->dev, "Failed to get peripheral type\n");
 		return rc;
 	}
+	led->peripheral_type = (u8) rc;
 
 	rc = qpnp_flash_led_parse_common_dt(led, node);
 	if (rc) {
@@ -2535,6 +2521,7 @@ static int qpnp_flash_led_probe(struct spmi_device *spmi)
 	}
 
 	for_each_child_of_node(node, temp) {
+		j = -1;
 		led->flash_node[i].cdev.brightness_set =
 						qpnp_flash_led_brightness_set;
 		led->flash_node[i].cdev.brightness_get =
@@ -2610,7 +2597,6 @@ static int qpnp_flash_led_probe(struct spmi_device *spmi)
 			if (rc)
 				goto error_led_register;
 		}
-
 		i++;
 	}
 
@@ -2623,7 +2609,7 @@ static int qpnp_flash_led_probe(struct spmi_device *spmi)
 			(long)root);
 		if (PTR_ERR(root) == -ENODEV)
 			pr_err("debugfs is not enabled in kernel");
-		goto error_led_debugfs;
+		goto error_free_led_sysfs;
 	}
 
 	led->dbgfs_root = root;
@@ -2655,6 +2641,8 @@ static int qpnp_flash_led_probe(struct spmi_device *spmi)
 
 #ifdef CONFIG_DEBUG_FS
 error_led_debugfs:
+	debugfs_remove_recursive(root);
+error_free_led_sysfs:
 	i = led->num_leds - 1;
 	j = ARRAY_SIZE(qpnp_flash_led_attrs) - 1;
 #endif
@@ -2666,9 +2654,6 @@ error_led_register:
 		j = ARRAY_SIZE(qpnp_flash_led_attrs) - 1;
 		led_classdev_unregister(&led->flash_node[i].cdev);
 	}
-#ifdef CONFIG_DEBUG_FS
-	debugfs_remove_recursive(root);
-#endif
 	mutex_destroy(&led->flash_led_lock);
 	destroy_workqueue(led->ordered_workq);
 

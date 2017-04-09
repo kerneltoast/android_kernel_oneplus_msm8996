@@ -563,7 +563,7 @@
 				qcom,qpnp-lab-ps-enable;
 				qcom,qpnp-lab-nfet-size = <100>;
 				qcom,qpnp-lab-pfet-size = <100>;
-				qcom,qpnp-lab-max-precharge-time = <300>;
+				qcom,qpnp-lab-max-precharge-time = <500>;
 			};
 		};
 
@@ -594,7 +594,6 @@
 			qcom,sync-dly-us = <800>;
 			qcom,fs-curr-ua = <25000>;
 			qcom,cons-sync-write-delay-us = <1000>;
-			qcom,en-phase-stag;
 			qcom,led-strings-list = [00 01 02 03];
 			qcom,en-ext-pfet-sc-pro;
 		};

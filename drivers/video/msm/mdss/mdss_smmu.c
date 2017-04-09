@@ -36,6 +36,8 @@
 #include "mdss_smmu.h"
 #include "mdss_debug.h"
 
+#define SZ_4G 0xF0000000
+
 static DEFINE_MUTEX(mdp_iommu_lock);
 
 void mdss_iommu_lock(void)
@@ -139,7 +141,7 @@ static int mdss_smmu_enable_power(struct mdss_smmu_client *mdss_smmu,
 			goto end;
 		}
 		mdss_update_reg_bus_vote(mdss_smmu->reg_bus_clt,
-			VOTE_INDEX_19_MHZ);
+			VOTE_INDEX_LOW);
 		rc = msm_dss_enable_clk(mp->clk_config, mp->num_clk, true);
 		if (rc) {
 			pr_err("clock enable failed - rc:%d\n", rc);
@@ -537,13 +539,13 @@ int mdss_smmu_init(struct mdss_data_type *mdata, struct device *dev)
 }
 
 static struct mdss_smmu_domain mdss_mdp_unsec = {
-	"mdp_0", MDSS_IOMMU_DOMAIN_UNSECURE, SZ_128K, (SZ_1G - SZ_128K)};
+	"mdp_0", MDSS_IOMMU_DOMAIN_UNSECURE, SZ_1M, (SZ_4G - SZ_1M)};
 static struct mdss_smmu_domain mdss_rot_unsec = {
-	NULL, MDSS_IOMMU_DOMAIN_ROT_UNSECURE, SZ_128K, (SZ_1G - SZ_128K)};
+	NULL, MDSS_IOMMU_DOMAIN_ROT_UNSECURE, SZ_1M, (SZ_4G - SZ_1M)};
 static struct mdss_smmu_domain mdss_mdp_sec = {
-	"mdp_1", MDSS_IOMMU_DOMAIN_SECURE, SZ_1G, SZ_2G};
+	"mdp_1", MDSS_IOMMU_DOMAIN_SECURE, SZ_1M, (SZ_4G - SZ_1M)};
 static struct mdss_smmu_domain mdss_rot_sec = {
-	NULL, MDSS_IOMMU_DOMAIN_ROT_SECURE, SZ_1G, SZ_2G};
+	NULL, MDSS_IOMMU_DOMAIN_ROT_SECURE, SZ_1M, (SZ_4G - SZ_1M)};
 
 static const struct of_device_id mdss_smmu_dt_match[] = {
 	{ .compatible = "qcom,smmu_mdp_unsec", .data = &mdss_mdp_unsec},
@@ -643,7 +645,7 @@ int mdss_smmu_probe(struct platform_device *pdev)
 
 	snprintf(name, MAX_CLIENT_NAME_LEN, "smmu:%u", smmu_domain.domain);
 	mdss_smmu->reg_bus_clt = mdss_reg_bus_vote_client_create(name);
-	if (IS_ERR_OR_NULL(mdss_smmu->reg_bus_clt)) {
+	if (IS_ERR(mdss_smmu->reg_bus_clt)) {
 		pr_err("mdss bus client register failed\n");
 		msm_dss_config_vreg(&pdev->dev, mp->vreg_config, mp->num_vreg,
 			false);

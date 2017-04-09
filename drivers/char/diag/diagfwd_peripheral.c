@@ -1,4 +1,4 @@
-/* Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2015-2017, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -254,7 +254,7 @@ static void diagfwd_data_read_done(struct diagfwd_info *fwd_info,
 			temp_buf = fwd_info->buf_2;
 			write_buf = fwd_info->buf_2->data;
 		} else {
-			pr_err("diag: In %s, no match for buffer %p, peripheral %d, type: %d\n",
+			pr_err("diag: In %s, no match for buffer %pK, peripheral %d, type: %d\n",
 			       __func__, buf, fwd_info->peripheral,
 			       fwd_info->type);
 			goto end;
@@ -268,7 +268,7 @@ static void diagfwd_data_read_done(struct diagfwd_info *fwd_info,
 			   fwd_info->buf_2->data_raw == buf) {
 			temp_buf = fwd_info->buf_2;
 		} else {
-			pr_err("diag: In %s, no match for non encode buffer %p, peripheral %d, type: %d\n",
+			pr_err("diag: In %s, no match for non encode buffer %pK, peripheral %d, type: %d\n",
 			       __func__, buf, fwd_info->peripheral,
 			       fwd_info->type);
 			goto end;
@@ -288,7 +288,7 @@ static void diagfwd_data_read_done(struct diagfwd_info *fwd_info,
 			   fwd_info->buf_2->data_raw == buf) {
 			temp_buf = fwd_info->buf_2;
 		} else {
-			pr_err("diag: In %s, no match for non encode buffer %p, peripheral %d, type: %d\n",
+			pr_err("diag: In %s, no match for non encode buffer %pK, peripheral %d, type: %d\n",
 				__func__, buf, fwd_info->peripheral,
 				fwd_info->type);
 			goto end;
@@ -640,13 +640,12 @@ void diagfwd_close_transport(uint8_t transport, uint8_t peripheral)
 		break;
 	default:
 		return;
-
 	}
 
+	mutex_lock(&driver->diagfwd_channel_mutex[peripheral]);
 	fwd_info = &early_init_info[transport][peripheral];
 	if (fwd_info->p_ops && fwd_info->p_ops->close)
 		fwd_info->p_ops->close(fwd_info->ctxt);
-	mutex_lock(&driver->diagfwd_channel_mutex);
 	fwd_info = &early_init_info[transport_open][peripheral];
 	dest_info = &peripheral_info[TYPE_CNTL][peripheral];
 	dest_info->inited = 1;
@@ -665,7 +664,7 @@ void diagfwd_close_transport(uint8_t transport, uint8_t peripheral)
 		diagfwd_late_open(dest_info);
 	diagfwd_cntl_open(dest_info);
 	init_fn(peripheral);
-	mutex_unlock(&driver->diagfwd_channel_mutex);
+	mutex_unlock(&driver->diagfwd_channel_mutex[peripheral]);
 	diagfwd_queue_read(&peripheral_info[TYPE_DATA][peripheral]);
 	diagfwd_queue_read(&peripheral_info[TYPE_CMD][peripheral]);
 }
@@ -945,7 +944,7 @@ void diagfwd_channel_read(struct diagfwd_info *fwd_info)
 	if (!(fwd_info->p_ops && fwd_info->p_ops->read && fwd_info->ctxt))
 		goto fail_return;
 
-	DIAG_LOG(DIAG_DEBUG_PERIPHERALS, "issued a read p: %d t: %d buf: %p\n",
+	DIAG_LOG(DIAG_DEBUG_PERIPHERALS, "issued a read p: %d t: %d buf: %pK\n",
 		 fwd_info->peripheral, fwd_info->type, read_buf);
 	err = fwd_info->p_ops->read(fwd_info->ctxt, read_buf, read_len);
 	if (err)

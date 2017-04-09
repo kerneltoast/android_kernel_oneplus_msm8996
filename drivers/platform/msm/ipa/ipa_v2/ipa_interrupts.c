@@ -173,25 +173,26 @@ static void ipa_process_interrupts(bool isr_context)
 	while (en & reg) {
 		bmsk = 1;
 		for (i = 0; i < IPA_IRQ_NUM_MAX; i++) {
-
-			if (en & reg & bmsk) {
-				uc_irq = is_uc_irq(i);
-
-				/* Clear uC interrupt before processing to avoid
-						clearing unhandled interrupts */
-				if (uc_irq)
-					ipa_write_reg(ipa_ctx->mmio,
-					IPA_IRQ_CLR_EE_n_ADDR(ipa_ee), bmsk);
-
-					/* Process the interrupts */
-					handle_interrupt(i, isr_context);
-
-				/* Clear non uC interrupt after processing
-				   to avoid clearing interrupt data */
-				if (!uc_irq)
-					ipa_write_reg(ipa_ctx->mmio,
-					IPA_IRQ_CLR_EE_n_ADDR(ipa_ee), bmsk);
+			if (!(en & reg & bmsk)) {
+				bmsk = bmsk << 1;
+				continue;
 			}
+			uc_irq = is_uc_irq(i);
+			/* Clear uC interrupt before processing to avoid
+					clearing unhandled interrupts */
+			if (uc_irq)
+				ipa_write_reg(ipa_ctx->mmio,
+					IPA_IRQ_CLR_EE_n_ADDR(ipa_ee), bmsk);
+
+			/* Process the interrupts */
+			handle_interrupt(i, isr_context);
+
+			/* Clear non uC interrupt after processing
+			   to avoid clearing interrupt data */
+			if (!uc_irq)
+				ipa_write_reg(ipa_ctx->mmio,
+				   IPA_IRQ_CLR_EE_n_ADDR(ipa_ee), bmsk);
+
 			bmsk = bmsk << 1;
 		}
 		/* Check pending interrupts that may have
@@ -204,9 +205,9 @@ static void ipa_process_interrupts(bool isr_context)
 static void ipa_interrupt_defer(struct work_struct *work)
 {
 	IPADBG("processing interrupts in wq\n");
-	IPA2_ACTIVE_CLIENTS_INC_SIMPLE();
+	IPA_ACTIVE_CLIENTS_INC_SIMPLE();
 	ipa_process_interrupts(false);
-	IPA2_ACTIVE_CLIENTS_DEC_SIMPLE();
+	IPA_ACTIVE_CLIENTS_DEC_SIMPLE();
 	IPADBG("Done\n");
 }
 

@@ -64,6 +64,7 @@ enum {
 	HW_PLATFORM_RCM	= 21,
 	HW_PLATFORM_STP = 23,
 	HW_PLATFORM_SBC = 24,
+	HW_PLATFORM_ADP = 25,
 	HW_PLATFORM_INVALID
 };
 
@@ -84,6 +85,7 @@ const char *hw_platform[] = {
 	[HW_PLATFORM_DTV] = "DTV",
 	[HW_PLATFORM_STP] = "STP",
 	[HW_PLATFORM_SBC] = "SBC",
+	[HW_PLATFORM_ADP] = "ADP",
 };
 
 enum {
@@ -107,6 +109,22 @@ const char *qrd_hw_platform_subtype[] = {
 	[PLATFORM_SUBTYPE_SKUAB] = "SKUAB",
 	[PLATFORM_SUBTYPE_SKUG] = "SKUG",
 	[PLATFORM_SUBTYPE_QRD_INVALID] = "INVALID",
+};
+
+enum {
+	PLATFORM_SUBTYPE_MOJAVE_V1 = 0x0,
+	PLATFORM_SUBTYPE_MMX = 0x1,
+	PLATFORM_SUBTYPE_MOJAVE_FULL_V2 = 0x2,
+	PLATFORM_SUBTYPE_MOJAVE_BARE_V2 = 0x3,
+	PLATFORM_SUBTYPE_ADP_INVALID,
+};
+
+const char *adp_hw_platform_subtype[] = {
+	[PLATFORM_SUBTYPE_MOJAVE_V1] = "MOJAVE_V1",
+	[PLATFORM_SUBTYPE_MMX] = "MMX",
+	[PLATFORM_SUBTYPE_MOJAVE_FULL_V2] = "_MOJAVE_V2_FULL",
+	[PLATFORM_SUBTYPE_MOJAVE_BARE_V2] = "_MOJAVE_V2_BARE",
+	[PLATFORM_SUBTYPE_ADP_INVALID] = "INVALID",
 };
 
 enum {
@@ -189,6 +207,13 @@ struct socinfo_v0_11 {
 	uint32_t pmic_array_offset;
 };
 
+struct socinfo_v0_12 {
+	struct socinfo_v0_11 v0_11;
+	uint32_t chip_family;
+	uint32_t raw_device_family;
+	uint32_t raw_device_number;
+};
+
 static union {
 	struct socinfo_v0_1 v0_1;
 	struct socinfo_v0_2 v0_2;
@@ -201,10 +226,11 @@ static union {
 	struct socinfo_v0_9 v0_9;
 	struct socinfo_v0_10 v0_10;
 	struct socinfo_v0_11 v0_11;
+	struct socinfo_v0_12 v0_12;
 } *socinfo;
 
 /* max socinfo format version supported */
-#define MAX_SOCINFO_FORMAT SOCINFO_VERSION(0, 11)
+#define MAX_SOCINFO_FORMAT SOCINFO_VERSION(0, 12)
 
 static struct msm_soc_info cpu_of_id[] = {
 
@@ -477,6 +503,8 @@ static struct msm_soc_info cpu_of_id[] = {
 	[260] = {MSM_CPU_8909, "MDMFERRUM"},
 	[261] = {MSM_CPU_8909, "MDMFERRUM"},
 	[262] = {MSM_CPU_8909, "MDMFERRUM"},
+	[300] = {MSM_CPU_8909, "MSM8909W"},
+	[301] = {MSM_CPU_8909, "APQ8009W"},
 
 	/* ZIRC IDs */
 	[234] = {MSM_CPU_ZIRC, "MSMZIRC"},
@@ -506,7 +534,11 @@ static struct msm_soc_info cpu_of_id[] = {
 	[246] = {MSM_CPU_8996, "MSM8996"},
 	[291] = {MSM_CPU_8996, "APQ8096"},
 	[305] = {MSM_CPU_8996, "MSM8996pro"},
+	[310] = {MSM_CPU_8996, "MSM8996"},
+	[311] = {MSM_CPU_8996, "APQ8096"},
 	[312] = {MSM_CPU_8996, "APQ8096pro"},
+	[315] = {MSM_CPU_8996, "MSM8996pro"},
+	[316] = {MSM_CPU_8996, "APQ8096pro"},
 
 	/* 8976 ID */
 	[266] = {MSM_CPU_8976, "MSM8976"},
@@ -520,9 +552,9 @@ static struct msm_soc_info cpu_of_id[] = {
 	/* Cobalt ID */
 	[292] = {MSM_CPU_COBALT, "MSMCOBALT"},
 
-	/* Titanium ID */
-	[293] = {MSM_CPU_TITANIUM, "MSMTITANIUM"},
-	[304] = {MSM_CPU_TITANIUM, "APQTITANIUM"},
+	/* 8953 ID */
+	[293] = {MSM_CPU_8953, "MSM8953"},
+	[304] = {MSM_CPU_8953, "APQ8053"},
 
 	/* 9607 IDs */
 	[290] = {MSM_CPU_9607, "MDM9607"},
@@ -542,11 +574,17 @@ static struct msm_soc_info cpu_of_id[] = {
 	[294] = {MSM_CPU_8937, "MSM8937"},
 	[295] = {MSM_CPU_8937, "APQ8937"},
 
-	/* MSMGOLD IDs */
-	[303] = {MSM_CPU_GOLD, "MSMGOLD"},
-	[307] = {MSM_CPU_GOLD, "APQGOLD"},
-	[308] = {MSM_CPU_GOLD, "MSMGOLD"},
-	[309] = {MSM_CPU_GOLD, "MSMGOLD"},
+	/* MSM8917 IDs */
+	[303] = {MSM_CPU_8917, "MSM8917"},
+	[307] = {MSM_CPU_8917, "APQ8017"},
+	[308] = {MSM_CPU_8917, "MSM8217"},
+	[309] = {MSM_CPU_8917, "MSM8617"},
+
+	/* MSM8920 IDs */
+	[320] = {MSM_CPU_8920, "MSM8920"},
+
+	/* MSM8940 IDs */
+	[313] = {MSM_CPU_8940, "MSM8940"},
 
 	/* Uninitialized IDs are not known to run Linux.
 	   MSM_CPU_UNKNOWN is set to 0 to ensure these IDs are
@@ -666,11 +704,36 @@ static uint32_t socinfo_get_foundry_id(void)
 		: 0;
 }
 
-static uint32_t socinfo_get_serial_number(void)
+uint32_t socinfo_get_serial_number(void)
 {
 	return socinfo ?
 		(socinfo_format >= SOCINFO_VERSION(0, 10) ?
 			socinfo->v0_10.serial_number : 0)
+		: 0;
+}
+EXPORT_SYMBOL(socinfo_get_serial_number);
+
+static uint32_t socinfo_get_chip_family(void)
+{
+	return socinfo ?
+		(socinfo_format >= SOCINFO_VERSION(0, 12) ?
+			socinfo->v0_12.chip_family : 0)
+		: 0;
+}
+
+static uint32_t socinfo_get_raw_device_family(void)
+{
+	return socinfo ?
+		(socinfo_format >= SOCINFO_VERSION(0, 12) ?
+			socinfo->v0_12.raw_device_family : 0)
+		: 0;
+}
+
+static uint32_t socinfo_get_raw_device_number(void)
+{
+	return socinfo ?
+		(socinfo_format >= SOCINFO_VERSION(0, 12) ?
+			socinfo->v0_12.raw_device_number : 0)
 		: 0;
 }
 
@@ -781,6 +844,14 @@ msm_get_platform_subtype(struct device *dev,
 		}
 		return snprintf(buf, PAGE_SIZE, "%-.32s\n",
 					qrd_hw_platform_subtype[hw_subtype]);
+	}
+	if (HW_PLATFORM_ADP == socinfo_get_platform_type()) {
+		if (hw_subtype >= PLATFORM_SUBTYPE_ADP_INVALID) {
+			pr_err("Invalid hardware platform sub type for adp found\n");
+			hw_subtype = PLATFORM_SUBTYPE_ADP_INVALID;
+		}
+		return snprintf(buf, PAGE_SIZE, "%-.32s\n",
+					adp_hw_platform_subtype[hw_subtype]);
 	} else {
 		if (hw_subtype >= PLATFORM_SUBTYPE_INVALID) {
 			pr_err("Invalid hardware platform subtype\n");
@@ -818,6 +889,33 @@ msm_get_serial_number(struct device *dev,
 {
 	return snprintf(buf, PAGE_SIZE, "%u\n",
 		socinfo_get_serial_number());
+}
+
+static ssize_t
+msm_get_chip_family(struct device *dev,
+			struct device_attribute *attr,
+			char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "0x%x\n",
+		socinfo_get_chip_family());
+}
+
+static ssize_t
+msm_get_raw_device_family(struct device *dev,
+			struct device_attribute *attr,
+			char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "0x%x\n",
+		socinfo_get_raw_device_family());
+}
+
+static ssize_t
+msm_get_raw_device_number(struct device *dev,
+			struct device_attribute *attr,
+			char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "0x%x\n",
+		socinfo_get_raw_device_number());
 }
 
 static ssize_t
@@ -1056,6 +1154,18 @@ static struct device_attribute msm_soc_attr_serial_number =
 	__ATTR(serial_number, S_IRUGO,
 			msm_get_serial_number, NULL);
 
+static struct device_attribute msm_soc_attr_chip_family =
+	__ATTR(chip_family, S_IRUGO,
+			msm_get_chip_family, NULL);
+
+static struct device_attribute msm_soc_attr_raw_device_family =
+	__ATTR(raw_device_family, S_IRUGO,
+			msm_get_raw_device_family, NULL);
+
+static struct device_attribute msm_soc_attr_raw_device_number =
+	__ATTR(raw_device_number, S_IRUGO,
+			msm_get_raw_device_number, NULL);
+
 static struct device_attribute msm_soc_attr_pmic_model =
 	__ATTR(pmic_model, S_IRUGO,
 			msm_get_pmic_model, NULL);
@@ -1141,9 +1251,9 @@ static void * __init setup_dummy_socinfo(void)
 		dummy_socinfo.id = 268;
 		strlcpy(dummy_socinfo.build_id, "msm8929 - ",
 			sizeof(dummy_socinfo.build_id));
-	} else if (early_machine_is_msmtitanium()) {
+	} else if (early_machine_is_msm8953()) {
 		dummy_socinfo.id = 293;
-		strlcpy(dummy_socinfo.build_id, "msmtitanium - ",
+		strlcpy(dummy_socinfo.build_id, "msm8953 - ",
 			sizeof(dummy_socinfo.build_id));
 	} else if (early_machine_is_mdm9607()) {
 		dummy_socinfo.id = 290;
@@ -1157,9 +1267,17 @@ static void * __init setup_dummy_socinfo(void)
 		dummy_socinfo.id = 294;
 		strlcpy(dummy_socinfo.build_id, "msm8937 - ",
 			sizeof(dummy_socinfo.build_id));
-	} else if (early_machine_is_msmgold()) {
+	} else if (early_machine_is_msm8917()) {
 		dummy_socinfo.id = 303;
-		strlcpy(dummy_socinfo.build_id, "msmgold - ",
+		strlcpy(dummy_socinfo.build_id, "msm8917 - ",
+			sizeof(dummy_socinfo.build_id));
+	} else if (early_machine_is_msm8920()) {
+		dummy_socinfo.id = 320;
+		strlcpy(dummy_socinfo.build_id, "msm8920 - ",
+			sizeof(dummy_socinfo.build_id));
+	} else if (early_machine_is_msm8940()) {
+		dummy_socinfo.id = 313;
+		strlcpy(dummy_socinfo.build_id, "msm8940 - ",
 			sizeof(dummy_socinfo.build_id));
 	}
 
@@ -1178,6 +1296,13 @@ static void __init populate_soc_sysfs_files(struct device *msm_soc_device)
 	device_create_file(msm_soc_device, &images);
 
 	switch (socinfo_format) {
+	case SOCINFO_VERSION(0, 12):
+		device_create_file(msm_soc_device,
+					&msm_soc_attr_chip_family);
+		device_create_file(msm_soc_device,
+					&msm_soc_attr_raw_device_family);
+		device_create_file(msm_soc_device,
+					&msm_soc_attr_raw_device_number);
 	case SOCINFO_VERSION(0, 11):
 	case SOCINFO_VERSION(0, 10):
 		 device_create_file(msm_soc_device,
@@ -1375,6 +1500,24 @@ static void socinfo_print(void)
 			socinfo->v0_10.serial_number,
 			socinfo->v0_11.num_pmics);
 		break;
+	case SOCINFO_VERSION(0, 12):
+		pr_info("v%u.%u, id=%u, ver=%u.%u, raw_id=%u, raw_ver=%u, hw_plat=%u, hw_plat_ver=%u\n accessory_chip=%u, hw_plat_subtype=%u, pmic_model=%u, pmic_die_revision=%u foundry_id=%u serial_number=%u num_pmics=%u chip_family=0x%x raw_device_family=0x%x raw_device_number=0x%x\n",
+			f_maj, f_min, socinfo->v0_1.id, v_maj, v_min,
+			socinfo->v0_2.raw_id, socinfo->v0_2.raw_version,
+			socinfo->v0_3.hw_platform,
+			socinfo->v0_4.platform_version,
+			socinfo->v0_5.accessory_chip,
+			socinfo->v0_6.hw_platform_subtype,
+			socinfo->v0_7.pmic_model,
+			socinfo->v0_7.pmic_die_revision,
+			socinfo->v0_9.foundry_id,
+			socinfo->v0_10.serial_number,
+			socinfo->v0_11.num_pmics,
+			socinfo->v0_12.chip_family,
+			socinfo->v0_12.raw_device_family,
+			socinfo->v0_12.raw_device_number);
+		break;
+
 	default:
 		pr_err("Unknown format found: v%u.%u\n", f_maj, f_min);
 		break;

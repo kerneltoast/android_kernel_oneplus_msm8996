@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -17,6 +17,7 @@
 #include "msm8909w-gpu.dtsi"
 #include "msm8909-pm8916-cdp.dtsi"
 #include "msm8909w.dtsi"
+#include "apq8009w-memory.dtsi"
 
 / {
 	model = "Qualcomm Technologies, Inc. APQ8009W-PM8916 CDP";
@@ -24,18 +25,6 @@
 	qcom,msm-id = <265 0>,
 		      <301 0>;
 	qcom,board-id= <1 0x103>;
-};
-
-&external_image_mem {
-	reg = <0x0 0x87a00000 0x0 0x0600000>;
-};
-
-&modem_adsp_mem {
-	reg = <0x0 0x88000000 0x0 0x02c00000>;
-};
-
-&peripheral_mem {
-	reg = <0x0 0x8ac00000 0x0 0x0500000>;
 };
 
 &mdss_dsi0 {
@@ -77,8 +66,8 @@
 			ite,wakeup;
 			ite,palm-detect-en;
 			ite,palm-detect-keycode = <142>;
-			ite,fw-name = "it7260_fw.bin";
-			ite,cfg-name = "it7260_cfg.bin";
+			ite,fw-name = "it7260_fw_050D0014.bin";
+			ite,cfg-name = "it7260_cfg_62011E01.bin";
 			ite,avdd-lpm-cur = <3000>;
 		};
 	};
@@ -105,19 +94,6 @@
 	status = "ok";
 	pinctrl-names = "default";
 	pinctrl-0 = <&uart_console_sleep>;
-};
-
-&audio_codec {
-	pinctrl-4 =     <&cdc_pdm_lines_act &cdc_ext_pa_act
-			&cdc_ext_pa_d0_act &cdc_ext_mclk_act
-			&cross_conn_det_act>;
-	pinctrl-5 =     <&cdc_pdm_lines_sus &cdc_ext_pa_sus
-			&cdc_ext_pa_d0_sus &cdc_ext_mclk_sus
-			&cross_conn_det_sus>;
-	pinctrl-6 =     <&cdc_pdm_lines_act &cdc_ext_tlmm_act
-			&cdc_ext_mclk_act &cross_conn_det_act>;
-	pinctrl-7 =     <&cdc_pdm_lines_sus &cdc_ext_tlmm_sus
-			&cdc_ext_mclk_sus &cross_conn_det_sus>;
 };
 
 &soc {

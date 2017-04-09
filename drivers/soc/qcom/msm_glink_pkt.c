@@ -1,4 +1,4 @@
-/* Copyright (c) 2014-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2014-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -1048,6 +1048,7 @@ int glink_pkt_release(struct inode *inode, struct file *file)
 {
 	int ret = 0;
 	struct glink_pkt_dev *devp = file->private_data;
+	unsigned long flags;
 	GLINK_PKT_INFO("%s() on dev id:%d by [%s] ref_cnt[%d]\n",
 			__func__, devp->i, current->comm, devp->ref_cnt);
 
@@ -1075,7 +1076,12 @@ int glink_pkt_release(struct inode *inode, struct file *file)
 			mutex_lock(&devp->ch_lock);
 		}
 		devp->poll_mode = 0;
-		devp->ws_locked = 0;
+		spin_lock_irqsave(&devp->pa_spinlock, flags);
+		if (devp->ws_locked) {
+			__pm_relax(&devp->pa_ws);
+			devp->ws_locked = 0;
+		}
+		spin_unlock_irqrestore(&devp->pa_spinlock, flags);
 		devp->sigs_updated = false;
 		devp->in_reset = 0;
 	}
@@ -1114,6 +1120,7 @@ static int glink_pkt_init_add_device(struct glink_pkt_dev *devp, int i)
 	devp->open_cfg.notify_state = glink_pkt_notify_state;
 	devp->open_cfg.notify_rx_intent_req = glink_pkt_rmt_rx_intent_req_cb;
 	devp->open_cfg.notify_rx_sigs = glink_pkt_notify_rx_sigs;
+	devp->open_cfg.options |= GLINK_OPT_INITIAL_XPORT;
 	devp->open_cfg.priv = devp;
 
 	devp->link_up = false;

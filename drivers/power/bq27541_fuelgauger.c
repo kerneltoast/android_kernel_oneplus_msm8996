@@ -40,7 +40,6 @@
 #include <linux/wakelock.h>
 #include "oem_external_fg.h"
 
-#include "../oneplus/coretech/crpl_helper.h"
 
 #define DRIVER_VERSION			"1.1.0"
 /* Bq27541 standard data commands */
@@ -162,9 +161,7 @@ struct bq27541_device_info {
 	unsigned long	soc_store_time;
 };
 
-#define VENDOR_EDIT_OPT_BQ_RESUME_TIME
 
-#ifdef VENDOR_EDIT_OPT_BQ_RESUME_TIME
 #include <linux/workqueue.h>
 
 struct update_pre_capacity_data{
@@ -173,7 +170,6 @@ struct update_pre_capacity_data{
 	int suspend_time;
 };
 static struct update_pre_capacity_data update_pre_capacity_data;
-#endif
 
 static int coulomb_counter;
 static spinlock_t lock; /* protect access to coulomb_counter */
@@ -399,6 +395,7 @@ struct bq27541_device_info *bq27541_di;
 #define CAPACITY_SALTATE_COUNTER               4
 #define CAPACITY_SALTATE_COUNTER_NOT_CHARGING  24 /* >=40sec */
 #define CAPACITY_CALIBRATE_TIME_60_PERCENT     45 /* 45s */
+
 static int bq27541_average_current(struct bq27541_device_info *di);
 
 extern int get_charging_status(void);
@@ -676,8 +673,6 @@ out:
 				soc, soc_calib, bq27541_battery_voltage(di) / 1000,
 				bq27541_average_current(di) / 1000);
 	}
-
-	ctech_crpl_hook_battery_capacity(soc_calib);
 
 	return soc_calib;
 }
@@ -1172,7 +1167,6 @@ static struct platform_device this_device = {
 };
 #endif
 
-#ifdef VENDOR_EDIT_OPT_BQ_RESUME_TIME
 static void update_pre_capacity_func(struct work_struct *w)
 {
 	pr_debug("enter\n");
@@ -1182,14 +1176,12 @@ static void update_pre_capacity_func(struct work_struct *w)
 	wake_unlock(&bq27541_di->update_soc_wake_lock);
 	pr_debug("exit\n");
 }
-#endif
 
 #define MAX_RETRY_COUNT	5
 #define DEFAULT_INVALID_SOC_PRE  -22
 static int bq27541_parse_dt(struct bq27541_device_info *di)
 {
 	struct device_node *dev_node = di->client->dev.of_node;
-
 	if (!dev_node) {
 		pr_err("device tree info. missing\n");
 		return -EINVAL;
@@ -1216,10 +1208,8 @@ static int bq27541_battery_probe(struct i2c_client *client,
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C))
 		return -ENODEV;
-#ifdef VENDOR_EDIT_OPT_BQ_RESUME_TIME
 	update_pre_capacity_data.workqueue = create_workqueue("update_pre_capacity");
 	INIT_DELAYED_WORK(&(update_pre_capacity_data.work), update_pre_capacity_func);
-#endif
 
 	mutex_lock(&battery_mutex);
 	num = idr_alloc(&battery_id, client, 0, 0, GFP_KERNEL);
@@ -1331,9 +1321,7 @@ static int bq27541_battery_suspend(struct i2c_client *client, pm_message_t messa
 {
 	int ret=0;
 	struct bq27541_device_info *di = i2c_get_clientdata(client);
-#ifdef VENDOR_EDIT_OPT_BQ_RESUME_TIME
 	cancel_delayed_work_sync(&di->battery_soc_work);
-#endif
 	atomic_set(&di->suspended, 1);
 	ret = get_current_time(&di->rtc_suspend_time);
 	if (ret ) {
@@ -1358,7 +1346,6 @@ static int bq27541_battery_resume(struct i2c_client *client)
 	}
 	suspend_time =  di->rtc_resume_time - di->rtc_suspend_time;
 	pr_debug("suspend_time=%d\n", suspend_time);
-#ifdef VENDOR_EDIT_OPT_BQ_RESUME_TIME
 	update_pre_capacity_data.suspend_time = suspend_time;
 
 	if (di->rtc_resume_time - di->lcd_off_time >= TWO_POINT_FIVE_MINUTES) {
@@ -1371,10 +1358,6 @@ static int bq27541_battery_resume(struct i2c_client *client)
 	}
 	schedule_delayed_work(&bq27541_di->battery_soc_work,
 			msecs_to_jiffies(RESUME_SCHDULE_SOC_UPDATE_WORK_MS));
-#else
-	/* update pre capacity when sleep time more than 1minutes */
-	bq27541_battery_soc(bq27541_di, suspend_time);
-#endif
 	return 0;
 }
 static void bq27541_shutdown(struct i2c_client *client)

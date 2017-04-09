@@ -4,7 +4,7 @@
  */
 
 /******************************************************************
- * Copyright (c) 2013-2015, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2016, The Linux Foundation. All rights reserved.
 
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -32,7 +32,7 @@
 #include <linux/miscdevice.h>
 #include <linux/spinlock.h>
 
-#define EMBMS_MAX_IFACE_NAME    20
+#define EMBMS_MAX_IFACE_NAME    16
 
 /* Defining IP and UDP header related macros*/
 
@@ -54,6 +54,10 @@
 
 #define embms_debug pr_debug
 #define embms_error pr_debug
+
+#ifndef MIN
+	#define  MIN(x, y) (((x) < (y)) ? (x) : (y))
+#endif
 
 /* The name of the device file*/
 

@@ -67,6 +67,93 @@ EXPORT_SYMBOL(pci_bus_write_config_byte);
 EXPORT_SYMBOL(pci_bus_write_config_word);
 EXPORT_SYMBOL(pci_bus_write_config_dword);
 
+int pci_generic_config_read(struct pci_bus *bus, unsigned int devfn,
+			    int where, int size, u32 *val)
+{
+	void __iomem *addr;
+
+	addr = bus->ops->map_bus(bus, devfn, where);
+	if (!addr) {
+		*val = ~0;
+		return PCIBIOS_DEVICE_NOT_FOUND;
+	}
+
+	if (size == 1)
+		*val = readb(addr);
+	else if (size == 2)
+		*val = readw(addr);
+	else
+		*val = readl(addr);
+
+	return PCIBIOS_SUCCESSFUL;
+}
+EXPORT_SYMBOL_GPL(pci_generic_config_read);
+
+int pci_generic_config_write(struct pci_bus *bus, unsigned int devfn,
+			     int where, int size, u32 val)
+{
+	void __iomem *addr;
+
+	addr = bus->ops->map_bus(bus, devfn, where);
+	if (!addr)
+		return PCIBIOS_DEVICE_NOT_FOUND;
+
+	if (size == 1)
+		writeb(val, addr);
+	else if (size == 2)
+		writew(val, addr);
+	else
+		writel(val, addr);
+
+	return PCIBIOS_SUCCESSFUL;
+}
+EXPORT_SYMBOL_GPL(pci_generic_config_write);
+
+int pci_generic_config_read32(struct pci_bus *bus, unsigned int devfn,
+			      int where, int size, u32 *val)
+{
+	void __iomem *addr;
+
+	addr = bus->ops->map_bus(bus, devfn, where & ~0x3);
+	if (!addr) {
+		*val = ~0;
+		return PCIBIOS_DEVICE_NOT_FOUND;
+	}
+
+	*val = readl(addr);
+
+	if (size <= 2)
+		*val = (*val >> (8 * (where & 3))) & ((1 << (size * 8)) - 1);
+
+	return PCIBIOS_SUCCESSFUL;
+}
+EXPORT_SYMBOL_GPL(pci_generic_config_read32);
+
+int pci_generic_config_write32(struct pci_bus *bus, unsigned int devfn,
+			       int where, int size, u32 val)
+{
+	void __iomem *addr;
+	u32 mask, tmp;
+
+	addr = bus->ops->map_bus(bus, devfn, where & ~0x3);
+	if (!addr)
+		return PCIBIOS_DEVICE_NOT_FOUND;
+
+	if (size == 4) {
+		writel(val, addr);
+		return PCIBIOS_SUCCESSFUL;
+	} else {
+		mask = ~(((1 << (size * 8)) - 1) << ((where & 0x3) * 8));
+	}
+
+	tmp = readl(addr) & mask;
+	tmp |= val << ((where & 0x3) * 8);
+	writel(tmp, addr);
+
+	return PCIBIOS_SUCCESSFUL;
+}
+EXPORT_SYMBOL_GPL(pci_generic_config_write32);
+
 /**
  * pci_bus_set_ops - Set raw operations of pci bus
  * @bus:	pci bus struct
@@ -352,6 +439,56 @@ static const struct pci_vpd_ops pci_vpd_pci22_ops = {
 	.release = pci_vpd_pci22_release,
 };
 
+static ssize_t pci_vpd_f0_read(struct pci_dev *dev, loff_t pos, size_t count,
+			       void *arg)
+{
+	struct pci_dev *tdev = pci_get_slot(dev->bus, PCI_SLOT(dev->devfn));
+	ssize_t ret;
+
+	if (!tdev)
+		return -ENODEV;
+
+	ret = pci_read_vpd(tdev, pos, count, arg);
+	pci_dev_put(tdev);
+	return ret;
+}
+
+static ssize_t pci_vpd_f0_write(struct pci_dev *dev, loff_t pos, size_t count,
+				const void *arg)
+{
+	struct pci_dev *tdev = pci_get_slot(dev->bus, PCI_SLOT(dev->devfn));
+	ssize_t ret;
+
+	if (!tdev)
+		return -ENODEV;
+
+	ret = pci_write_vpd(tdev, pos, count, arg);
+	pci_dev_put(tdev);
+	return ret;
+}
+
+static const struct pci_vpd_ops pci_vpd_f0_ops = {
+	.read = pci_vpd_f0_read,
+	.write = pci_vpd_f0_write,
+	.release = pci_vpd_pci22_release,
+};
+
+static int pci_vpd_f0_dev_check(struct pci_dev *dev)
+{
+	struct pci_dev *tdev = pci_get_slot(dev->bus, PCI_SLOT(dev->devfn));
+	int ret = 0;
+
+	if (!tdev)
+		return -ENODEV;
+	if (!tdev->vpd || !tdev->multifunction ||
+	    dev->class != tdev->class || dev->vendor != tdev->vendor ||
+	    dev->device != tdev->device)
+		ret = -ENODEV;
+
+	pci_dev_put(tdev);
+	return ret;
+}
+
 int pci_vpd_pci22_init(struct pci_dev *dev)
 {
 	struct pci_vpd_pci22 *vpd;
@@ -360,12 +497,21 @@ int pci_vpd_pci22_init(struct pci_dev *dev)
 	cap = pci_find_capability(dev, PCI_CAP_ID_VPD);
 	if (!cap)
 		return -ENODEV;
+	if (dev->dev_flags & PCI_DEV_FLAGS_VPD_REF_F0) {
+		int ret = pci_vpd_f0_dev_check(dev);
+
+		if (ret)
+			return ret;
+	}
 	vpd = kzalloc(sizeof(*vpd), GFP_ATOMIC);
 	if (!vpd)
 		return -ENOMEM;
 
 	vpd->base.len = PCI_VPD_PCI22_SIZE;
-	vpd->base.ops = &pci_vpd_pci22_ops;
+	if (dev->dev_flags & PCI_DEV_FLAGS_VPD_REF_F0)
+		vpd->base.ops = &pci_vpd_f0_ops;
+	else
+		vpd->base.ops = &pci_vpd_pci22_ops;
 	mutex_init(&vpd->lock);
 	vpd->cap = cap;
 	vpd->busy = false;

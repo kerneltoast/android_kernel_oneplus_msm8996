@@ -374,6 +374,28 @@ static void __ufshcd_suspend_clkscaling(struct ufs_hba *hba);
 static void ufshcd_release_all(struct ufs_hba *hba);
 static void ufshcd_hba_vreg_set_lpm(struct ufs_hba *hba);
 static void ufshcd_hba_vreg_set_hpm(struct ufs_hba *hba);
+static int ufshcd_devfreq_target(struct device *dev,
+				unsigned long *freq, u32 flags);
+static int ufshcd_devfreq_get_dev_status(struct device *dev,
+		struct devfreq_dev_status *stat);
+
+#if IS_ENABLED(CONFIG_DEVFREQ_GOV_SIMPLE_ONDEMAND)
+static struct devfreq_simple_ondemand_data ufshcd_ondemand_data = {
+	.upthreshold = 35,
+	.downdifferential = 30,
+	.simple_scaling = 1,
+};
+
+static void *gov_data = &ufshcd_ondemand_data;
+#else
+static void *gov_data;
+#endif
+
+static struct devfreq_dev_profile ufs_devfreq_profile = {
+	.polling_ms	= 40,
+	.target		= ufshcd_devfreq_target,
+	.get_dev_status	= ufshcd_devfreq_get_dev_status,
+};
 
 static inline bool ufshcd_valid_tag(struct ufs_hba *hba, int tag)
 {
@@ -1251,7 +1273,8 @@ start:
 		hba->clk_gating.state = REQ_CLKS_ON;
 		trace_ufshcd_clk_gating(dev_name(hba->dev),
 			hba->clk_gating.state);
-		schedule_work(&hba->clk_gating.ungate_work);
+		queue_work(hba->clk_gating.ungating_workq,
+				&hba->clk_gating.ungate_work);
 		/*
 		 * fall through to check if we should wait for this
 		 * work to be done or not.
@@ -1500,6 +1523,7 @@ out:
 static void ufshcd_init_clk_gating(struct ufs_hba *hba)
 {
 	struct ufs_clk_gating *gating = &hba->clk_gating;
+	char wq_name[sizeof("ufs_clk_ungating_00")];
 
 	hba->clk_gating.state = CLKS_ON;
 
@@ -1508,6 +1532,10 @@ static void ufshcd_init_clk_gating(struct ufs_hba *hba)
 
 	INIT_DELAYED_WORK(&gating->gate_work, ufshcd_gate_work);
 	INIT_WORK(&gating->ungate_work, ufshcd_ungate_work);
+
+	snprintf(wq_name, ARRAY_SIZE(wq_name), "ufs_clk_ungating_%d",
+			hba->host->host_no);
+	hba->clk_gating.ungating_workq = create_singlethread_workqueue(wq_name);
 
 	gating->is_enabled = true;
 
@@ -1585,6 +1613,7 @@ static void ufshcd_exit_clk_gating(struct ufs_hba *hba)
 	device_remove_file(hba->dev, &hba->clk_gating.enable_attr);
 	cancel_work_sync(&hba->clk_gating.ungate_work);
 	cancel_delayed_work_sync(&hba->clk_gating.gate_work);
+	destroy_workqueue(hba->clk_gating.ungating_workq);
 }
 
 /**
@@ -3868,17 +3897,17 @@ int ufshcd_wait_for_doorbell_clr(struct ufs_hba *hba, u64 wait_timeout_us)
 
 	ufshcd_hold_all(hba);
 	spin_lock_irqsave(hba->host->host_lock, flags);
-	if (hba->ufshcd_state != UFSHCD_STATE_OPERATIONAL) {
-		ret = -EBUSY;
-		goto out;
-	}
-
 	/*
 	 * Wait for all the outstanding tasks/transfer requests.
 	 * Verify by checking the doorbell registers are clear.
 	 */
 	start = ktime_get();
 	do {
+		if (hba->ufshcd_state != UFSHCD_STATE_OPERATIONAL) {
+			ret = -EBUSY;
+			goto out;
+		}
+
 		tm_doorbell = ufshcd_readl(hba, REG_UTP_TASK_REQ_DOOR_BELL);
 		tr_doorbell = ufshcd_readl(hba, REG_UTP_TRANSFER_REQ_DOOR_BELL);
 		if (!tm_doorbell && !tr_doorbell) {
@@ -6851,18 +6880,29 @@ static int ufshcd_probe_hba(struct ufs_hba *hba)
 		if (ufshcd_scsi_add_wlus(hba))
 			goto out;
 
+		/* Initialize devfreq after UFS device is detected */
+		if (ufshcd_is_clkscaling_supported(hba)) {
+			memcpy(&hba->clk_scaling.saved_pwr_info.info,
+			    &hba->pwr_info, sizeof(struct ufs_pa_layer_attr));
+			hba->clk_scaling.saved_pwr_info.is_valid = true;
+			hba->clk_scaling.is_scaled_up = true;
+			if (!hba->devfreq) {
+				hba->devfreq = devfreq_add_device(hba->dev,
+							&ufs_devfreq_profile,
+							"simple_ondemand",
+							gov_data);
+				if (IS_ERR(hba->devfreq)) {
+					ret = PTR_ERR(hba->devfreq);
+					dev_err(hba->dev, "Unable to register with devfreq %d\n",
+						ret);
+					goto out;
+				}
+			}
+			hba->clk_scaling.is_allowed = true;
+		}
+
 		scsi_scan_host(hba->host);
 		pm_runtime_put_sync(hba->dev);
-	}
-
-	/* Resume devfreq after UFS device is detected */
-	if (ufshcd_is_clkscaling_supported(hba)) {
-		memcpy(&hba->clk_scaling.saved_pwr_info.info, &hba->pwr_info,
-		       sizeof(struct ufs_pa_layer_attr));
-		hba->clk_scaling.saved_pwr_info.is_valid = true;
-		hba->clk_scaling.is_scaled_up = true;
-		ufshcd_resume_clkscaling(hba);
-		hba->clk_scaling.is_allowed = true;
 	}
 
 	if (!hba->is_init_prefetch)
@@ -7680,7 +7720,8 @@ static void ufshcd_hba_exit(struct ufs_hba *hba)
 		ufshcd_variant_hba_exit(hba);
 		ufshcd_setup_vreg(hba, false);
 		if (ufshcd_is_clkscaling_supported(hba)) {
-			ufshcd_suspend_clkscaling(hba);
+			if (hba->devfreq)
+				ufshcd_suspend_clkscaling(hba);
 			destroy_workqueue(hba->clk_scaling.workq);
 		}
 		ufshcd_disable_clocks(hba, false);
@@ -8965,23 +9006,6 @@ start_window:
 	return 0;
 }
 
-#if IS_ENABLED(CONFIG_DEVFREQ_GOV_SIMPLE_ONDEMAND)
-static struct devfreq_simple_ondemand_data ufshcd_ondemand_data = {
-	.upthreshold = 35,
-	.downdifferential = 30,
-	.simple_scaling = 1,
-};
-
-static void *gov_data = &ufshcd_ondemand_data;
-#else
-static void *gov_data;
-#endif
-
-static struct devfreq_dev_profile ufs_devfreq_profile = {
-	.polling_ms	= 40,
-	.target		= ufshcd_devfreq_target,
-	.get_dev_status	= ufshcd_devfreq_get_dev_status,
-};
 static void ufshcd_clkscaling_init_sysfs(struct ufs_hba *hba)
 {
 	hba->clk_scaling.enable_attr.show = ufshcd_clkscale_enable_show;
@@ -9153,15 +9177,6 @@ int ufshcd_init(struct ufs_hba *hba, void __iomem *mmio_base, unsigned int irq)
 	if (ufshcd_is_clkscaling_supported(hba)) {
 		char wq_name[sizeof("ufs_clkscaling_00")];
 
-		hba->devfreq = devfreq_add_device(dev, &ufs_devfreq_profile,
-						   "simple_ondemand", gov_data);
-		if (IS_ERR(hba->devfreq)) {
-			dev_err(hba->dev, "Unable to register with devfreq %ld\n",
-					PTR_ERR(hba->devfreq));
-			goto out_remove_scsi_host;
-		}
-		hba->clk_scaling.is_suspended = false;
-
 		INIT_WORK(&hba->clk_scaling.suspend_work,
 			  ufshcd_clk_scaling_suspend_work);
 		INIT_WORK(&hba->clk_scaling.resume_work,
@@ -9171,8 +9186,6 @@ int ufshcd_init(struct ufs_hba *hba, void __iomem *mmio_base, unsigned int irq)
 			 host->host_no);
 		hba->clk_scaling.workq = create_singlethread_workqueue(wq_name);
 
-		/* Suspend devfreq until the UFS device is detected */
-		ufshcd_suspend_clkscaling(hba);
 		ufshcd_clkscaling_init_sysfs(hba);
 	}
 

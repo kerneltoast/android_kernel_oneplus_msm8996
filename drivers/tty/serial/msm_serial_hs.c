@@ -410,8 +410,9 @@ static void msm_hs_resource_vote(struct msm_hs_port *msm_uport)
 	struct uart_port *uport = &(msm_uport->uport);
 	ret = pm_runtime_get_sync(uport->dev);
 	if (ret < 0 || msm_uport->pm_state != MSM_HS_PM_ACTIVE) {
-		MSM_HS_WARN("%s(): %p runtime PM callback not invoked(%d)",
-			__func__, uport->dev, ret);
+		MSM_HS_WARN("%s:%s runtime callback not invoked ret:%d st:%d",
+			__func__, dev_name(uport->dev), ret,
+					msm_uport->pm_state);
 		msm_hs_pm_resume(uport->dev);
 	}
 	atomic_inc(&msm_uport->resource_count);
@@ -2305,6 +2306,7 @@ int msm_hs_request_clock_off(struct uart_port *uport)
 {
 	struct msm_hs_port *msm_uport = UARTDM_TO_MSM(uport);
 	int ret = 0;
+	int client_count = 0;
 
 	mutex_lock(&msm_uport->mtx);
 	/*
@@ -2331,8 +2333,10 @@ int msm_hs_request_clock_off(struct uart_port *uport)
 		atomic_set(&msm_uport->client_req_state, 1);
 	msm_hs_resource_unvote(msm_uport);
 	atomic_dec(&msm_uport->client_count);
-	MSM_HS_INFO("%s():DISABLE UART CLOCK: ioc %d\n",
-			__func__, atomic_read(&msm_uport->client_count));
+	client_count = atomic_read(&msm_uport->client_count);
+	LOG_USR_MSG(msm_uport->ipc_msm_hs_pwr_ctxt,
+			"%s: Client_Count %d\n", __func__,
+			client_count);
 exit_request_clock_off:
 	return ret;
 }
@@ -2361,8 +2365,9 @@ int msm_hs_request_clock_on(struct uart_port *uport)
 	msm_hs_resource_vote(UARTDM_TO_MSM(uport));
 	atomic_inc(&msm_uport->client_count);
 	client_count = atomic_read(&msm_uport->client_count);
-	MSM_HS_INFO("%s():ENABLE UART CLOCK: ioc %d\n",
-		__func__, client_count);
+	LOG_USR_MSG(msm_uport->ipc_msm_hs_pwr_ctxt,
+			"%s: Client_Count %d\n", __func__,
+			client_count);
 
 	/* Clear the flag */
 	if (msm_uport->obs)
@@ -3153,7 +3158,9 @@ static void msm_hs_pm_suspend(struct device *dev)
 	msm_hs_clk_bus_unvote(msm_uport);
 	if (!atomic_read(&msm_uport->client_req_state))
 		enable_wakeup_interrupt(msm_uport);
-	MSM_HS_DBG("%s(): return suspend\n", __func__);
+	LOG_USR_MSG(msm_uport->ipc_msm_hs_pwr_ctxt,
+		"%s: PM State Suspended client_count %d\n", __func__,
+								client_count);
 	mutex_unlock(&msm_uport->mtx);
 	return;
 err_suspend:
@@ -3165,17 +3172,26 @@ static int msm_hs_pm_resume(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct msm_hs_port *msm_uport = get_matching_hs_port(pdev);
-	int ret;
+	int ret = 0;
+	int client_count = 0;
 
-	if (!msm_uport)
-		goto err_resume;
+	if (!msm_uport) {
+		dev_err(dev, "%s:Invalid uport\n", __func__);
+		return -ENODEV;
+	}
 
 	mutex_lock(&msm_uport->mtx);
+	client_count = atomic_read(&msm_uport->client_count);
 	if (msm_uport->pm_state == MSM_HS_PM_ACTIVE)
 		goto exit_pm_resume;
 	if (!atomic_read(&msm_uport->client_req_state))
 		disable_wakeup_interrupt(msm_uport);
-	msm_hs_clk_bus_vote(msm_uport);
+	ret = msm_hs_clk_bus_vote(msm_uport);
+	if (ret) {
+		MSM_HS_ERR("%s:Failed clock vote %d\n", __func__, ret);
+		dev_err(dev, "%s:Failed clock vote %d\n", __func__, ret);
+		goto exit_pm_resume;
+	}
 	obs_manage_irq(msm_uport, true);
 	msm_uport->pm_state = MSM_HS_PM_ACTIVE;
 	msm_hs_resource_on(msm_uport);
@@ -3185,17 +3201,15 @@ static int msm_hs_pm_resume(struct device *dev)
 		ret = pinctrl_select_state(msm_uport->pinctrl,
 			msm_uport->gpio_state_active);
 		if (ret)
-			MSM_HS_ERR("%s(): Error selecting active state",
+			MSM_HS_ERR("%s():Error selecting active state",
 				__func__);
 	}
 
-	MSM_HS_DBG("%s(): return resume\n", __func__);
+	LOG_USR_MSG(msm_uport->ipc_msm_hs_pwr_ctxt,
+		"%s:PM State:Active client_count %d\n", __func__, client_count);
 exit_pm_resume:
 	mutex_unlock(&msm_uport->mtx);
-	return 0;
-err_resume:
-	pr_err("%s(): invalid uport", __func__);
-	return 0;
+	return ret;
 }
 
 #ifdef CONFIG_PM
@@ -3226,7 +3240,9 @@ static int msm_hs_pm_sys_suspend_noirq(struct device *dev)
 
 	prev_pwr_state = msm_uport->pm_state;
 	msm_uport->pm_state = MSM_HS_PM_SYS_SUSPENDED;
-	MSM_HS_DBG("%s(): suspending", __func__);
+	LOG_USR_MSG(msm_uport->ipc_msm_hs_pwr_ctxt,
+		"%s:PM State:Sys-Suspended client_count %d\n", __func__,
+								client_count);
 exit_suspend_noirq:
 	mutex_unlock(&msm_uport->mtx);
 	return ret;
@@ -3246,9 +3262,10 @@ static int msm_hs_pm_sys_resume_noirq(struct device *dev)
 	 */
 
 	mutex_lock(&msm_uport->mtx);
-	MSM_HS_DBG("%s(): system resume", __func__);
 	if (msm_uport->pm_state == MSM_HS_PM_SYS_SUSPENDED)
 		msm_uport->pm_state = MSM_HS_PM_SUSPENDED;
+	LOG_USR_MSG(msm_uport->ipc_msm_hs_pwr_ctxt,
+		"%s:PM State: Suspended\n", __func__);
 	mutex_unlock(&msm_uport->mtx);
 	return 0;
 }
@@ -3707,6 +3724,8 @@ static void msm_hs_shutdown(struct uart_port *uport)
 	if (atomic_read(&msm_uport->client_count)) {
 		MSM_HS_WARN("%s: Client vote on, forcing to 0\n", __func__);
 		atomic_set(&msm_uport->client_count, 0);
+		LOG_USR_MSG(msm_uport->ipc_msm_hs_pwr_ctxt,
+			"%s: Client_Count 0\n", __func__);
 	}
 	msm_hs_unconfig_uart_gpios(uport);
 	MSM_HS_INFO("%s:UART port closed successfully\n", __func__);

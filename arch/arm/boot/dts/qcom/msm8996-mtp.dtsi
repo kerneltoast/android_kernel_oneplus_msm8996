@@ -372,17 +372,6 @@
 	qpnp,qpnp-labibb-mode = "lcd";
 };
 
-&dsi_truly_1080_vid {
-	qcom,panel-supply-entries = <&dsi_panel_pwr_supply>;
-};
-
-&dsi_truly_1080_cmd {
-	qcom,panel-supply-entries = <&dsi_panel_pwr_supply>;
-	qcom,ulps-enabled;
-	qcom,partial-update-enabled;
-	qcom,panel-roi-alignment = <2 2 4 2 1080 2>;
-};
-
 &dsi_dual_sharp_video {
 	qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_wled";
 	qcom,mdss-dsi-bl-min-level = <1>;
@@ -410,7 +399,7 @@
 	qcom,mdss-dsi-bl-max-level = <4095>;
 	qcom,panel-supply-entries = <&dsi_panel_pwr_supply>;
 	qcom,partial-update-enabled;
-	qcom,panel-roi-alignment = <720 128 720 64 720 64>;
+	qcom,panel-roi-alignment = <720 128 720 128 1440 128>;
 	qcom,panel-allow-phy-poweroff;
 };
 
@@ -860,19 +849,6 @@
 		qcom,master-en = <1>;
 		status = "okay";
 	};
-
-#if 0
-	gpio@cb00 { /* GPIO 12 - NFC ESE PWR REQ */
-		qcom,mode = <1>;
-		qcom,output-type = <0>;
-		qcom,pull = <5>;
-		qcom,vin-sel = <2>;
-		qcom,out-strength = <3>;
-		qcom,src-sel = <0>;
-		qcom,master-en = <1>;
-		status = "okay";
-	};
-#endif
 
 	gpio@cd00 { /* GPIO 14 - lcd_bklt_reg_en */
 		qcom,mode = <1>;	/* DIGITAL OUT */

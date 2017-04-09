@@ -22,6 +22,7 @@
 #include <linux/seq_file.h>
 #include <linux/spinlock.h>
 #include <linux/types.h>
+#include <linux/sched.h>
 #include <soc/qcom/glink.h>
 
 struct glink_core_xprt_ctx;

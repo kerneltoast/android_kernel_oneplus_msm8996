@@ -380,20 +380,10 @@ static int rcar_pcie_setup(int nr, struct pci_sys_data *sys)
 	return 1;
 }
 
-static void rcar_pcie_add_bus(struct pci_bus *bus)
-{
-	if (IS_ENABLED(CONFIG_PCI_MSI)) {
-		struct rcar_pcie *pcie = sys_to_pcie(bus->sysdata);
-
-		bus->msi = &pcie->msi.chip;
-	}
-}
-
 struct hw_pci rcar_pci = {
 	.setup          = rcar_pcie_setup,
 	.map_irq        = of_irq_parse_and_map_pci,
 	.ops            = &rcar_pcie_ops,
-	.add_bus        = rcar_pcie_add_bus,
 };
 
 static void rcar_pcie_enable(struct rcar_pcie *pcie)
@@ -402,6 +392,9 @@ static void rcar_pcie_enable(struct rcar_pcie *pcie)
 
 	rcar_pci.nr_controllers = 1;
 	rcar_pci.private_data = (void **)&pcie;
+#ifdef CONFIG_PCI_MSI
+	rcar_pci.msi_ctrl = &pcie->msi.chip;
+#endif
 
 	pci_common_init_dev(&pdev->dev, &rcar_pci);
 #ifdef CONFIG_PCI_DOMAINS
@@ -662,10 +655,10 @@ static void rcar_msi_teardown_irq(struct msi_controller *chip, unsigned int irq)
 
 static struct irq_chip rcar_msi_irq_chip = {
 	.name = "R-Car PCIe MSI",
-	.irq_enable = unmask_msi_irq,
-	.irq_disable = mask_msi_irq,
-	.irq_mask = mask_msi_irq,
-	.irq_unmask = unmask_msi_irq,
+	.irq_enable = pci_msi_unmask_irq,
+	.irq_disable = pci_msi_mask_irq,
+	.irq_mask = pci_msi_mask_irq,
+	.irq_unmask = pci_msi_unmask_irq,
 };
 
 static int rcar_msi_map(struct irq_domain *domain, unsigned int irq,
@@ -704,14 +697,16 @@ static int rcar_pcie_enable_msi(struct rcar_pcie *pcie)
 
 	/* Two irqs are for MSI, but they are also used for non-MSI irqs */
 	err = devm_request_irq(&pdev->dev, msi->irq1, rcar_pcie_msi_irq,
-			       IRQF_SHARED, rcar_msi_irq_chip.name, pcie);
+			       IRQF_SHARED | IRQF_NO_THREAD,
+			       rcar_msi_irq_chip.name, pcie);
 	if (err < 0) {
 		dev_err(&pdev->dev, "failed to request IRQ: %d\n", err);
 		goto err;
 	}
 
 	err = devm_request_irq(&pdev->dev, msi->irq2, rcar_pcie_msi_irq,
-			       IRQF_SHARED, rcar_msi_irq_chip.name, pcie);
+			       IRQF_SHARED | IRQF_NO_THREAD,
+			       rcar_msi_irq_chip.name, pcie);
 	if (err < 0) {
 		dev_err(&pdev->dev, "failed to request IRQ: %d\n", err);
 		goto err;
@@ -988,7 +983,6 @@ static int rcar_pcie_probe(struct platform_device *pdev)
 static struct platform_driver rcar_pcie_driver = {
 	.driver = {
 		.name = DRV_NAME,
-		.owner = THIS_MODULE,
 		.of_match_table = rcar_pcie_of_match,
 		.suppress_bind_attrs = true,
 	},

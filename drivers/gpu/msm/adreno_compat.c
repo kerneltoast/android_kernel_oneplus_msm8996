@@ -1,4 +1,4 @@
-/* Copyright (c) 2013-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -40,7 +40,8 @@ int adreno_getproperty_compat(struct kgsl_device *device,
 			memset(&devinfo, 0, sizeof(devinfo));
 			devinfo.device_id = device->id + 1;
 			devinfo.chip_id = adreno_dev->chipid;
-			devinfo.mmu_enabled = kgsl_mmu_enabled();
+			devinfo.mmu_enabled =
+				MMU_FEATURE(&device->mmu, KGSL_MMU_PAGED);
 			devinfo.gmem_gpubaseaddr = adreno_dev->gmem_base;
 			devinfo.gmem_sizebytes = adreno_dev->gmem_size;
 
@@ -82,6 +83,30 @@ int adreno_getproperty_compat(struct kgsl_device *device,
 			}
 			if (copy_to_user(value, &shadowprop,
 				sizeof(shadowprop))) {
+				status = -EFAULT;
+				break;
+			}
+			status = 0;
+		}
+		break;
+	case KGSL_PROP_DEVICE_QDSS_STM:
+		{
+			struct kgsl_qdss_stm_prop qdssprop = {0};
+			struct kgsl_memdesc *qdss_desc =
+				kgsl_mmu_get_qdss_global_entry(device);
+
+			if (sizebytes != sizeof(qdssprop)) {
+				status = -EINVAL;
+				break;
+			}
+
+			if (qdss_desc) {
+				qdssprop.gpuaddr = qdss_desc->gpuaddr;
+				qdssprop.size = qdss_desc->size;
+			}
+
+			if (copy_to_user(value, &qdssprop,
+						sizeof(qdssprop))) {
 				status = -EFAULT;
 				break;
 			}

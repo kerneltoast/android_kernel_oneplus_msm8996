@@ -1,6 +1,6 @@
 VERSION = 3
 PATCHLEVEL = 18
-SUBLEVEL = 20
+SUBLEVEL = 31
 EXTRAVERSION =
 NAME = Shuffling Zombie Juror
 
@@ -781,6 +781,7 @@ endif
 
 include $(srctree)/scripts/Makefile.kasan
 include $(srctree)/scripts/Makefile.extrawarn
+include $(srctree)/scripts/Makefile.ubsan
 
 # Add user supplied CPPFLAGS, AFLAGS and CFLAGS as the last assignments
 KBUILD_CPPFLAGS += $(KCPPFLAGS)

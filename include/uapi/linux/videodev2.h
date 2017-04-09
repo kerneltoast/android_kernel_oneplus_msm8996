@@ -2,6 +2,7 @@
  *  Video for Linux Two header file
  *
  *  Copyright (C) 1999-2012 the contributors
+ *  Copyright (c) 2016, The Linux Foundation. All rights reserved.
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -410,6 +411,12 @@ struct v4l2_pix_format {
 #define V4L2_PIX_FMT_SGBRG10DPCM8 v4l2_fourcc('b', 'G', 'A', '8')
 #define V4L2_PIX_FMT_SGRBG10DPCM8 v4l2_fourcc('B', 'D', '1', '0')
 #define V4L2_PIX_FMT_SRGGB10DPCM8 v4l2_fourcc('b', 'R', 'A', '8')
+	/* 10bit raw bayer DPCM compressed to 6 bits */
+#define V4L2_PIX_FMT_SBGGR10DPCM6 v4l2_fourcc('b', 'B', 'A', '6')
+#define V4L2_PIX_FMT_SGBRG10DPCM6 v4l2_fourcc('b', 'G', 'A', '6')
+#define V4L2_PIX_FMT_SGRBG10DPCM6 v4l2_fourcc('B', 'D', '1', '6')
+#define V4L2_PIX_FMT_SRGGB10DPCM6 v4l2_fourcc('b', 'R', 'A', '6')
+
 	/*
 	 * 10bit raw bayer, expanded to 16 bits
 	 * xxxxrrrrrrrrrrxxxxgggggggggg xxxxggggggggggxxxxbbbbbbbbbb...
@@ -1895,6 +1902,7 @@ struct v4l2_streamparm {
 
 #define V4L2_EVENT_BITDEPTH_FLAG	0x1
 #define V4L2_EVENT_PICSTRUCT_FLAG	0x2
+#define V4L2_EVENT_COLOUR_SPACE_FLAG    0x4
 
 #define V4L2_EVENT_MSM_VIDC_START	(V4L2_EVENT_PRIVATE_START + 0x00001000)
 #define V4L2_EVENT_MSM_VIDC_FLUSH_DONE	(V4L2_EVENT_MSM_VIDC_START + 1)
@@ -1937,8 +1945,10 @@ struct v4l2_streamparm {
 		(V4L2_EVENT_MSM_BA_START + 8)
 #define V4L2_EVENT_MSM_BA_CP	\
 		(V4L2_EVENT_MSM_BA_START + 9)
-#define V4L2_EVENT_MSM_BA_ERROR	\
+#define V4L2_EVENT_MSM_BA_CABLE_DETECT	\
 		(V4L2_EVENT_MSM_BA_START + 10)
+#define V4L2_EVENT_MSM_BA_ERROR	\
+		(V4L2_EVENT_MSM_BA_START + 11)
 
 /* Payload for V4L2_EVENT_VSYNC */
 struct v4l2_event_vsync {
@@ -2194,5 +2204,12 @@ struct v4l2_create_buffers {
    drivers/media/video/v4l2-compat-ioctl32.c as well! */
 
 #define BASE_VIDIOC_PRIVATE	192		/* 192-255 are private */
+
+/* HDMI rx provide ioctls */
+#define VIDIOC_HDMI_RX_CEC_S_LOGICAL _IOW('V', BASE_VIDIOC_PRIVATE + 0, int)
+#define VIDIOC_HDMI_RX_CEC_CLEAR_LOGICAL _IO('V', BASE_VIDIOC_PRIVATE + 1)
+#define VIDIOC_HDMI_RX_CEC_G_PHYSICAL _IOR('V', BASE_VIDIOC_PRIVATE + 2, int)
+#define VIDIOC_HDMI_RX_CEC_G_CONNECTED _IOR('V', BASE_VIDIOC_PRIVATE + 3, int)
+#define VIDIOC_HDMI_RX_CEC_S_ENABLE _IOR('V', BASE_VIDIOC_PRIVATE + 4, int)
 
 #endif /* _UAPI__LINUX_VIDEODEV2_H */

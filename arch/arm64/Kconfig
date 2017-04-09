@@ -10,10 +10,12 @@ config ARM64
 	select ARCH_WANT_COMPAT_IPC_PARSE_VERSION
 	select ARCH_WANT_FRAME_POINTERS
 	select ARCH_HAVE_CUSTOM_GPIO_H
+	select ARCH_HAS_UBSAN_SANITIZE_ALL
 	select ARM_AMBA
 	select ARM_ARCH_TIMER
 	select ARM_GIC
 	select AUDIT_ARCH_COMPAT_GENERIC
+	select ARM_GIC_V2M if PCI_MSI
 	select ARM_GIC_V3
 	select ARM_GIC_V3_ITS if PCI_MSI
 	select BUILDTIME_EXTABLE_SORT
@@ -40,8 +42,10 @@ config ARM64
 	select HAVE_ALIGNED_STRUCT_PAGE if SLUB
 	select HAVE_ARCH_AUDITSYSCALL
 	select HAVE_ARCH_JUMP_LABEL
-	select HAVE_ARCH_KASAN if SPARSEMEM_VMEMMAP
+	select HAVE_ARCH_KASAN if SPARSEMEM_VMEMMAP && !(ARM64_16K_PAGES && ARM64_VA_BITS_48)
 	select HAVE_ARCH_KGDB
+	select HAVE_ARCH_MMAP_RND_BITS
+	select HAVE_ARCH_MMAP_RND_COMPAT_BITS if COMPAT
 	select HAVE_ARCH_SECCOMP_FILTER
 	select HAVE_ARCH_TRACEHOOK
 	select HAVE_BPF_JIT
@@ -93,11 +97,46 @@ config ARCH_PHYS_ADDR_T_64BIT
 config MMU
 	def_bool y
 
+config ARCH_MMAP_RND_BITS_MIN
+       default 14 if ARM64_64K_PAGES
+       default 16 if ARM64_16K_PAGES
+       default 18
+
+# max bits determined by the following formula:
+#  VA_BITS - PAGE_SHIFT - 3
+config ARCH_MMAP_RND_BITS_MAX
+       default 19 if ARM64_VA_BITS=36
+       default 24 if ARM64_VA_BITS=39
+       default 27 if ARM64_VA_BITS=42
+       default 30 if ARM64_VA_BITS=47
+       default 29 if ARM64_VA_BITS=48 && ARM64_64K_PAGES
+       default 31 if ARM64_VA_BITS=48 && ARM64_16K_PAGES
+       default 33 if ARM64_VA_BITS=48
+       default 14 if ARM64_64K_PAGES
+       default 16 if ARM64_16K_PAGES
+       default 18
+
+config ARCH_MMAP_RND_COMPAT_BITS_MIN
+       default 7 if ARM64_64K_PAGES
+       default 9 if ARM64_16K_PAGES
+       default 11
+
+config ARCH_MMAP_RND_COMPAT_BITS_MAX
+       default 16
+
 config NO_IOPORT_MAP
 	def_bool y if !PCI
 
+config ILLEGAL_POINTER_VALUE
+	hex
+	default 0xdead000000000000
+
 config STACKTRACE_SUPPORT
 	def_bool y
+
+config ILLEGAL_POINTER_VALUE
+	hex
+	default 0xdead000000000000
 
 config LOCKDEP_SUPPORT
 	def_bool y
@@ -241,18 +280,33 @@ config ARCH_MSM8916
 	  This enables support for the MSM8916 chipset. If you don't
 	  know what to do here, say N
 
-config ARCH_MSMGOLD
-	bool "Enable Support for Qualcomm Technologies Inc MSMGOLD"
+config ARCH_MSM8917
+	bool "Enable Support for Qualcomm Technologies Inc MSM8917"
 	depends on ARCH_MSM
 	help
-	  This enables support for the MSMGOLD chipset. If you don't
+	  This enables support for the MSM8917 chipset. If you don't
 	  know what to do here, say N
 
-config ARCH_MSMTITANIUM
-	bool "Enable Support for Qualcomm Technologies Inc MSMTITANIUM"
+config ARCH_MSM8920
+	bool "Enable Support for Qualcomm Technologies Inc MSM8920"
 	depends on ARCH_MSM
 	help
-	  This enables support for the MSMTITANIUM chipset. If you don't
+	  This enables support for the MSM8920 chipset. If you don't
+	  know what to do here, say N
+
+config ARCH_MSM8940
+	bool "Enable Support for Qualcomm Technologies Inc MSM8940"
+	depends on ARCH_MSM
+	help
+	  This enables support for the MSM8940 chipset. If you don't
+	  know what to do here, say N
+
+config ARCH_MSM8953
+	bool "Enable Support for Qualcomm Technologies Inc MSM8953"
+	depends on ARCH_MSM
+	select ARCH_MSM8953_SOC_SETTINGS
+	help
+	  This enables support for the MSM8953 chipset. If you don't
 	  know what to do here, say N
 
 config ARCH_MSM8937
@@ -511,6 +565,15 @@ config ENABLE_FP_SIMD_SETTINGS
 
 	  If you are not sure what to do, select 'N' here.
 
+config ARCH_MSM8953_SOC_SETTINGS
+	bool "Enable MSM8953 SOC settings"
+	depends on ARCH_MSM8953
+	help
+	  Enable generic MSM8953 related settings which are required for
+	  some of CPUSS sub-system functionality.
+
+	  If you are not sure what to do, select 'N' here.
+
 config MSM_APP_SETTINGS
 	bool "Support to enable / disable app settings for MSM8996"
 	depends on ARCH_MSM8996
@@ -550,10 +613,26 @@ config ARM64_VA_BITS
 	default 42 if ARM64_VA_BITS_42
 	default 48 if ARM64_VA_BITS_48
 
+config ARM64_PGTABLE_LEVELS
+	int
+	default 2 if ARM64_64K_PAGES && ARM64_VA_BITS_42
+	default 3 if ARM64_64K_PAGES && ARM64_VA_BITS_48
+	default 3 if ARM64_4K_PAGES && ARM64_VA_BITS_39
+	default 4 if ARM64_4K_PAGES && ARM64_VA_BITS_48
+
 config CPU_BIG_ENDIAN
        bool "Build big-endian kernel"
        help
          Say Y if you plan on running a kernel in big-endian mode.
+
+config ARM64_SEV_IN_LOCK_UNLOCK
+	bool "Add explicit SEV in the spinlock unlock code path"
+	help
+	  In certain unexplained cases, the stlr alone might not wakeup
+	  the processor waiting in WFE on a spinlock.
+	  Add an explicity dsb and SEV in write_unlock, read_unlock
+	  and spin_unlock to ensure that the core waiting on the lock
+	  wakes up from WFE.
 
 config SMP
 	bool "Symmetric Multi-Processing"
@@ -731,6 +810,20 @@ config FORCE_MAX_ZONEORDER
 	default "14" if (ARM64_64K_PAGES && TRANSPARENT_HUGEPAGE)
 	default "11"
 
+config ARM64_PAN
+	bool "Enable support for Privileged Access Never (PAN)"
+	default y
+	help
+	 Privileged Access Never (PAN; part of the ARMv8.1 Extensions)
+	 prevents the kernel or hypervisor from accessing user-space (EL0)
+	 memory directly.
+
+	 Choosing this option will cause any unprotected (not using
+	 copy_to_user et al) memory access to fail with a permission fault.
+
+	 The feature is detected at runtime, and will remain as a 'nop'
+	 instruction if the cpu does not implement the feature.
+
 menuconfig ARMV8_DEPRECATED
 	bool "Emulate deprecated/obsolete ARMv8 instructions"
 	depends on COMPAT
@@ -872,6 +965,17 @@ config BUILD_ARM64_APPENDED_DTB_IMAGE_NAMES
 	  Space separated list of names of dtbs to append when
 	  building a concatenated Image.gz-dtb.
 
+config DMI
+	bool "Enable support for SMBIOS (DMI) tables"
+	depends on EFI
+	default y
+	help
+	  This enables SMBIOS/DMI feature for systems.
+
+	  This option is only useful on systems that have UEFI firmware.
+	  However, even with this option, the resultant kernel should
+	  continue to boot on existing non-UEFI platforms.
+
 endmenu
 
 menu "Userspace binary formats"
@@ -916,6 +1020,22 @@ menu "CPU Power Management"
 source "drivers/cpuidle/Kconfig"
 
 source "drivers/cpufreq/Kconfig"
+
+config ARM64_ERRATUM_843419
+	bool "Cortex-A53: 843419: A load or store might access an incorrect address"
+	depends on MODULES
+	default y
+	help
+	  This option builds kernel modules using the large memory model in
+	  order to avoid the use of the ADRP instruction, which can cause
+	  a subsequent memory access to use an incorrect address on Cortex-A53
+	  parts up to r0p4.
+
+	  Note that the kernel itself must be linked with a version of ld
+	  which fixes potentially affected ADRP instructions through the
+	  use of veneers.
+
+	  If unsure, say Y.
 
 endmenu
 

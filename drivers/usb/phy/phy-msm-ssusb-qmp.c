@@ -564,6 +564,7 @@ static int msm_ssphy_qmp_init(struct usb_phy *uphy)
 		misc = qmp_settings_rev0_misc;
 		break;
 	case 0x10000001:
+	case 0x10010000:
 		reg = qmp_settings_rev1;
 		misc = qmp_settings_rev1_misc;
 		break;
@@ -614,6 +615,8 @@ static int msm_ssphy_qmp_init(struct usb_phy *uphy)
 	writel_relaxed(0x03, phy->base + phy->phy_reg[USB3_PHY_START]);
 	writel_relaxed(0x00, phy->base + phy->phy_reg[USB3_PHY_SW_RESET]);
 
+	/* Make sure above write completed to bring PHY out of reset */
+	mb();
 
 	/* Wait for PHY initialization to be done */
 	do {

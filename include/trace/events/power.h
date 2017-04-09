@@ -187,8 +187,32 @@ DEFINE_EVENT(set, cpufreq_freq_synced,
 	TP_ARGS(cpu_id, currfreq, load)
 );
 
-TRACE_EVENT(device_pm_callback_start,
+TRACE_EVENT(cpu_frequency_limits,
 
+	TP_PROTO(unsigned int max_freq, unsigned int min_freq,
+		unsigned int cpu_id),
+
+	TP_ARGS(max_freq, min_freq, cpu_id),
+
+	TP_STRUCT__entry(
+		__field(	u32,		min_freq	)
+		__field(	u32,		max_freq	)
+		__field(	u32,		cpu_id		)
+	),
+
+	TP_fast_assign(
+		__entry->min_freq = min_freq;
+		__entry->max_freq = max_freq;
+		__entry->cpu_id = cpu_id;
+	),
+
+	TP_printk("min=%lu max=%lu cpu_id=%lu",
+		  (unsigned long)__entry->min_freq,
+		  (unsigned long)__entry->max_freq,
+		  (unsigned long)__entry->cpu_id)
+);
+
+TRACE_EVENT(device_pm_callback_start,
 	TP_PROTO(struct device *dev, const char *pm_ops, int event),
 
 	TP_ARGS(dev, pm_ops, event),
@@ -1082,6 +1106,27 @@ TRACE_EVENT(memlat_dev_update,
 		__entry->mem,
 		__entry->freq,
 		__entry->vote)
+);
+
+TRACE_EVENT(msmpower_max_ddr,
+
+	TP_PROTO(unsigned int prev_max_ddr, unsigned int curr_max_ddr),
+
+	TP_ARGS(prev_max_ddr, curr_max_ddr),
+
+	TP_STRUCT__entry(
+		__field(unsigned int, prev_max_ddr)
+		__field(unsigned int, curr_max_ddr)
+	),
+
+	TP_fast_assign(
+		__entry->prev_max_ddr = prev_max_ddr;
+		__entry->curr_max_ddr = curr_max_ddr;
+	),
+
+	TP_printk("prev_max_ddr = %u, curr_max_ddr = %u",
+		__entry->prev_max_ddr,
+		__entry->curr_max_ddr)
 );
 
 #endif /* _TRACE_POWER_H */

@@ -47,6 +47,40 @@
 
 #define MAX_SUPPORTED_INSTANCES 16
 
+const char *const mpeg_video_vidc_extradata[] = {
+	"Extradata none",
+	"Extradata MB Quantization",
+	"Extradata Interlace Video",
+	"Extradata VC1 Framedisp",
+	"Extradata VC1 Seqdisp",
+	"Extradata timestamp",
+	"Extradata S3D Frame Packing",
+	"Extradata Frame Rate",
+	"Extradata Panscan Window",
+	"Extradata Recovery point SEI",
+	"Extradata Multislice info",
+	"Extradata number of concealed MB",
+	"Extradata metadata filler",
+	"Extradata input crop",
+	"Extradata digital zoom",
+	"Extradata aspect ratio",
+	"Extradata mpeg2 seqdisp",
+	"Extradata stream userdata",
+	"Extradata frame QP",
+	"Extradata frame bits info",
+	"Extradata LTR",
+	"Extradata macroblock metadata",
+	"Extradata VQZip SEI",
+	"Extradata YUV Stats",
+	"Extradata ROI QP",
+	"Extradata output crop",
+	"Extradata display colour SEI",
+	"Extradata light level SEI",
+	"Extradata display VUI",
+	"Extradata vpx color space",
+	"Extradata PQ Info",
+};
+
 struct getprop_buf {
 	struct list_head list;
 	void *data;
@@ -177,7 +211,8 @@ int msm_comm_ctrl_init(struct msm_vidc_inst *inst,
 		}
 
 		if (!ctrl) {
-			dprintk(VIDC_ERR, "%s - invalid ctrl\n", __func__);
+			dprintk(VIDC_ERR, "%s - invalid ctrl %s\n", __func__,
+				 drv_ctrls[idx].name);
 			return -EINVAL;
 		}
 
@@ -305,8 +340,14 @@ int msm_comm_get_inst_load(struct msm_vidc_inst *inst,
 	 */
 
 	if (is_non_realtime_session(inst) &&
-		(quirks & LOAD_CALC_IGNORE_NON_REALTIME_LOAD))
-		load = msm_comm_get_mbs_per_sec(inst) / inst->prop.fps;
+		(quirks & LOAD_CALC_IGNORE_NON_REALTIME_LOAD)) {
+		if (!inst->prop.fps) {
+			dprintk(VIDC_INFO, "instance:%pK fps = 0\n", inst);
+			load = 0;
+		} else {
+			load = msm_comm_get_mbs_per_sec(inst) / inst->prop.fps;
+		}
+	}
 
 exit:
 	mutex_unlock(&inst->lock);
@@ -477,6 +518,7 @@ static int msm_comm_vote_bus(struct msm_vidc_core *core)
 
 	list_for_each_entry(inst, &core->instances, list) {
 		int codec = 0, yuv = 0;
+		struct v4l2_control ctrl;
 
 		codec = inst->session_type == MSM_VIDC_DECODER ?
 			inst->fmts[OUTPUT_PORT]->fourcc :
@@ -488,9 +530,19 @@ static int msm_comm_vote_bus(struct msm_vidc_core *core)
 
 		vote_data[i].domain = get_hal_domain(inst->session_type);
 		vote_data[i].codec = get_hal_codec(codec);
-		vote_data[i].width = inst->prop.width[CAPTURE_PORT];
-		vote_data[i].height = inst->prop.height[CAPTURE_PORT];
-		vote_data[i].fps = inst->prop.fps;
+		vote_data[i].width =  max(inst->prop.width[CAPTURE_PORT],
+			inst->prop.width[OUTPUT_PORT]);
+		vote_data[i].height = max(inst->prop.height[CAPTURE_PORT],
+			inst->prop.height[OUTPUT_PORT]);
+
+		ctrl.id = V4L2_CID_MPEG_VIDC_VIDEO_OPERATING_RATE;
+		rc = msm_comm_g_ctrl(inst, &ctrl);
+		if (!rc && ctrl.value)
+			vote_data[i].fps = (ctrl.value >> 16) ?
+				ctrl.value >> 16 : 1;
+		else
+			vote_data[i].fps = inst->prop.fps;
+
 		if (msm_comm_turbo_session(inst))
 			vote_data[i].power_mode = VIDC_POWER_TURBO;
 		else if (is_low_power_session(inst))
@@ -663,7 +715,7 @@ static void handle_sys_init_done(enum hal_command_response cmd, void *data)
 	return;
 }
 
-static void put_inst(struct msm_vidc_inst *inst)
+void put_inst(struct msm_vidc_inst *inst)
 {
 	void put_inst_helper(struct kref *kref)
 	{
@@ -679,7 +731,7 @@ static void put_inst(struct msm_vidc_inst *inst)
 	kref_put(&inst->kref, put_inst_helper);
 }
 
-static struct msm_vidc_inst *get_inst(struct msm_vidc_core *core,
+struct msm_vidc_inst *get_inst(struct msm_vidc_core *core,
 		void *session_id)
 {
 	struct msm_vidc_inst *inst = NULL;
@@ -1142,12 +1194,14 @@ static void handle_event_change(enum hal_command_response cmd, void *data)
 	 * ptr[2] = flag to indicate bit depth or/and pic struct changed
 	 * ptr[3] = bit depth
 	 * ptr[4] = pic struct (progressive or interlaced)
+	 * ptr[5] = colour space
 	 */
 
 	ptr = (u32 *)seq_changed_event.u.data;
 	ptr[2] = 0x0;
 	ptr[3] = inst->bit_depth;
 	ptr[4] = inst->pic_struct;
+	ptr[5] = inst->colour_space;
 
 	if (inst->bit_depth != event_notify->bit_depth) {
 		inst->bit_depth = event_notify->bit_depth;
@@ -1155,16 +1209,28 @@ static void handle_event_change(enum hal_command_response cmd, void *data)
 		ptr[3] = inst->bit_depth;
 		event = V4L2_EVENT_SEQ_CHANGED_INSUFFICIENT;
 		dprintk(VIDC_DBG,
-			"V4L2_EVENT_SEQ_CHANGED_INSUFFICIENT due to bit-depth change\n");
+				"V4L2_EVENT_SEQ_CHANGED_INSUFFICIENT due to bit-depth change\n");
 	}
 
-	if (inst->pic_struct != event_notify->pic_struct) {
+	if (inst->fmts[CAPTURE_PORT]->fourcc == V4L2_PIX_FMT_NV12 &&
+		inst->pic_struct != event_notify->pic_struct) {
 		inst->pic_struct = event_notify->pic_struct;
 		event = V4L2_EVENT_SEQ_CHANGED_INSUFFICIENT;
 		ptr[2] |= V4L2_EVENT_PICSTRUCT_FLAG;
 		ptr[4] = inst->pic_struct;
 		dprintk(VIDC_DBG,
-			"V4L2_EVENT_SEQ_CHANGED_INSUFFICIENT due to pic-struct change\n");
+				"V4L2_EVENT_SEQ_CHANGED_INSUFFICIENT due to pic-struct change\n");
+	}
+
+	if (inst->bit_depth == MSM_VIDC_BIT_DEPTH_10
+		&& inst->colour_space !=
+		event_notify->colour_space) {
+		inst->colour_space = event_notify->colour_space;
+		event = V4L2_EVENT_SEQ_CHANGED_INSUFFICIENT;
+		ptr[2] |= V4L2_EVENT_COLOUR_SPACE_FLAG;
+		ptr[5] = inst->colour_space;
+		dprintk(VIDC_DBG,
+				"V4L2_EVENT_SEQ_CHANGED_INSUFFICIENT due to colour space change\n");
 	}
 
 	if (event == V4L2_EVENT_SEQ_CHANGED_INSUFFICIENT) {
@@ -1940,8 +2006,7 @@ static void handle_fbd(enum hal_command_response cmd, void *data)
 				vb->v4l2_planes[0].bytesused,
 				vb->v4l2_planes[0].length);
 		if (!(fill_buf_done->flags1 &
-			HAL_BUFFERFLAG_TIMESTAMPINVALID) &&
-			fill_buf_done->filled_len1) {
+			HAL_BUFFERFLAG_TIMESTAMPINVALID)) {
 			time_usec = fill_buf_done->timestamp_hi;
 			time_usec = (time_usec << 32) |
 				fill_buf_done->timestamp_lo;
@@ -2926,6 +2991,7 @@ static int set_output_buffers(struct msm_vidc_inst *inst,
 	struct hal_buffer_requirements *output_buf, *extradata_buf;
 	int i;
 	struct hfi_device *hdev;
+	struct hal_buffer_size_minimum b;
 
 	hdev = inst->core->device;
 
@@ -2942,6 +3008,11 @@ static int set_output_buffers(struct msm_vidc_inst *inst,
 		output_buf->buffer_size);
 
 	buffer_size = output_buf->buffer_size;
+	b.buffer_type = buffer_type;
+	b.buffer_size = buffer_size;
+	rc = call_hfi_op(hdev, session_set_property,
+		inst->session, HAL_PARAM_BUFFER_SIZE_MINIMUM,
+		&b);
 
 	extradata_buf = get_buff_req_buffer(inst, HAL_BUFFER_EXTRADATA_OUTPUT);
 	if (extradata_buf) {
@@ -3320,6 +3391,7 @@ int msm_comm_try_state(struct msm_vidc_inst *inst, int state)
 				HAL_SESSION_END_DONE);
 		if (rc || state <= get_flipped_state(inst->state, state))
 			break;
+		msm_comm_session_clean(inst);
 	case MSM_VIDC_CORE_UNINIT:
 	case MSM_VIDC_CORE_INVALID:
 		dprintk(VIDC_DBG, "Sending core uninit\n");
@@ -3346,8 +3418,8 @@ exit:
 int msm_vidc_comm_cmd(void *instance, union msm_v4l2_cmd *cmd)
 {
 	struct msm_vidc_inst *inst = instance;
-	struct v4l2_decoder_cmd *dec;
-	struct v4l2_encoder_cmd *enc;
+	struct v4l2_decoder_cmd *dec = NULL;
+	struct v4l2_encoder_cmd *enc = NULL;
 	struct msm_vidc_core *core;
 	int which_cmd = 0, flags = 0, rc = 0;
 
@@ -3398,18 +3470,21 @@ int msm_vidc_comm_cmd(void *instance, union msm_v4l2_cmd *cmd)
 
 		output_buf = get_buff_req_buffer(inst,
 				msm_comm_get_hal_output_buffer(inst));
-		if (!output_buf) {
+		if (output_buf) {
+			if (dec) {
+				ptr = (u32 *)dec->raw.data;
+				ptr[0] = output_buf->buffer_size;
+				ptr[1] = output_buf->buffer_count_actual;
+				dprintk(VIDC_DBG,
+					"Reconfig hint, size is %u, count is %u\n",
+					ptr[0], ptr[1]);
+			} else {
+				dprintk(VIDC_ERR, "Null decoder\n");
+			}
+		} else {
 			dprintk(VIDC_DBG,
 					"This output buffer not required, buffer_type: %x\n",
 					HAL_BUFFER_OUTPUT);
-		} else {
-			ptr = (u32 *)dec->raw.data;
-			ptr[0] = output_buf->buffer_size;
-			ptr[1] = output_buf->buffer_count_actual;
-			dprintk(VIDC_DBG,
-				"Reconfig hint, size is %u, count is %u\n",
-				ptr[0], ptr[1]);
-
 		}
 		break;
 	}
@@ -4605,6 +4680,21 @@ enum hal_extradata_id msm_comm_get_hal_extradata_index(
 	case V4L2_MPEG_VIDC_EXTRADATA_OUTPUT_CROP:
 		ret = HAL_EXTRADATA_OUTPUT_CROP;
 		break;
+	case V4L2_MPEG_VIDC_EXTRADATA_DISPLAY_COLOUR_SEI:
+		ret = HAL_EXTRADATA_MASTERING_DISPLAY_COLOUR_SEI;
+		break;
+	case V4L2_MPEG_VIDC_EXTRADATA_CONTENT_LIGHT_LEVEL_SEI:
+		ret = HAL_EXTRADATA_CONTENT_LIGHT_LEVEL_SEI;
+		break;
+	case V4L2_MPEG_VIDC_EXTRADATA_VUI_DISPLAY:
+		ret = HAL_EXTRADATA_VUI_DISPLAY_INFO;
+		break;
+	case V4L2_MPEG_VIDC_EXTRADATA_VPX_COLORSPACE:
+		ret = HAL_EXTRADATA_VPX_COLORSPACE;
+		break;
+	case V4L2_MPEG_VIDC_EXTRADATA_PQ_INFO:
+		ret = HAL_EXTRADATA_PQ_INFO;
+		break;
 	default:
 		dprintk(VIDC_WARN, "Extradata not found: %d\n", index);
 		break;
@@ -4872,10 +4962,11 @@ int msm_comm_kill_session(struct msm_vidc_inst *inst)
 		if (rc == -EBUSY) {
 			msm_comm_generate_sys_error(inst);
 			return 0;
-		} else if (rc)
+		} else if (rc) {
 			return rc;
-
+		}
 		change_inst_state(inst, MSM_VIDC_CLOSE_DONE);
+		msm_comm_generate_session_error(inst);
 	} else {
 		dprintk(VIDC_WARN,
 				"Inactive session %pK, triggering an internal session error\n",
@@ -5066,7 +5157,7 @@ int msm_vidc_comm_s_parm(struct msm_vidc_inst *inst, struct v4l2_streamparm *a)
 
 	if (fps % 15 == 14 || fps % 24 == 23)
 		fps = fps + 1;
-	else if (fps % 24 == 1 || fps % 15 == 1)
+	else if ((fps > 1) && (fps % 24 == 1 || fps % 15 == 1))
 		fps = fps - 1;
 
 	if (inst->prop.fps != fps) {

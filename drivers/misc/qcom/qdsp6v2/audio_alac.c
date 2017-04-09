@@ -1,4 +1,4 @@
-/* Copyright (c) 2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
 *
 * This program is free software; you can redistribute it and/or modify
 * it under the terms of the GNU General Public License version 2 and
@@ -54,7 +54,7 @@ static long audio_ioctl_shared(struct file *file, unsigned int cmd,
 					__func__, audio->pcm_cfg.channel_count);
 		}
 
-		pr_debug("%s[%p]: AUDIO_START session_id[%d]\n", __func__,
+		pr_debug("%s[%pK]: AUDIO_START session_id[%d]\n", __func__,
 						audio, audio->ac->session);
 		if (audio->feedback == NON_TUNNEL_MODE) {
 			/* Configure PCM output block */
@@ -293,6 +293,8 @@ static int audio_open(struct inode *inode, struct file *file)
 	audio->miscdevice = &audio_alac_misc;
 	audio->wakelock_voted = false;
 	audio->audio_ws_mgr = &audio_alac_ws_mgr;
+
+	init_waitqueue_head(&audio->event_wait);
 
 	audio->ac = q6asm_audio_client_alloc((app_cb) q6_audio_cb,
 					     (void *)audio);

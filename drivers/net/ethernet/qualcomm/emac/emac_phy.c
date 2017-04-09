@@ -1,4 +1,4 @@
-/* Copyright (c) 2013-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -217,6 +217,19 @@ int emac_phy_write(struct emac_adapter *adpt, u16 phy_addr, u16 reg_addr,
 	return retval;
 }
 
+/* reset external phy */
+void emac_phy_reset_external(struct emac_adapter *adpt)
+{
+	/* Trigger ephy reset by pulling line low */
+	adpt->gpio_off(adpt, false, true);
+	/* need delay to complete ephy reset */
+	usleep_range(10000, 20000);
+	/* Complete ephy reset by pulling line back up */
+	adpt->gpio_on(adpt, false, true);
+	/* need delay to complete ephy reset */
+	usleep_range(10000, 20000);
+}
+
 /* initialize external phy */
 int emac_phy_init_external(struct emac_adapter *adpt)
 {
@@ -226,6 +239,8 @@ int emac_phy_init_external(struct emac_adapter *adpt)
 	int retval = 0;
 
 	if (phy->external) {
+		emac_phy_reset_external(adpt);
+
 		retval = emac_phy_read(adpt, phy->addr, MII_PHYSID1,
 				       &phy_id[0]);
 		if (retval)
@@ -303,6 +318,9 @@ static int emac_hw_setup_phy_link(struct emac_adapter *adpt,
 			break;
 		case EMAC_LINK_SPEED_100_FULL:
 			bmcr |= BMCR_SPEED100 | BMCR_FULLDPLX;
+			break;
+		case EMAC_LINK_SPEED_1GB_FULL:
+			bmcr |= BMCR_SPEED1000 | BMCR_FULLDPLX;
 			break;
 		default:
 			return -EINVAL;

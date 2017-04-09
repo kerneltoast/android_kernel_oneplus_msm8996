@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -12,6 +12,7 @@
  */
 
 #define CREATE_TRACE_POINTS
+#include "msm_vidc_common.h"
 #include "msm_vidc_debug.h"
 #include "vidc_hfi_api.h"
 
@@ -22,7 +23,6 @@ int msm_vidc_fw_debug_mode = 1;
 int msm_vidc_fw_low_power_mode = 1;
 int msm_vidc_hw_rsp_timeout = 1000;
 int msm_vidc_fw_coverage = 0;
-int msm_vidc_vpe_csc_601_to_709 = 0;
 int msm_vidc_dec_dcvs_mode = 1;
 int msm_vidc_enc_dcvs_mode = 1;
 int msm_vidc_sys_idle_indicator = 0;
@@ -73,7 +73,7 @@ static ssize_t core_info_read(struct file *file, char __user *buf,
 {
 	struct msm_vidc_core *core = file->private_data;
 	struct hfi_device *hdev;
-	struct hal_fw_info fw_info;
+	struct hal_fw_info fw_info = { {0} };
 	int i = 0, rc = 0;
 
 	if (!core || !core->device) {
@@ -153,7 +153,7 @@ struct dentry *msm_vidc_debugfs_init_drv(void)
 	struct dentry *f = debugfs_create_##__type(__name, S_IRUGO | S_IWUSR, \
 		dir, __value);                                                \
 	if (IS_ERR_OR_NULL(f)) {                                              \
-		dprintk(VIDC_ERR, "Failed creating debugfs file '%pKd/%s'\n",  \
+		dprintk(VIDC_ERR, "Failed creating debugfs file '%pd/%s'\n",  \
 			dir, __name);                                         \
 		f = NULL;                                                     \
 	}                                                                     \
@@ -171,8 +171,6 @@ struct dentry *msm_vidc_debugfs_init_drv(void)
 			&msm_vidc_fw_low_power_mode) &&
 	__debugfs_create(u32, "debug_output", &msm_vidc_debug_out) &&
 	__debugfs_create(u32, "hw_rsp_timeout", &msm_vidc_hw_rsp_timeout) &&
-	__debugfs_create(bool, "enable_vpe_csc_601_709",
-			&msm_vidc_vpe_csc_601_to_709) &&
 	__debugfs_create(bool, "sys_idle_indicator",
 			&msm_vidc_sys_idle_indicator) &&
 	__debugfs_create(u32, "firmware_unload_delay",
@@ -266,12 +264,19 @@ static ssize_t inst_info_read(struct file *file, char __user *buf,
 		size_t count, loff_t *ppos)
 {
 	struct msm_vidc_inst *inst = file->private_data;
+	struct msm_vidc_core *core = inst ? inst->core : NULL;
 	int i, j;
 
-	if (!inst) {
-		dprintk(VIDC_ERR, "Invalid params, core: %p\n", inst);
+	if (!inst || !core) {
+		dprintk(VIDC_ERR, "Invalid params, core: %pK inst %pK\n",
+				core, inst);
 		return 0;
 	}
+	if (!get_inst(core, inst)) {
+		dprintk(VIDC_ERR, "%s inactive session\n", __func__);
+		return 0;
+	}
+
 	INIT_DBG_BUF(dbg_buf);
 	write_str(&dbg_buf, "===============================\n");
 	write_str(&dbg_buf, "INSTANCE: %pK (%s)\n", inst,
@@ -328,7 +333,7 @@ static ssize_t inst_info_read(struct file *file, char __user *buf,
 	write_str(&dbg_buf, "FBD Count: %d\n", inst->count.fbd);
 
 	publish_unreleased_reference(inst);
-
+	put_inst(inst);
 	return simple_read_from_buffer(buf, count, ppos,
 		dbg_buf.ptr, dbg_buf.filled_size);
 }
@@ -347,7 +352,7 @@ struct dentry *msm_vidc_debugfs_init_inst(struct msm_vidc_inst *inst,
 		dprintk(VIDC_ERR, "Invalid params, inst: %pK\n", inst);
 		goto failed_create_dir;
 	}
-	snprintf(debugfs_name, MAX_DEBUGFS_NAME, "inst_%pK", inst);
+	snprintf(debugfs_name, MAX_DEBUGFS_NAME, "inst_%p", inst);
 	dir = debugfs_create_dir(debugfs_name, parent);
 	if (!dir) {
 		dprintk(VIDC_ERR, "Failed to create debugfs for msm_vidc\n");

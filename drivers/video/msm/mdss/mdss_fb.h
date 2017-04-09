@@ -228,8 +228,6 @@ struct msm_mdp_interface {
 	u32 (*fb_stride)(u32 fb_index, u32 xres, int bpp);
 	struct mdss_mdp_format_params *(*get_format_params)(u32 format);
 	int (*splash_init_fnc)(struct msm_fb_data_type *mfd);
-	struct msm_sync_pt_data *(*get_sync_fnc)(struct msm_fb_data_type *mfd,
-				const struct mdp_buf_sync *buf_sync);
 	void (*check_dsi_status)(struct work_struct *work, uint32_t interval);
 	int (*configure_panel)(struct msm_fb_data_type *mfd, int mode,
 				int dest_ctrl);
@@ -275,7 +273,7 @@ struct msm_fb_data_type {
 	u32 idle_state;
 	struct delayed_work idle_notify_work;
 
-	bool validate_pending;
+	bool atomic_commit_pending;
 
 	int op_enable;
 	u32 fb_imgType;

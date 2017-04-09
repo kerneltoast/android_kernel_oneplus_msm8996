@@ -861,10 +861,10 @@ struct device_node *of_find_matching_node_by_address(struct device_node *from,
 	struct resource res;
 
 	while (dn) {
-		if (of_address_to_resource(dn, 0, &res))
-			continue;
-		if (res.start == base_address)
+		if (!of_address_to_resource(dn, 0, &res) &&
+		    res.start == base_address)
 			return dn;
+
 		dn = of_find_matching_node(dn, matches);
 	}
 
@@ -905,7 +905,7 @@ EXPORT_SYMBOL(of_iomap);
  *		return PTR_ERR(base);
  */
 void __iomem *of_io_request_and_map(struct device_node *np, int index,
-					char *name)
+					const char *name)
 {
 	struct resource res;
 	void __iomem *mem;

@@ -41,7 +41,6 @@ const char * const mhi_states_str[MHI_STATE_LIMIT] = {
 	"M1",
 	"M2",
 	"M3",
-	"Reserved: 0x06",
 	"BHI",
 	"SYS_ERR",
 };

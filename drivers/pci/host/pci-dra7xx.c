@@ -289,7 +289,8 @@ static int add_pcie_port(struct dra7xx_pcie *dra7xx,
 	}
 
 	ret = devm_request_irq(&pdev->dev, pp->irq,
-			       dra7xx_pcie_msi_irq_handler, IRQF_SHARED,
+			       dra7xx_pcie_msi_irq_handler,
+			       IRQF_SHARED | IRQF_NO_THREAD,
 			       "dra7-pcie-msi",	pp);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to request irq\n");
@@ -446,7 +447,6 @@ static struct platform_driver dra7xx_pcie_driver = {
 	.remove		= __exit_p(dra7xx_pcie_remove),
 	.driver = {
 		.name	= "dra7-pcie",
-		.owner	= THIS_MODULE,
 		.of_match_table = of_dra7xx_pcie_match,
 	},
 };

@@ -17,6 +17,11 @@
 #define IPA_PKT_FLUSH_TO_US 100
 #define IPA_UC_POLL_SLEEP_USEC 100
 #define IPA_UC_POLL_MAX_RETRY 10000
+#define HOLB_WORKQUEUE_NAME "ipa_holb_wq"
+
+static struct workqueue_struct *ipa_holb_wq;
+static void ipa_start_monitor_holb(struct work_struct *work);
+static DECLARE_WORK(ipa_holb_work, ipa_start_monitor_holb);
 
 /**
  * enum ipa_cpu_2_hw_commands - Values that represent the commands from the CPU
@@ -279,13 +284,13 @@ bad_uc_top_ofst:
 }
 
 /**
- * ipa_uc_state_check() - Check the status of the uC interface
+ * ipa2_uc_state_check() - Check the status of the uC interface
  *
  * Return value: 0 if the uC is loaded, interface is initialized
  *               and there was no recent failure in one of the commands.
  *               A negative value is returned otherwise.
  */
-int ipa_uc_state_check(void)
+int ipa2_uc_state_check(void)
 {
 	if (!ipa_ctx->uc_ctx.uc_inited) {
 		IPAERR("uC interface not initialized\n");
@@ -304,7 +309,7 @@ int ipa_uc_state_check(void)
 
 	return 0;
 }
-EXPORT_SYMBOL(ipa_uc_state_check);
+EXPORT_SYMBOL(ipa2_uc_state_check);
 
 /**
  * ipa_uc_loaded_check() - Check the uC has been loaded
@@ -326,7 +331,7 @@ static void ipa_uc_event_handler(enum ipa_irq_type interrupt,
 
 	WARN_ON(private_data != ipa_ctx);
 
-	IPA2_ACTIVE_CLIENTS_INC_SIMPLE();
+	IPA_ACTIVE_CLIENTS_INC_SIMPLE();
 
 	IPADBG("uC evt opcode=%u\n",
 		ipa_ctx->uc_ctx.uc_sram_mmio->eventOp);
@@ -337,7 +342,7 @@ static void ipa_uc_event_handler(enum ipa_irq_type interrupt,
 	if (0 > feature || IPA_HW_FEATURE_MAX <= feature) {
 		IPAERR("Invalid feature %u for event %u\n",
 			feature, ipa_ctx->uc_ctx.uc_sram_mmio->eventOp);
-		IPA2_ACTIVE_CLIENTS_DEC_SIMPLE();
+		IPA_ACTIVE_CLIENTS_DEC_SIMPLE();
 		return;
 	}
 	/* Feature specific handling */
@@ -367,7 +372,7 @@ static void ipa_uc_event_handler(enum ipa_irq_type interrupt,
 		IPADBG("unsupported uC evt opcode=%u\n",
 				ipa_ctx->uc_ctx.uc_sram_mmio->eventOp);
 	}
-	IPA2_ACTIVE_CLIENTS_DEC_SIMPLE();
+	IPA_ACTIVE_CLIENTS_DEC_SIMPLE();
 
 }
 
@@ -375,14 +380,14 @@ static int ipa_uc_panic_notifier(struct notifier_block *this,
 		unsigned long event, void *ptr)
 {
 	int result = 0;
-	struct ipa2_active_client_logging_info log_info;
+	struct ipa_active_client_logging_info log_info;
 
 	IPADBG("this=%p evt=%lu ptr=%p\n", this, event, ptr);
 
-	result = ipa_uc_state_check();
+	result = ipa2_uc_state_check();
 	if (result)
 		goto fail;
-	IPA2_ACTIVE_CLIENTS_PREP_SIMPLE(log_info);
+	IPA_ACTIVE_CLIENTS_PREP_SIMPLE(log_info);
 	if (ipa2_inc_client_enable_clks_no_block(&log_info))
 		goto fail;
 
@@ -394,7 +399,7 @@ static int ipa_uc_panic_notifier(struct notifier_block *this,
 	/* give uc enough time to save state */
 	udelay(IPA_PKT_FLUSH_TO_US);
 
-	IPA2_ACTIVE_CLIENTS_DEC_SIMPLE();
+	IPA_ACTIVE_CLIENTS_DEC_SIMPLE();
 	IPADBG("err_fatal issued\n");
 
 fail:
@@ -422,7 +427,7 @@ static void ipa_uc_response_hdlr(enum ipa_irq_type interrupt,
 
 	WARN_ON(private_data != ipa_ctx);
 
-	IPA2_ACTIVE_CLIENTS_INC_SIMPLE();
+	IPA_ACTIVE_CLIENTS_INC_SIMPLE();
 	IPADBG("uC rsp opcode=%u\n",
 			ipa_ctx->uc_ctx.uc_sram_mmio->responseOp);
 
@@ -431,7 +436,7 @@ static void ipa_uc_response_hdlr(enum ipa_irq_type interrupt,
 	if (0 > feature || IPA_HW_FEATURE_MAX <= feature) {
 		IPAERR("Invalid feature %u for event %u\n",
 			feature, ipa_ctx->uc_ctx.uc_sram_mmio->eventOp);
-		IPA2_ACTIVE_CLIENTS_DEC_SIMPLE();
+		IPA_ACTIVE_CLIENTS_DEC_SIMPLE();
 		return;
 	}
 
@@ -444,7 +449,7 @@ static void ipa_uc_response_hdlr(enum ipa_irq_type interrupt,
 			IPADBG("feature %d specific response handler\n",
 				feature);
 			complete_all(&ipa_ctx->uc_ctx.uc_completion);
-			IPA2_ACTIVE_CLIENTS_DEC_SIMPLE();
+			IPA_ACTIVE_CLIENTS_DEC_SIMPLE();
 			return;
 		}
 	}
@@ -463,8 +468,11 @@ static void ipa_uc_response_hdlr(enum ipa_irq_type interrupt,
 			if (uc_hdlrs[i].ipa_uc_loaded_hdlr)
 				uc_hdlrs[i].ipa_uc_loaded_hdlr();
 		}
-		/* Enable holb monitoring on IPA-USB Producer pipe if valid. */
-		ipa_uc_monitor_holb(IPA_CLIENT_USB_CONS, true);
+		/* Queue the work to enable holb monitoring on IPA-USB Producer
+		 * pipe if valid.
+		 */
+		if (ipa_ctx->ipa_hw_type == IPA_HW_v2_6L)
+			queue_work(ipa_holb_wq, &ipa_holb_work);
 	} else if (ipa_ctx->uc_ctx.uc_sram_mmio->responseOp ==
 		   IPA_HW_2_CPU_RESPONSE_CMD_COMPLETED) {
 		uc_rsp.raw32b = ipa_ctx->uc_ctx.uc_sram_mmio->responseParams;
@@ -484,7 +492,7 @@ static void ipa_uc_response_hdlr(enum ipa_irq_type interrupt,
 		IPAERR("Unsupported uC rsp opcode = %u\n",
 		       ipa_ctx->uc_ctx.uc_sram_mmio->responseOp);
 	}
-	IPA2_ACTIVE_CLIENTS_DEC_SIMPLE();
+	IPA_ACTIVE_CLIENTS_DEC_SIMPLE();
 }
 
 /**
@@ -500,6 +508,13 @@ int ipa_uc_interface_init(void)
 	if (ipa_ctx->uc_ctx.uc_inited) {
 		IPADBG("uC interface already initialized\n");
 		return 0;
+	}
+
+	ipa_holb_wq = create_singlethread_workqueue(
+			HOLB_WORKQUEUE_NAME);
+	if (!ipa_holb_wq) {
+		IPAERR("HOLB workqueue creation failed\n");
+		return -ENOMEM;
 	}
 
 	mutex_init(&ipa_ctx->uc_ctx.uc_lock);
@@ -578,7 +593,7 @@ int ipa_uc_send_cmd(u32 cmd, u32 opcode, u32 expected_status,
 
 	mutex_lock(&ipa_ctx->uc_ctx.uc_lock);
 
-	if (ipa_uc_state_check()) {
+	if (ipa2_uc_state_check()) {
 		IPADBG("uC send command aborted\n");
 		mutex_unlock(&ipa_ctx->uc_ctx.uc_lock);
 		return -EBADF;
@@ -712,7 +727,7 @@ int ipa_uc_reset_pipe(enum ipa_client_type ipa_client)
 	 * continue with the sequence without resetting the
 	 * pipe.
 	 */
-	if (ipa_uc_state_check()) {
+	if (ipa2_uc_state_check()) {
 		IPADBG("uC interface will not be used to reset %s pipe %d\n",
 		       IPA_CLIENT_IS_PROD(ipa_client) ? "CONS" : "PROD",
 		       ep_idx);
@@ -770,7 +785,7 @@ int ipa_uc_monitor_holb(enum ipa_client_type ipa_client, bool enable)
 	 * continue with the sequence without resetting the
 	 * pipe.
 	 */
-	if (ipa_uc_state_check()) {
+	if (ipa2_uc_state_check()) {
 		IPADBG("uC interface will not be used to reset %s pipe %d\n",
 		       IPA_CLIENT_IS_PROD(ipa_client) ? "CONS" : "PROD",
 		       ep_idx);
@@ -791,11 +806,29 @@ int ipa_uc_monitor_holb(enum ipa_client_type ipa_client, bool enable)
 
 	ret = ipa_uc_send_cmd(cmd.raw32b,
 				IPA_CPU_2_HW_CMD_UPDATE_HOLB_MONITORING, 0,
-				true, 10*HZ);
+				false, 10*HZ);
 
 	return ret;
 }
 EXPORT_SYMBOL(ipa_uc_monitor_holb);
+
+/**
+ * ipa_start_monitor_holb() - Send HOLB command to monitor IPA-USB
+ * producer pipe.
+ *
+ * This function is called after uc is loaded to start monitoring
+ * IPA pipe towrds USB in case if USB is already connected.
+ *
+ * Return codes:
+ * None
+ */
+static void ipa_start_monitor_holb(struct work_struct *work)
+{
+	IPADBG("starting holb monitoring on IPA_CLIENT_USB_CONS\n");
+	IPA_ACTIVE_CLIENTS_INC_SIMPLE();
+	ipa_uc_monitor_holb(IPA_CLIENT_USB_CONS, true);
+	IPA_ACTIVE_CLIENTS_DEC_SIMPLE();
+}
 
 
 /**
@@ -816,7 +849,7 @@ int ipa_uc_notify_clk_state(bool enabled)
 	 * If the uC interface has not been initialized yet,
 	 * don't notify the uC on the enable/disable
 	 */
-	if (ipa_uc_state_check()) {
+	if (ipa2_uc_state_check()) {
 		IPADBG("uC interface will not notify the UC on clock state\n");
 		return 0;
 	}
