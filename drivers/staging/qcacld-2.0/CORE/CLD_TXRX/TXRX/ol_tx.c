@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2014 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2014, 2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -29,6 +29,7 @@
 #include <adf_nbuf.h>         /* adf_nbuf_t, etc. */
 #include <adf_os_atomic.h>    /* adf_os_atomic_read, etc. */
 #include <adf_os_util.h>      /* adf_os_unlikely */
+#include "adf_trace.h"
 
 /* APIs for other modules */
 #include <htt.h>              /* HTT_TX_EXT_TID_MGMT */
@@ -50,6 +51,7 @@
 
 /* internal header files relevant only for specific systems (Pronto) */
 #include <ol_txrx_encap.h>    /* OL_TX_ENCAP, etc */
+#include "vos_lock.h"
 
 #define ol_tx_prepare_ll(tx_desc, vdev, msdu, msdu_info) \
     do {                                                                      \
@@ -76,6 +78,14 @@ ol_tx_ll(ol_txrx_vdev_handle vdev, adf_nbuf_t msdu_list)
 {
     adf_nbuf_t msdu = msdu_list;
     struct ol_txrx_msdu_info_t msdu_info;
+    v_CONTEXT_t vos_ctx = vos_get_global_context(VOS_MODULE_ID_SYS, NULL);
+    void *adf_ctx = vos_get_context(VOS_MODULE_ID_ADF, vos_ctx);
+
+    if (!adf_ctx) {
+        TXRX_PRINT(TXRX_PRINT_LEVEL_ERR,
+                   "%s: adf_ctx is NULL\n", __func__);
+        return msdu_list;
+    }
 
     msdu_info.htt.info.l2_hdr_type = vdev->pdev->htt_pkt_type;
     msdu_info.htt.action.tx_comp_req = 0;
@@ -92,6 +102,8 @@ ol_tx_ll(ol_txrx_vdev_handle vdev, adf_nbuf_t msdu_list)
         msdu_info.htt.info.ext_tid = adf_nbuf_get_tid(msdu);
         msdu_info.peer = NULL;
 
+        adf_nbuf_map_single(adf_ctx, msdu,
+                             ADF_OS_DMA_TO_DEVICE);
         ol_tx_prepare_ll(tx_desc, vdev, msdu, &msdu_info);
 
         /*
@@ -105,7 +117,7 @@ ol_tx_ll(ol_txrx_vdev_handle vdev, adf_nbuf_t msdu_list)
          * tx_send call.
          */
         next = adf_nbuf_next(msdu);
-        ol_tx_send(vdev->pdev, tx_desc, msdu);
+        ol_tx_send(vdev->pdev, tx_desc, msdu, vdev->vdev_id);
         msdu = next;
     }
     return NULL; /* all MSDUs were accepted */
@@ -113,7 +125,7 @@ ol_tx_ll(ol_txrx_vdev_handle vdev, adf_nbuf_t msdu_list)
 
 #ifdef QCA_SUPPORT_TXRX_VDEV_LL_TXQ
 
-#define OL_TX_VDEV_PAUSE_QUEUE_SEND_MARGIN 400
+#define OL_TX_VDEV_PAUSE_QUEUE_SEND_MARGIN 50
 #define OL_TX_VDEV_PAUSE_QUEUE_SEND_PERIOD_MS 5
 
 /**
@@ -142,7 +154,7 @@ ol_tx_vdev_ll_pause_start_timer(struct ol_txrx_vdev_t *vdev)
 static void
 ol_tx_vdev_ll_pause_queue_send_base(struct ol_txrx_vdev_t *vdev)
 {
-    int max_to_accept;
+    int max_to_accept, margin;
 
     adf_os_spin_lock_bh(&vdev->ll_pause.mutex);
     if (vdev->ll_pause.paused_reason) {
@@ -162,8 +174,16 @@ ol_tx_vdev_ll_pause_queue_send_base(struct ol_txrx_vdev_t *vdev)
      * from multiple vdev's pause queues is not sufficient to outweigh
      * the extra complexity.
      */
-    max_to_accept =
-        vdev->pdev->tx_desc.num_free - OL_TX_VDEV_PAUSE_QUEUE_SEND_MARGIN;
+
+    /* we should keep margin below flow control threshold otherwise
+     * we can observe overflow of packets.
+     */
+
+    margin = (vdev->tx_fl_lwm > OL_TX_VDEV_PAUSE_QUEUE_SEND_MARGIN) ?
+               (vdev->tx_fl_lwm - OL_TX_VDEV_PAUSE_QUEUE_SEND_MARGIN) :
+                vdev->tx_fl_lwm;
+
+    max_to_accept = vdev->pdev->tx_desc.num_free - margin;
     while (max_to_accept > 0 && vdev->ll_pause.txq.depth) {
         adf_nbuf_t tx_msdu;
         max_to_accept--;
@@ -175,6 +195,8 @@ ol_tx_vdev_ll_pause_queue_send_base(struct ol_txrx_vdev_t *vdev)
                 vdev->ll_pause.txq.tail = NULL;
             }
             adf_nbuf_set_next(tx_msdu, NULL);
+            NBUF_UPDATE_TX_PKT_COUNT(tx_msdu,
+                        NBUF_TX_PKT_TXRX_DEQUEUE);
             tx_msdu = ol_tx_ll(vdev, tx_msdu);
             /*
              * It is unexpected that ol_tx_ll would reject the frame,
@@ -211,10 +233,22 @@ ol_tx_vdev_pause_queue_append(
 {
     adf_os_spin_lock_bh(&vdev->ll_pause.mutex);
 
+    if (vdev->ll_pause.paused_reason &
+               OL_TXQ_PAUSE_REASON_FW) {
+        if ((!vdev->ll_pause.txq.depth) &&
+                     msdu_list)
+            vos_request_runtime_pm_resume();
+    }
+
     while (msdu_list &&
             vdev->ll_pause.txq.depth < vdev->ll_pause.max_q_depth)
     {
         adf_nbuf_t next = adf_nbuf_next(msdu_list);
+        NBUF_UPDATE_TX_PKT_COUNT(msdu_list, NBUF_TX_PKT_TXRX_ENQUEUE);
+        DPTRACE(adf_dp_trace(msdu_list,
+                ADF_DP_TRACE_TXRX_QUEUE_PACKET_PTR_RECORD,
+                adf_nbuf_data_addr(msdu_list),
+                sizeof(adf_nbuf_data(msdu_list)), ADF_TX));
 
         vdev->ll_pause.txq.depth++;
         if (!vdev->ll_pause.txq.head) {
@@ -486,7 +520,7 @@ ol_tx_non_std_ll(
          * downloaded to the target via the HTT tx descriptor.
          */
         htt_tx_desc_display(tx_desc->htt_tx_desc);
-        ol_tx_send(vdev->pdev, tx_desc, msdu);
+        ol_tx_send(vdev->pdev, tx_desc, msdu, vdev->vdev_id);
         msdu = next;
     }
     return NULL; /* all MSDUs were accepted */
@@ -521,10 +555,13 @@ ol_tx_non_std_ll(
  */
 #define OCB_HEADER_VERSION     1
 static bool parse_ocb_tx_header(adf_nbuf_t msdu,
-                                struct ocb_tx_ctrl_hdr_t *tx_ctrl)
+                                struct ocb_tx_ctrl_hdr_t *tx_ctrl,
+                                bool *tx_ctrl_header_found)
 {
     struct ether_header *eth_hdr_p;
     struct ocb_tx_ctrl_hdr_t *tx_ctrl_hdr;
+
+    *tx_ctrl_header_found = false;
 
     /* Check if TX control header is present */
     eth_hdr_p = (struct ether_header *) adf_nbuf_data(msdu);
@@ -539,6 +576,7 @@ static bool parse_ocb_tx_header(adf_nbuf_t msdu,
     tx_ctrl_hdr = (struct ocb_tx_ctrl_hdr_t*) adf_nbuf_data(msdu);
 
     if (tx_ctrl_hdr->version == OCB_HEADER_VERSION) {
+        *tx_ctrl_header_found = true;
         if (tx_ctrl)
             adf_os_mem_copy(tx_ctrl, tx_ctrl_hdr, sizeof(*tx_ctrl_hdr));
     } else {
@@ -551,12 +589,55 @@ static bool parse_ocb_tx_header(adf_nbuf_t msdu,
     return true;
 }
 
+/**
+ * merge_ocb_tx_ctrl_hdr() - merge the default TX ctrl parameters into
+ * @tx_ctrl: The destination TX control header.
+ * @def_ctrl_hdr: The default TX control header.
+ *
+ * For each parameter in tx_ctrl, if the parameter is unspecified, the
+ * equivalent parameter in def_ctrl_hdr will be copied to tx_ctrl.
+ */
+static void merge_ocb_tx_ctrl_hdr(struct ocb_tx_ctrl_hdr_t *tx_ctrl,
+				  struct ocb_tx_ctrl_hdr_t *def_ctrl_hdr)
+{
+	if (!tx_ctrl || !def_ctrl_hdr)
+		return;
+
+	if (!tx_ctrl->channel_freq && def_ctrl_hdr->channel_freq)
+		tx_ctrl->channel_freq = def_ctrl_hdr->channel_freq;
+	if (!tx_ctrl->valid_pwr && def_ctrl_hdr->valid_pwr) {
+		tx_ctrl->pwr = def_ctrl_hdr->pwr;
+		tx_ctrl->valid_pwr = 1;
+	}
+	if (!tx_ctrl->valid_datarate && def_ctrl_hdr->valid_datarate) {
+		tx_ctrl->datarate = def_ctrl_hdr->datarate;
+		tx_ctrl->valid_datarate = 1;
+	}
+	if (!tx_ctrl->valid_retries && def_ctrl_hdr->valid_retries) {
+		tx_ctrl->retry_limit = def_ctrl_hdr->retry_limit;
+		tx_ctrl->valid_retries = 1;
+	}
+	if (!tx_ctrl->valid_chain_mask && def_ctrl_hdr->valid_chain_mask) {
+		tx_ctrl->chain_mask = def_ctrl_hdr->chain_mask;
+		tx_ctrl->valid_chain_mask = 1;
+	}
+	if (!tx_ctrl->valid_expire_tsf && def_ctrl_hdr->valid_expire_tsf) {
+		tx_ctrl->expire_tsf_hi = def_ctrl_hdr->expire_tsf_hi;
+		tx_ctrl->expire_tsf_lo = def_ctrl_hdr->expire_tsf_lo;
+		tx_ctrl->valid_expire_tsf = 1;
+	}
+	if (!tx_ctrl->valid_tid && def_ctrl_hdr->valid_tid) {
+		tx_ctrl->ext_tid = def_ctrl_hdr->ext_tid;
+		tx_ctrl->valid_tid = 1;
+	}
+}
+
 static inline adf_nbuf_t
 ol_tx_hl_base(
     ol_txrx_vdev_handle vdev,
     enum ol_tx_spec tx_spec,
     adf_nbuf_t msdu_list,
-    int tx_comp_req)
+    int tx_comp_req, bool call_sched)
 {
     struct ol_txrx_pdev_t *pdev = vdev->pdev;
     adf_nbuf_t msdu = msdu_list;
@@ -590,8 +671,7 @@ ol_tx_hl_base(
         if (adf_os_atomic_read(&pdev->tx_queue.rsrc_cnt) >
                                         TXRX_HL_TX_DESC_HI_PRIO_RESERVED) {
             tx_desc = ol_tx_desc_hl(pdev, vdev, msdu, &tx_msdu_info);
-        } else if ((adf_nbuf_is_dhcp_pkt(msdu) == A_STATUS_OK)
-                          || (adf_nbuf_is_eapol_pkt(msdu) == A_STATUS_OK)) {
+        } else if (ADF_NBUF_GET_IS_DHCP(msdu) || ADF_NBUF_GET_IS_EAPOL(msdu)) {
             tx_desc = ol_tx_desc_hl(pdev, vdev, msdu, &tx_msdu_info);
             TXRX_PRINT(TXRX_PRINT_LEVEL_ERR,
                 "Provided tx descriptor from reserve pool for DHCP/EAPOL\n");
@@ -638,10 +718,18 @@ ol_tx_hl_base(
 
         /* If the vdev is in OCB mode, parse the tx control header. */
         if (vdev->opmode == wlan_op_mode_ocb) {
-            if (!parse_ocb_tx_header(msdu, &tx_ctrl)) {
+            bool tx_ctrl_header_found = false;
+
+            if (!parse_ocb_tx_header(msdu, &tx_ctrl, &tx_ctrl_header_found)) {
                 /* There was an error parsing the header. Skip this packet. */
                 goto MSDU_LOOP_BOTTOM;
             }
+            /* If the TX control header was not found, just use the defaults */
+            if (!tx_ctrl_header_found && vdev->ocb_def_tx_param)
+                vos_mem_copy(&tx_ctrl, vdev->ocb_def_tx_param, sizeof(tx_ctrl));
+            /* If the TX control header was found, merge the defaults into it */
+            else if (tx_ctrl_header_found && vdev->ocb_def_tx_param)
+                merge_ocb_tx_ctrl_hdr(&tx_ctrl, vdev->ocb_def_tx_param);
         }
 
         txq = ol_tx_classify(vdev, tx_desc, msdu, &tx_msdu_info);
@@ -717,10 +805,253 @@ ol_tx_hl_base(
 MSDU_LOOP_BOTTOM:
         msdu = next;
     }
-    ol_tx_sched(pdev);
+
+    if (call_sched == true)
+        ol_tx_sched(pdev);
 
     return NULL; /* all MSDUs were accepted */
 }
+
+/**
+ * ol_txrx_get_vdev_from_vdev_id() - get vdev from vdev_id
+ * @vdev_id: vdev_id
+ *
+ * Return: vdev handle
+ *            NULL if not found.
+ */
+ol_txrx_vdev_handle ol_txrx_get_vdev_from_vdev_id(uint8_t vdev_id)
+{
+	v_CONTEXT_t vos_context = vos_get_global_context(VOS_MODULE_ID_TXRX,
+							 NULL);
+	ol_txrx_pdev_handle pdev = vos_get_context(VOS_MODULE_ID_TXRX,
+							 vos_context);
+	ol_txrx_vdev_handle vdev = NULL;
+
+	if (adf_os_unlikely(!pdev))
+		return NULL;
+
+	TAILQ_FOREACH(vdev, &pdev->vdev_list, vdev_list_elem)
+		if (vdev->vdev_id == vdev_id)
+			break;
+
+	return vdev;
+}
+
+#ifdef QCA_SUPPORT_TXRX_HL_BUNDLE
+/**
+ * ol_tx_pdev_reset_bundle_require() - reset bundle require flag
+ * @pdev_handle: pdev handle
+ *
+ * Return: none
+ */
+void
+ol_tx_pdev_reset_bundle_require(void* pdev_handle)
+{
+	struct ol_txrx_pdev_t *pdev = (struct ol_txrx_pdev_t *)pdev_handle;
+	struct ol_txrx_vdev_t *vdev;
+
+	TAILQ_FOREACH(vdev, &pdev->vdev_list, vdev_list_elem) {
+		vdev->bundling_reqired = false;
+		TXRX_PRINT(TXRX_PRINT_LEVEL_INFO1,
+			"vdev_id %d bundle_require %d\n",
+			vdev->vdev_id, vdev->bundling_reqired);
+    }
+}
+
+/**
+ * ol_tx_vdev_set_bundle_require() - set bundle require flag if required
+ * @vdev_id: vdev id
+ * @tx_packets: number of tx packets
+ * @time_in_ms: time in ms
+ * @high_th: high threashold
+ * @low_th: low threashold
+ *
+ * Return: none
+ */
+void
+ol_tx_vdev_set_bundle_require(uint8_t vdev_id, unsigned long tx_bytes,
+			uint32_t time_in_ms, uint32_t high_th, uint32_t low_th)
+{
+	struct ol_txrx_vdev_t* vdev = ol_txrx_get_vdev_from_vdev_id(vdev_id);
+	bool old_bundle_required;
+
+	if ((!vdev) || (low_th > high_th))
+		return;
+
+	old_bundle_required = vdev->bundling_reqired;
+	if (tx_bytes > ((high_th * time_in_ms * 1500)/1000))
+		vdev->bundling_reqired = true;
+	else if (tx_bytes < ((low_th * time_in_ms * 1500)/1000))
+		vdev->bundling_reqired = false;
+
+	if (old_bundle_required != vdev->bundling_reqired)
+		TXRX_PRINT(TXRX_PRINT_LEVEL_INFO1,
+			"vdev_id %d bundle_require %d tx_bytes %ld time_in_ms %d high_th %d low_th %d\n",
+			vdev->vdev_id, vdev->bundling_reqired, tx_bytes,
+			time_in_ms, high_th, low_th);
+}
+
+/**
+ * ol_tx_hl_queue_flush_all() - drop all packets in vdev bundle queue
+ * @vdev: vdev handle
+ *
+ * Return: none
+ */
+void
+ol_tx_hl_queue_flush_all(struct ol_txrx_vdev_t* vdev)
+{
+	adf_os_spin_lock_bh(&vdev->bundle_queue.mutex);
+	if (vdev->bundle_queue.txq.depth != 0) {
+		adf_os_timer_cancel(&vdev->bundle_queue.timer);
+		vdev->pdev->total_bundle_queue_length -=
+				vdev->bundle_queue.txq.depth;
+		adf_nbuf_tx_free(vdev->bundle_queue.txq.head, 1/*error*/);
+		vdev->bundle_queue.txq.depth = 0;
+		vdev->bundle_queue.txq.head = NULL;
+		vdev->bundle_queue.txq.tail = NULL;
+	}
+	adf_os_spin_unlock_bh(&vdev->bundle_queue.mutex);
+}
+
+/**
+ * ol_tx_hl_vdev_queue_append() - append pkt in tx queue
+ * @vdev: vdev handle
+ * @msdu_list: msdu list
+ *
+ * Return: none
+ */
+static void
+ol_tx_hl_vdev_queue_append(struct ol_txrx_vdev_t* vdev, adf_nbuf_t msdu_list)
+{
+	adf_os_spin_lock_bh(&vdev->bundle_queue.mutex);
+
+	if (!vdev->bundle_queue.txq.head) {
+		adf_os_timer_start(
+			&vdev->bundle_queue.timer,
+			ol_cfg_get_bundle_timer_value(vdev->pdev->ctrl_pdev));
+		vdev->bundle_queue.txq.head = msdu_list;
+		vdev->bundle_queue.txq.tail = msdu_list;
+	} else {
+		adf_nbuf_set_next(vdev->bundle_queue.txq.tail, msdu_list);
+	}
+
+	while (adf_nbuf_next(msdu_list) != NULL) {
+		vdev->bundle_queue.txq.depth++;
+		vdev->pdev->total_bundle_queue_length++;
+		msdu_list = adf_nbuf_next(msdu_list);
+	}
+
+	vdev->bundle_queue.txq.depth++;
+	vdev->pdev->total_bundle_queue_length++;
+	vdev->bundle_queue.txq.tail = msdu_list;
+	adf_os_spin_unlock_bh(&vdev->bundle_queue.mutex);
+
+	return;
+}
+
+/**
+ * ol_tx_hl_vdev_queue_send_all() - send all packets in vdev bundle queue
+ * @vdev: vdev handle
+ * @call_sched: invoke scheduler
+ *
+ * Return: NULL for success
+ */
+adf_nbuf_t
+ol_tx_hl_vdev_queue_send_all(struct ol_txrx_vdev_t* vdev, bool call_sched)
+{
+	adf_nbuf_t msdu_list = NULL;
+	struct ol_txrx_pdev_t *pdev = vdev->pdev;
+	int tx_comp_req = pdev->cfg.default_tx_comp_req;
+
+	adf_os_spin_lock_bh(&vdev->bundle_queue.mutex);
+
+	if (vdev->bundle_queue.txq.depth != 0) {
+		adf_os_timer_cancel(&vdev->bundle_queue.timer);
+		vdev->pdev->total_bundle_queue_length -=
+			vdev->bundle_queue.txq.depth;
+		msdu_list = ol_tx_hl_base(vdev, ol_tx_spec_std,
+			vdev->bundle_queue.txq.head, tx_comp_req, call_sched);
+
+		vdev->bundle_queue.txq.depth = 0;
+		vdev->bundle_queue.txq.head = NULL;
+		vdev->bundle_queue.txq.tail = NULL;
+	}
+	adf_os_spin_unlock_bh(&vdev->bundle_queue.mutex);
+
+	return msdu_list;
+}
+
+/**
+ * ol_tx_hl_pdev_queue_send_all() - send all packets from all vdev bundle queue
+ * @pdev: pdev handle
+ *
+ * Return: NULL for success
+ */
+adf_nbuf_t
+ol_tx_hl_pdev_queue_send_all(struct ol_txrx_pdev_t* pdev)
+{
+	struct ol_txrx_vdev_t* vdev;
+	adf_nbuf_t msdu_list;
+
+	TAILQ_FOREACH(vdev, &pdev->vdev_list, vdev_list_elem) {
+		msdu_list = ol_tx_hl_vdev_queue_send_all(vdev, false);
+		if (msdu_list)
+			adf_nbuf_tx_free(msdu_list, 1/*error*/);
+	}
+	ol_tx_sched(pdev);
+	return NULL; /* all msdus were accepted */
+}
+
+/**
+ * ol_tx_hl_vdev_bundle_timer() - bundle timer function
+ * @vdev: vdev handle
+ *
+ * Return: none
+ */
+void
+ol_tx_hl_vdev_bundle_timer(void *vdev)
+{
+	adf_nbuf_t msdu_list;
+
+	msdu_list = ol_tx_hl_vdev_queue_send_all(vdev, true);
+	if (msdu_list)
+		adf_nbuf_tx_free(msdu_list, 1/*error*/);
+}
+
+/**
+ * ol_tx_hl_queue() - queueing logic to bundle in HL
+ * @vdev: vdev handle
+ * @msdu_list: msdu list
+ *
+ * Return: NULL for success/drop msdu list
+ */
+adf_nbuf_t
+ol_tx_hl_queue(struct ol_txrx_vdev_t* vdev, adf_nbuf_t msdu_list)
+{
+	struct ol_txrx_pdev_t *pdev = vdev->pdev;
+	int tx_comp_req = pdev->cfg.default_tx_comp_req;
+
+	if (vdev->bundling_reqired == true &&
+		(ol_cfg_get_bundle_size(vdev->pdev->ctrl_pdev) > 1)) {
+		ol_tx_hl_vdev_queue_append(vdev, msdu_list);
+		if (pdev->total_bundle_queue_length >=
+			ol_cfg_get_bundle_size(vdev->pdev->ctrl_pdev)){
+			return ol_tx_hl_pdev_queue_send_all(pdev);
+		}
+	} else {
+		if (vdev->bundle_queue.txq.depth != 0) {
+			ol_tx_hl_vdev_queue_append(vdev, msdu_list);
+			return ol_tx_hl_vdev_queue_send_all(vdev, true);
+		} else {
+			return ol_tx_hl_base(vdev, ol_tx_spec_std, msdu_list,
+							 tx_comp_req, true);
+		}
+	}
+
+	return NULL; /* all msdus were accepted */
+}
+
+#endif
 
 adf_nbuf_t
 ol_tx_hl(ol_txrx_vdev_handle vdev, adf_nbuf_t msdu_list)
@@ -728,7 +1059,7 @@ ol_tx_hl(ol_txrx_vdev_handle vdev, adf_nbuf_t msdu_list)
     struct ol_txrx_pdev_t *pdev = vdev->pdev;
     int tx_comp_req = pdev->cfg.default_tx_comp_req;
 
-    return ol_tx_hl_base(vdev, ol_tx_spec_std, msdu_list, tx_comp_req);
+    return ol_tx_hl_base(vdev, ol_tx_spec_std, msdu_list, tx_comp_req, true);
 }
 
 adf_nbuf_t
@@ -746,7 +1077,7 @@ ol_tx_non_std_hl(
             tx_comp_req = 1;
         }
     }
-    return ol_tx_hl_base(vdev, tx_spec, msdu_list, tx_comp_req);
+    return ol_tx_hl_base(vdev, tx_spec, msdu_list, tx_comp_req, true);
 }
 
 adf_nbuf_t
@@ -878,7 +1209,7 @@ ol_txrx_mgmt_send(
     tx_desc->pkt_type = type + OL_TXRX_MGMT_TYPE_BASE;
 
     if (pdev->cfg.is_high_latency) {
-	struct ol_tx_frms_queue_t *txq;
+        struct ol_tx_frms_queue_t *txq;
         /*
          * 1.  Look up the peer and queue the frame in the peer's mgmt queue.
          * 2.  Invoke the download scheduler.
@@ -904,21 +1235,22 @@ ol_txrx_mgmt_send(
         htt_tx_desc_mpdu_header(tx_desc->htt_tx_desc, 0);
         htt_tx_desc_init(
             pdev->htt_pdev, tx_desc->htt_tx_desc,
-	    tx_desc->htt_tx_desc_paddr,
+            tx_desc->htt_tx_desc_paddr,
             ol_tx_desc_id(pdev, tx_desc),
             tx_mgmt_frm,
             &tx_msdu_info.htt, NULL, 0);
         htt_tx_desc_display(tx_desc->htt_tx_desc);
         htt_tx_desc_set_chanfreq(tx_desc->htt_tx_desc, chanfreq);
 
-	ol_tx_enqueue(vdev->pdev, txq, tx_desc, &tx_msdu_info);
-	if (tx_msdu_info.peer) {
-	     /* remove the peer reference added above */
-	     ol_txrx_peer_unref_delete(tx_msdu_info.peer);
-	}
+        ol_tx_enqueue(vdev->pdev, txq, tx_desc, &tx_msdu_info);
+        if (tx_msdu_info.peer) {
+            /* remove the peer reference added above */
+            ol_txrx_peer_unref_delete(tx_msdu_info.peer);
+        }
         ol_tx_sched(vdev->pdev);
     } else {
-	htt_tx_desc_set_chanfreq(tx_desc->htt_tx_desc, chanfreq);
+        htt_tx_desc_set_chanfreq(tx_desc->htt_tx_desc, chanfreq);
+        NBUF_SET_PACKET_TRACK(tx_desc->netbuf, NBUF_TX_PKT_MGMT_TRACK);
         ol_tx_send_nonstd(pdev, tx_desc, tx_mgmt_frm, htt_pkt_type_mgmt);
     }
 
@@ -948,7 +1280,7 @@ adf_nbuf_t ol_tx_reinject(
 
     htt_tx_desc_set_peer_id(tx_desc->htt_tx_desc, peer_id);
 
-    ol_tx_send(vdev->pdev, tx_desc, msdu);
+    ol_tx_send(vdev->pdev, tx_desc, msdu, vdev->vdev_id);
 
     return NULL;
 }

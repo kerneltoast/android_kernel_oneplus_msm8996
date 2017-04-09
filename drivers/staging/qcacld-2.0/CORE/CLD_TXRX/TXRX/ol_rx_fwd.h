@@ -80,5 +80,10 @@ ol_rx_fwd_check(
     unsigned tid,
     adf_nbuf_t msdu_list);
 
+A_STATUS
+ol_get_intra_bss_fwd_pkts_count(
+	uint8_t vdev_id,
+	unsigned long *fwd_tx_packets,
+	unsigned long *fwd_rx_packets);
 
 #endif /* _OL_RX_FWD_H_ */

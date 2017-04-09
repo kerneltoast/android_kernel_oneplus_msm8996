@@ -225,7 +225,7 @@ tSirRetStatus limCreateSessionForRemainOnChn(tpAniSirGlobal pMac, tPESession **p
     {
         if((psessionEntry = peCreateSession(pMac,
            pMac->lim.gpLimRemainOnChanReq->selfMacAddr,
-           &sessionId, 1, eSIR_INFRA_AP_MODE)) == NULL)
+           &sessionId, pMac->lim.maxStation, eSIR_INFRA_AP_MODE)) == NULL)
         {
             limLog(pMac, LOGE, FL("Session Can not be created "));
             /* send remain on chn failure */
@@ -786,6 +786,7 @@ void limSendP2PActionFrame(tpAniSirGlobal pMac, tpSirMsgQ pMsg)
         {
             limLog(pMac, LOGE,
                     FL("Remain on channel is not running"));
+            pMac->lim.mgmtFrameSessionId = pMbMsg->sessionId;
             limP2PActionCnf(pMac, false);
             return;
         }
@@ -823,6 +824,7 @@ void limSendP2PActionFrame(tpAniSirGlobal pMac, tpSirMsgQ pMsg)
         }
         if( !isSessionActive )
         {
+            pMac->lim.mgmtFrameSessionId = pMbMsg->sessionId;
             limP2PActionCnf(pMac, false);
             return;
         }
@@ -981,6 +983,7 @@ send_action_frame:
             {
                 limLog(pMac, LOGE,
                             FL("Failed to Send Action frame"));
+                pMac->lim.mgmtFrameSessionId = pMbMsg->sessionId;
                 limP2PActionCnf(pMac, false);
                 return;
             }
@@ -1062,8 +1065,9 @@ send_frame1:
 
         if (!pMbMsg->noack)
         {
-            limP2PActionCnf(pMac, (HAL_STATUS_SUCCESS(halstatus)) ?
-                                                       true : false);
+           pMac->lim.mgmtFrameSessionId = pMbMsg->sessionId;
+           limP2PActionCnf(pMac, (HAL_STATUS_SUCCESS(halstatus)) ?
+                                                      true : false);
         }
         pMac->lim.mgmtFrameSessionId = 0xff;
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2014-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -98,6 +98,9 @@
 #define WLAN_SVC_WLAN_TP_IND        0x109
 #define WLAN_SVC_RPS_ENABLE_IND     0x10A
 #define WLAN_SVC_WLAN_TP_TX_IND     0x10B
+#define WLAN_SVC_WLAN_AUTO_SHUTDOWN_CANCEL_IND 0x10C
+#define WLAN_SVC_WLAN_RADIO_INDEX 0x10D
+#define WLAN_SVC_FW_SHUTDOWN_IND  0x10E
 
 #define WLAN_SVC_MAX_SSID_LEN    32
 #define WLAN_SVC_MAX_BSSID_LEN   6
@@ -138,6 +141,18 @@ typedef struct sAniHdr {
    unsigned short type;
    unsigned short length;
 } tAniHdr, tAniMsgHdr;
+
+typedef struct sAniNlMsg {
+    struct  nlmsghdr nlh;             // Netlink Header
+    int radio;                        // unit number of the radio
+    tAniHdr wmsg;                     // Airgo Message Header
+} tAniNlHdr;
+
+struct radio_index_tlv {
+    unsigned short type;
+    unsigned short length;
+    int radio;
+};
 
 struct wlan_status_data {
    uint8_t lpss_support;

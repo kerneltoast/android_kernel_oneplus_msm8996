@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2017 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -98,6 +98,9 @@ typedef enum eSmeCommandType
 #endif
     eSmeCommandRemainOnChannel,
     eSmeCommandNoAUpdate,
+    eSmeCommandNdpInitiatorRequest,
+    eSmeCommandNdpResponderRequest,
+    eSmeCommandNdpDataEndInitiatorRequest,
 } eSmeCommandType;
 
 
@@ -229,8 +232,9 @@ typedef struct tagSmeStruct
 			      struct sir_lost_link_info *lost_link_info);
     void (*smps_force_mode_cb)(void *context,
 			struct sir_smps_force_mode_event *smps_force_mode_info);
-    void (*chip_power_save_fail_cb)(void *,
-			struct chip_pwr_save_fail_detected_params *);
+    void (*pbpf_get_offload_cb)(void *context, struct sir_bpf_get_offload *);
+    void *mib_stats_context;
+    void (*csr_mib_stats_callback) (struct mib_stats_metrics*, void*);
 } tSmeStruct, *tpSmeStruct;
 
 

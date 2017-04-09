@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2014 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2014, 2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -563,6 +563,19 @@ limProcessAuthFrame(tpAniSirGlobal pMac, tANI_U8 *pRxPacketInfo, tpPESession pse
            (tANI_U32) pRxAuthFrameBody->authTransactionSeqNumber,
            (tANI_U32) pRxAuthFrameBody->authStatusCode,(tANI_U32)pMac->lim.gLimNumPreAuthContexts);)
 
+    // IOT Workaround: with invalid WEP password, some APs reply AUTH frame 4
+    // with invalid seqNumber. This AUTH frame will be dropped by driver,
+    // thus driver sends the generic status code instead of protocol status code.
+    // As a workaround, assign the correct seqNumber for the AUTH frame 4.
+    if (psessionEntry->limMlmState == eLIM_MLM_WT_AUTH_FRAME4_STATE &&
+        pRxAuthFrameBody->authTransactionSeqNumber != SIR_MAC_AUTH_FRAME_1 &&
+        pRxAuthFrameBody->authTransactionSeqNumber != SIR_MAC_AUTH_FRAME_2 &&
+        pRxAuthFrameBody->authTransactionSeqNumber != SIR_MAC_AUTH_FRAME_3) {
+        PELOGE(limLog(pMac, LOGE, FL("Workaround: Assign a correct seqNumber=4 "
+                "for AUTH frame 4"));)
+        pRxAuthFrameBody->authTransactionSeqNumber = SIR_MAC_AUTH_FRAME_4;
+    }
+
     switch (pRxAuthFrameBody->authTransactionSeqNumber)
     {
         case SIR_MAC_AUTH_FRAME_1:
@@ -605,8 +618,8 @@ limProcessAuthFrame(tpAniSirGlobal pMac, tANI_U8 *pRxPacketInfo, tpPESession pse
 
                 /* pStaDS != NULL and isConnected = 1 means the STA is already
                  * connected, But SAP received the Auth from that station.
-                 * For non PMF connection send Deauth frame as STA will retry
-                 * to connect back.
+                 * For non PMF connection, just delete the STA here as it will
+                 * retry to connect back after timeout.
                  *
                  * For PMF connection the AP should not tear down or otherwise
                  * modify the state of the existing association until the
@@ -624,8 +637,6 @@ limProcessAuthFrame(tpAniSirGlobal pMac, tANI_U8 *pRxPacketInfo, tpPESession pse
                                 "Send the Deauth and lim Delete Station Context"
                                 "(staId: %d, assocId: %d) "),
                             pStaDs->staIndex, assocId);
-                    limSendDeauthMgmtFrame(pMac, eSIR_MAC_UNSPEC_FAILURE_REASON,
-                            (tANI_U8 *) pHdr->sa, psessionEntry, FALSE);
                     limTriggerSTAdeletion(pMac, pStaDs, psessionEntry);
                     return;
                 }
@@ -650,7 +661,7 @@ limProcessAuthFrame(tpAniSirGlobal pMac, tANI_U8 *pRxPacketInfo, tpPESession pse
                                                     eLIM_AUTH_RSP_TIMER,
                                                     pAuthNode->authNodeIdx);
                     }
-                    PELOGE(limLog(pMac, LOGE, FL("STA is initiating brand-new Authentication ..."));)
+                    limLog(pMac, LOGW, FL("STA is initiating brand-new Authentication ..."));
                     limDeletePreAuthNode(pMac,
                                          pHdr->sa);
                     /**
@@ -699,7 +710,7 @@ limProcessAuthFrame(tpAniSirGlobal pMac, tANI_U8 *pRxPacketInfo, tpPESession pse
                      * but ACK lost at STA side, in this case 2nd auth frame is already
                      * in transmission queue
                      * */
-                    PELOGE(limLog(pMac, LOGE, FL("STA is initiating Authentication after ACK lost..."));)
+                    limLog(pMac, LOGW, FL("STA is initiating Authentication after ACK lost..."));
                     return;
                 }
             }
@@ -759,7 +770,7 @@ limProcessAuthFrame(tpAniSirGlobal pMac, tANI_U8 *pRxPacketInfo, tpPESession pse
                             return;
                         }
 
-                        PELOG1(limLog(pMac, LOG1, FL("Alloc new data: %x peer "), pAuthNode);
+                        PELOG1(limLog(pMac, LOG1, FL("Alloc new data: %p peer"), pAuthNode);
                         limPrintMacAddr(pMac, pHdr->sa, LOG1);)
 
                         vos_mem_copy((tANI_U8 *) pAuthNode->peerMacAddr,
@@ -885,7 +896,7 @@ limProcessAuthFrame(tpAniSirGlobal pMac, tANI_U8 *pRxPacketInfo, tpPESession pse
                             pAuthNode->timestamp = vos_timer_get_system_ticks();
                             limAddPreAuthNode(pMac, pAuthNode);
 
-                            PELOG1(limLog(pMac, LOG1, FL("Alloc new data: %x id %d peer "),
+                            PELOG1(limLog(pMac, LOG1, FL("Alloc new data: %p id %d peer "),
                                           pAuthNode, pAuthNode->authNodeIdx);)
                             PELOG1(limPrintMacAddr(pMac, pHdr->sa, LOG1);)
 
@@ -1149,7 +1160,7 @@ limProcessAuthFrame(tpAniSirGlobal pMac, tANI_U8 *pRxPacketInfo, tpPESession pse
                         return;
                     }
 
-                    PELOG1(limLog(pMac, LOG1, FL("Alloc new data: %x peer "), pAuthNode);)
+                    PELOG1(limLog(pMac, LOG1, FL("Alloc new data: %p peer "), pAuthNode);)
                     PELOG1(limPrintMacAddr(pMac, pHdr->sa, LOG1);)
 
                     vos_mem_copy((tANI_U8 *) pAuthNode->peerMacAddr,
@@ -1697,7 +1708,7 @@ limProcessAuthFrame(tpAniSirGlobal pMac, tANI_U8 *pRxPacketInfo, tpPESession pse
 
                     return;
                 }
-                PELOG1(limLog(pMac, LOG1, FL("Alloc new data: %x peer "), pAuthNode);
+                PELOG1(limLog(pMac, LOG1, FL("Alloc new data: %p peer "), pAuthNode);
                 limPrintMacAddr(pMac, pHdr->sa, LOG1);)
 
                 vos_mem_copy((tANI_U8 *) pAuthNode->peerMacAddr,

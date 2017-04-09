@@ -13,6 +13,24 @@ endif
 # Build/Package only in case of supported target
 ifneq ($(WLAN_CHIPSET),)
 
+# Check for kernel version
+ifeq ($(TARGET_KERNEL_VERSION),)
+$(info "WLAN: TARGET_KERNEL_VERSION not defined, assuming default")
+TARGET_KERNEL_VERSION := 3.18
+TARGET_KERNEL_SOURCE := kernel
+KERNEL_TO_BUILD_ROOT_OFFSET := ../
+endif
+
+# Check for supported kernel
+ifeq ($(TARGET_KERNEL_VERSION),3.18)
+$(info "WLAN: supported kernel detected, building qcacld-2.0")
+
+# If kernel path offset is not defined, assume old kernel structure
+ifeq ($(KERNEL_TO_BUILD_ROOT_OFFSET),)
+$(info "WLAN: KERNEL_TO_BUILD_ROOT_OFFSET not defined, assuming default")
+KERNEL_TO_BUILD_ROOT_OFFSET := ../
+endif
+
 LOCAL_PATH := $(call my-dir)
 
 # This makefile is only for DLKM
@@ -50,7 +68,7 @@ endif
 
 ###########################################################
 # This is set once per LOCAL_PATH, not per (kernel) module
-KBUILD_OPTIONS := WLAN_ROOT=../$(WLAN_BLD_DIR)/qcacld-2.0
+KBUILD_OPTIONS := WLAN_ROOT=$(KERNEL_TO_BUILD_ROOT_OFFSET)$(WLAN_BLD_DIR)/qcacld-2.0
 # We are actually building wlan.ko here, as per the
 # requirement we are specifying <chipset>_wlan.ko as LOCAL_MODULE.
 # This means we need to rename the module to <chipset>_wlan.ko
@@ -60,10 +78,11 @@ KBUILD_OPTIONS += BOARD_PLATFORM=$(TARGET_BOARD_PLATFORM)
 KBUILD_OPTIONS += $(WLAN_SELECT)
 KBUILD_OPTIONS += WLAN_OPEN_SOURCE=$(WLAN_OPEN_SOURCE)
 
+#module to be built for all user,userdebug and eng tags
 include $(CLEAR_VARS)
 LOCAL_MODULE              := $(WLAN_CHIPSET)_wlan.ko
 LOCAL_MODULE_KBUILD_NAME  := wlan.ko
-LOCAL_MODULE_TAGS         := debug
+LOCAL_MODULE_TAGS         := optional
 LOCAL_MODULE_DEBUG_ENABLE := true
 LOCAL_MODULE_PATH         := $(TARGET_OUT)/lib/modules/$(WLAN_CHIPSET)
 include $(DLKM_DIR)/AndroidKernelModule.mk
@@ -73,9 +92,11 @@ include $(DLKM_DIR)/AndroidKernelModule.mk
 # standard module location.
 # TO-DO: This step needs to be moved to a post-build make target instead
 # TO-DO: as this may run multiple times
+ifneq ($(call is-board-platform-in-list, msm8952),true)
 $(shell mkdir -p $(TARGET_OUT)/lib/modules; \
     ln -sf /system/lib/modules/$(WLAN_CHIPSET)/$(WLAN_CHIPSET)_wlan.ko \
            $(TARGET_OUT)/lib/modules/wlan.ko)
+endif
 $(shell ln -sf /persist/wlan_mac.bin $(TARGET_OUT_ETC)/firmware/wlan/qca_cld/wlan_mac.bin)
 
 ifeq ($(call is-board-platform-in-list, msm8960),true)
@@ -108,6 +129,6 @@ endif
 endif
 
 endif # DLKM check
-
+endif # Supported kernel check
 endif # supported target check
 endif # WLAN enabled check

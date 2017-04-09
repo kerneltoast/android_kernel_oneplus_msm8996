@@ -120,12 +120,11 @@ limExtractApCapability(tpAniSirGlobal pMac, tANI_U8 *pIE, tANI_U16 ieLen,
             pMac->lim.htCapabilityPresentInBeacon = 0;
 
 #ifdef WLAN_FEATURE_11AC
-        VOS_TRACE(VOS_MODULE_ID_PE, VOS_TRACE_LEVEL_INFO_MED,
-            "***beacon.VHTCaps.present*****=%d BSS_VHT_CAPABLE:%d",
+        limLog(pMac, LOG1,
+            FL("Beacon : VHTCaps.present: %d SU Beamformer: %d, IS_BSS_VHT_CAPABLE: %d"),
             pBeaconStruct->VHTCaps.present,
+            pBeaconStruct->VHTCaps.suBeamFormerCap,
             IS_BSS_VHT_CAPABLE(pBeaconStruct->VHTCaps));
-        VOS_TRACE(VOS_MODULE_ID_PE, VOS_TRACE_LEVEL_INFO_MED,
-           "***beacon.SU Beamformer Capable*****=%d",pBeaconStruct->VHTCaps.suBeamFormerCap);
 
         if (IS_BSS_VHT_CAPABLE(pBeaconStruct->VHTCaps) && pBeaconStruct->VHTOperation.present)
         {
@@ -154,7 +153,7 @@ limExtractApCapability(tpAniSirGlobal pMac, tANI_U8 *pIE, tANI_U16 ieLen,
             psessionEntry->vhtTxChannelWidthSet = vht_ch_wd;
 
             if (pBeaconStruct->Vendor1IEPresent &&
-                pBeaconStruct->Vendor2IEPresent &&
+                pBeaconStruct->vendor2_ie.present &&
                 pBeaconStruct->Vendor3IEPresent)
             {
                 if (((pBeaconStruct->VHTCaps.txMCSMap & VHT_MCS_3x3_MASK) ==
@@ -194,25 +193,32 @@ limExtractApCapability(tpAniSirGlobal pMac, tANI_U8 *pIE, tANI_U16 ieLen,
         // Extract the UAPSD flag from WMM Parameter element
         if (pBeaconStruct->wmeEdcaPresent)
             *uapsd = pBeaconStruct->edcaParams.qosInfo.uapsd;
+
+        if (pMac->roam.configParam.allow_tpc_from_ap) {
+
+            if (pBeaconStruct->powerConstraintPresent) {
+#if defined WLAN_FEATURE_VOWIFI
+                *localConstraint -=
+                  pBeaconStruct->localPowerConstraint.localPowerConstraints;
+#else
+                localPowerConstraints =
+                       (tANI_U32)pBeaconStruct->localPowerConstraint.
+                                                     localPowerConstraints;
+#endif
+            }
+            else {
 #if defined FEATURE_WLAN_ESE
-        /* If there is Power Constraint Element specifically,
-         * adapt to it. Hence there is else condition check
-         * for this if statement.
-         */
-        if ( pBeaconStruct->eseTxPwr.present)
-        {
-            *localConstraint = pBeaconStruct->eseTxPwr.power_limit;
-        }
-        psessionEntry->is_ese_version_ie_present =
+            /* If there is Power Constraint Element specifically,
+             * adapt to it. Hence there is else condition check
+             * for this if statement.
+             */
+            if ( pBeaconStruct->eseTxPwr.present)
+                 *localConstraint = pBeaconStruct->eseTxPwr.power_limit;
+
+                 psessionEntry->is_ese_version_ie_present =
                               pBeaconStruct->is_ese_ver_ie_present;
 #endif
-        if (pBeaconStruct->powerConstraintPresent)
-        {
-#if defined WLAN_FEATURE_VOWIFI
-           *localConstraint -= pBeaconStruct->localPowerConstraint.localPowerConstraints;
-#else
-           localPowerConstraints = (tANI_U32)pBeaconStruct->localPowerConstraint.localPowerConstraints;
-#endif
+            }
         }
 #if !defined WLAN_FEATURE_VOWIFI
         if (cfgSetInt(pMac, WNI_CFG_LOCAL_POWER_CONSTRAINT, localPowerConstraints) != eSIR_SUCCESS)

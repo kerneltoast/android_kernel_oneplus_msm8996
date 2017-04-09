@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -418,7 +418,8 @@ rrmProcessNeighborReportResponse( tpAniSirGlobal pMac,
    //Send request to SME.
    mmhMsg.type    = pSmeNeighborRpt->messageType;
    mmhMsg.bodyptr = pSmeNeighborRpt;
-   MTRACE(macTraceMsgTx(pMac, pSessionEntry->peSessionId, mmhMsg.type));
+   MTRACE(macTrace(pMac, TRACE_CODE_TX_SME_MSG, pSessionEntry->peSessionId,
+                                                           mmhMsg.type));
    status = limSysProcessMmhMsgApi(pMac, &mmhMsg, ePROT);
 
    return status;
@@ -641,8 +642,12 @@ rrmProcessBeaconReportReq( tpAniSirGlobal pMac,
    //Send request to SME.
    mmhMsg.type    = eWNI_SME_BEACON_REPORT_REQ_IND;
    mmhMsg.bodyptr = pSmeBcnReportReq;
-   MTRACE(macTraceMsgTx(pMac, pSessionEntry->peSessionId, mmhMsg.type));
-   return limSysProcessMmhMsgApi(pMac, &mmhMsg, ePROT);
+   MTRACE(macTrace(pMac, TRACE_CODE_TX_SME_MSG, pSessionEntry->peSessionId,
+                                                          mmhMsg.type));
+   if (eSIR_SUCCESS != limSysProcessMmhMsgApi(pMac, &mmhMsg, ePROT))
+      return eRRM_FAILURE;
+
+   return eRRM_SUCCESS;
 }
 
 // --------------------------------------------------------------------
@@ -1230,8 +1235,8 @@ rrmInitialize(tpAniSirGlobal pMac)
    pRRMCaps->fine_time_meas_rpt = 1;
    pRRMCaps->lci_capability = 1;
 
-   pRRMCaps->operatingChanMax = 3;
-   pRRMCaps->nonOperatingChanMax = 3;
+   pRRMCaps->operatingChanMax = 4;
+   pRRMCaps->nonOperatingChanMax = 4;
 
    return eSIR_SUCCESS;
 }

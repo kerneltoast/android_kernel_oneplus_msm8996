@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -46,6 +46,7 @@
 #include <limPropExtsUtils.h>
 #include <limAssocUtils.h>
 #include <limSession.h>
+#include <limSessionUtils.h>
 #include <limAdmitControl.h>
 #include "wmmApsd.h"
 
@@ -307,9 +308,10 @@ int limProcessFTPreAuthReq(tpAniSirGlobal pMac, tpSirMsgQ pMsg)
                        psessionEntry, 0, 0);
 #endif
 
-    /* Dont need to suspend if APs are in same channel */
-    if (psessionEntry->currentOperChannel !=
-        psessionEntry->ftPEContext.pFTPreAuthReq->preAuthchannelNum) {
+    /* Dont need to suspend if APs are in same channel and DUT is not in MCC state*/
+    if ((psessionEntry->currentOperChannel !=
+        psessionEntry->ftPEContext.pFTPreAuthReq->preAuthchannelNum)
+        || limIsInMCC(pMac)) {
        /* Need to suspend link only if the channels are different */
        PELOG2(limLog(pMac, LOG2, FL("Performing pre-auth on different"
                " channel (session %p)"), psessionEntry);)
@@ -343,7 +345,7 @@ void limPerformFTPreAuth(tpAniSirGlobal pMac, eHalStatus status,
     if (psessionEntry->is11Rconnection &&
         psessionEntry->ftPEContext.pFTPreAuthReq) {
         /* Only 11r assoc has FT IEs */
-        if (psessionEntry->ftPEContext.pFTPreAuthReq->ft_ies == NULL) {
+        if (psessionEntry->ftPEContext.pFTPreAuthReq->ft_ies_length == 0) {
             PELOGE(limLog( pMac, LOGE,
                            "%s: FTIEs for Auth Req Seq 1 is absent",
                            __func__);)
@@ -388,6 +390,9 @@ void limPerformFTPreAuth(tpAniSirGlobal pMac, eHalStatus status,
     authFrame.authTransactionSeqNumber = SIR_MAC_AUTH_FRAME_1;
     authFrame.authStatusCode = 0;
 
+    pMac->lim.limTimers.g_lim_periodic_auth_retry_timer.sessionId =
+                                          psessionEntry->peSessionId;
+
     /* Start timer here to come back to operating channel */
     pMac->lim.limTimers.gLimFTPreAuthRspTimer.sessionId =
                                        psessionEntry->peSessionId;
@@ -411,7 +416,7 @@ void limPerformFTPreAuth(tpAniSirGlobal pMac, eHalStatus status,
 
     limSendAuthMgmtFrame(pMac, &authFrame,
         psessionEntry->ftPEContext.pFTPreAuthReq->preAuthbssId,
-        LIM_NO_WEP_IN_FC, psessionEntry, eSIR_FALSE);
+        LIM_NO_WEP_IN_FC, psessionEntry, eSIR_TRUE);
     return;
 
 preauth_fail:
@@ -461,9 +466,9 @@ tSirRetStatus limFTPrepareAddBssReq( tpAniSirGlobal pMac,
 
     vos_mem_set((tANI_U8 *) pAddBssParams, sizeof( tAddBssParams ), 0);
 
-    limExtractApCapabilities( pMac,
+    limExtractApCapabilities(pMac,
         (tANI_U8 *) bssDescription->ieFields,
-        limGetIElenFromBssDescription( bssDescription ), pBeaconStruct );
+        GET_IE_LEN_IN_BSS(bssDescription->length), pBeaconStruct);
 
     if (pMac->lim.gLimProtectionControl !=
                                     WNI_CFG_FORCE_POLICY_PROTECTION_DISABLE)
@@ -825,7 +830,9 @@ void limFillFTSession(tpAniSirGlobal pMac,
    tSchBeaconStruct  *pBeaconStruct;
    tANI_U32          selfDot11Mode;
    ePhyChanBondState cbEnabledMode;
+#ifdef WLAN_FEATURE_11W
    VOS_STATUS vosStatus;
+#endif
 
    pBeaconStruct = vos_mem_malloc(sizeof(tSchBeaconStruct));
    if (NULL == pBeaconStruct) {
@@ -851,10 +858,10 @@ void limFillFTSession(tpAniSirGlobal pMac,
    pftSessionEntry->smeSessionId = psessionEntry->smeSessionId;
    pftSessionEntry->transactionId = 0;
 
-   limExtractApCapabilities( pMac,
-         (tANI_U8 *) pbssDescription->ieFields,
-         limGetIElenFromBssDescription( pbssDescription ),
-         pBeaconStruct );
+   limExtractApCapabilities(pMac,
+         (tANI_U8 *)pbssDescription->ieFields,
+         GET_IE_LEN_IN_BSS(pbssDescription->length),
+         pBeaconStruct);
 
    pftSessionEntry->rateSet.numRates = pBeaconStruct->supportedRates.numRates;
    vos_mem_copy(pftSessionEntry->rateSet.rate,
@@ -934,10 +941,10 @@ void limFillFTSession(tpAniSirGlobal pMac,
                                           pftSessionEntry->currentOperChannel );
    localPowerConstraint = regMax;
    limExtractApCapability( pMac, (tANI_U8 *) pbssDescription->ieFields,
-         limGetIElenFromBssDescription(pbssDescription),
+         GET_IE_LEN_IN_BSS(pbssDescription->length),
          &pftSessionEntry->limCurrentBssQosCaps,
          &pftSessionEntry->limCurrentBssPropCap,
-         &currentBssUapsd , &localPowerConstraint, psessionEntry);
+         &currentBssUapsd , &localPowerConstraint, pftSessionEntry);
 
    pftSessionEntry->limReassocBssQosCaps =
       pftSessionEntry->limCurrentBssQosCaps;
@@ -989,14 +996,14 @@ void limFillFTSession(tpAniSirGlobal pMac,
 #ifdef WLAN_FEATURE_11W
    pftSessionEntry->limRmfEnabled = psessionEntry->limRmfEnabled;
 
-   if (psessionEntry->limRmfEnabled) {
-       psessionEntry->pmfComebackTimerInfo.pMac = pMac;
-       psessionEntry->pmfComebackTimerInfo.sessionID =
+   if (pftSessionEntry->limRmfEnabled) {
+       pftSessionEntry->pmfComebackTimerInfo.pMac = pMac;
+       pftSessionEntry->pmfComebackTimerInfo.sessionID =
                                      psessionEntry->smeSessionId;
-       vosStatus = vos_timer_init(&psessionEntry->pmfComebackTimer,
+       vosStatus = vos_timer_init(&pftSessionEntry->pmfComebackTimer,
                                   VOS_TIMER_TYPE_SW,
                                   limPmfComebackTimerCallback,
-                                 (void *)&psessionEntry->pmfComebackTimerInfo);
+                                 (void *)&pftSessionEntry->pmfComebackTimerInfo);
        if (VOS_STATUS_SUCCESS != vosStatus) {
            limLog(pMac, LOGP,
                   FL("cannot init pmf comeback timer."));
@@ -1304,8 +1311,9 @@ void limHandleFTPreAuthRsp(tpAniSirGlobal pMac, tSirRetStatus status,
    }
 
 send_rsp:
-   if (psessionEntry->currentOperChannel !=
-         psessionEntry->ftPEContext.pFTPreAuthReq->preAuthchannelNum) {
+   if ((psessionEntry->currentOperChannel !=
+         psessionEntry->ftPEContext.pFTPreAuthReq->preAuthchannelNum)
+         || limIsInMCC(pMac)) {
       /* Need to move to the original AP channel */
       limChangeChannelWithCallback(pMac, psessionEntry->currentOperChannel,
             limPerformPostFTPreAuthAndChannelChange,
@@ -1684,7 +1692,7 @@ tANI_BOOLEAN limProcessFTUpdateKey(tpAniSirGlobal pMac, tANI_U32 *pMsgBuf )
         }
 
         pAddBssParams->extSetStaKeyParam.singleTidRc = val;
-        PELOG1(limLog(pMac, LOG1, FL("Key valid %d"),
+        PELOG1(limLog(pMac, LOG1, FL("Key valid %d, keyLength=%d"),
                     pAddBssParams->extSetStaKeyParamValid,
                     pAddBssParams->extSetStaKeyParam.key[0].keyLength);)
 
@@ -1697,29 +1705,6 @@ tANI_BOOLEAN limProcessFTUpdateKey(tpAniSirGlobal pMac, tANI_U32 *pMsgBuf )
                        pKeyInfo->bssId);
 
         pAddBssParams->extSetStaKeyParam.sendRsp = FALSE;
-
-        if(pAddBssParams->extSetStaKeyParam.key[0].keyLength == 16)
-        {
-            PELOG1(limLog(pMac, LOG1,
-            FL("BSS key = %02X-%02X-%02X-%02X-%02X-%02X-%02X- "
-            "%02X-%02X-%02X-%02X-%02X-%02X-%02X-%02X-%02X"),
-            pAddBssParams->extSetStaKeyParam.key[0].key[0],
-            pAddBssParams->extSetStaKeyParam.key[0].key[1],
-            pAddBssParams->extSetStaKeyParam.key[0].key[2],
-            pAddBssParams->extSetStaKeyParam.key[0].key[3],
-            pAddBssParams->extSetStaKeyParam.key[0].key[4],
-            pAddBssParams->extSetStaKeyParam.key[0].key[5],
-            pAddBssParams->extSetStaKeyParam.key[0].key[6],
-            pAddBssParams->extSetStaKeyParam.key[0].key[7],
-            pAddBssParams->extSetStaKeyParam.key[0].key[8],
-            pAddBssParams->extSetStaKeyParam.key[0].key[9],
-            pAddBssParams->extSetStaKeyParam.key[0].key[10],
-            pAddBssParams->extSetStaKeyParam.key[0].key[11],
-            pAddBssParams->extSetStaKeyParam.key[0].key[12],
-            pAddBssParams->extSetStaKeyParam.key[0].key[13],
-            pAddBssParams->extSetStaKeyParam.key[0].key[14],
-            pAddBssParams->extSetStaKeyParam.key[0].key[15]);)
-        }
     }
     return TRUE;
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011, 2014 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011, 2014, 2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -205,7 +205,7 @@ void
 htt_t2h_stats_print(u_int8_t *stats_data, int concise);
 
 #ifndef HTT_DEBUG_LEVEL
-#if defined(DEBUG)
+#if defined(WLAN_DEBUG)
 #define HTT_DEBUG_LEVEL 10
 #else
 #define HTT_DEBUG_LEVEL 0
@@ -325,5 +325,13 @@ htt_clear_bundle_stats(struct htt_pdev_t *pdev);
 #define htt_clear_bundle_stats(pdev) /*no-op*/
 
 #endif
+
+typedef void (*tp_rx_pkt_dump_cb)(adf_nbuf_t msdu, struct ol_txrx_peer_t *peer,
+                                          uint8_t status);
+void htt_register_rx_pkt_dump_callback(struct htt_pdev_t *pdev,
+              tp_rx_pkt_dump_cb ol_rx_pkt_dump_call);
+void htt_deregister_rx_pkt_dump_callback(struct htt_pdev_t *pdev);
+void ol_rx_pkt_dump_call(adf_nbuf_t msdu, struct ol_txrx_peer_t *peer, uint8_t status);
+void htt_mark_first_wakeup_packet(htt_pdev_handle pdev, uint8_t value);
 
 #endif /* _OL_HTT_API__H_ */

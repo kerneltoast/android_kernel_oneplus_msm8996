@@ -82,7 +82,7 @@ struct hif_pci_pm_stats {
 struct hif_pci_softc {
     void __iomem *mem; /* PCI address. */
                        /* For efficiency, should be first in struct */
-
+    size_t mem_len;
     struct device *dev;
     struct pci_dev *pdev;
     struct _NIC_DEV aps_osdev;
@@ -168,8 +168,6 @@ int hif_pci_check_soc_status(struct hif_pci_softc *sc);
 void dump_CE_debug_register(struct hif_pci_softc *sc);
 
 /*These functions are exposed to HDD*/
-int hif_register_driver(void);
-void hif_unregister_driver(void);
 int hif_init_adf_ctx(void *ol_sc);
 void hif_init_pdev_txrx_handle(void *ol_sc, void *txrx_handle);
 void hif_disable_isr(void *ol_sc);

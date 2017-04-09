@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2017 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -55,7 +55,10 @@
 /* max length of command string in hostapd ioctl */
 #define HOSTAPD_IOCTL_COMMAND_STRLEN_MAX   8192
 
-hdd_adapter_t* hdd_wlan_create_ap_dev( hdd_context_t *pHddCtx, tSirMacAddr macAddr, tANI_U8 *name);
+hdd_adapter_t* hdd_wlan_create_ap_dev(hdd_context_t *pHddCtx,
+                                      tSirMacAddr macAddr,
+                                      unsigned char name_assign_type,
+                                      tANI_U8 *name);
 
 VOS_STATUS hdd_register_hostapd(hdd_adapter_t *pAdapter, tANI_U8 rtnl_held);
 
@@ -89,11 +92,13 @@ int hdd_softap_unpackIE( tHalHandle halHandle,
                 u_int8_t *gen_ie );
 
 VOS_STATUS hdd_hostapd_SAPEventCB( tpSap_Event pSapEvent, v_PVOID_t usrDataForCallback);
-VOS_STATUS hdd_init_ap_mode( hdd_adapter_t *pAdapter );
+VOS_STATUS hdd_init_ap_mode( hdd_adapter_t *pAdapter, bool reinit);
 void hdd_set_ap_ops( struct net_device *pWlanHostapdDev );
 int hdd_hostapd_stop (struct net_device *dev);
 void hdd_hostapd_channel_wakelock_init(hdd_context_t *pHddCtx);
 void hdd_hostapd_channel_wakelock_deinit(hdd_context_t *pHddCtx);
+void hdd_sap_indicate_disconnect_for_sta(hdd_adapter_t *adapter);
+void hdd_sap_destroy_events(hdd_adapter_t *adapter);
 #ifdef FEATURE_WLAN_FORCE_SAP_SCC
 void hdd_restart_softap (hdd_context_t *pHddCtx, hdd_adapter_t *pAdapter);
 #endif /* FEATURE_WLAN_FORCE_SAP_SCC */
@@ -170,16 +175,18 @@ hdd_change_sta_conn_pending_status(hdd_context_t *hdd_ctx,
 static inline bool
 hdd_is_sap_restart_required(hdd_context_t *hdd_ctx)
 {
-    bool status;
+    bool status = false;
     spin_lock(&hdd_ctx->sap_update_info_lock);
-    status = hdd_ctx->is_sap_restart_required;
+    if (!hdd_ctx->is_ch_avoid_in_progress)
+        status = hdd_ctx->is_sap_restart_required;
     spin_unlock(&hdd_ctx->sap_update_info_lock);
     return status;
 }
 
 /**
  * hdd_change_sap_restart_required_status() - This function will change the
- *                                            value of is_sap_restart_required
+ * value of is_sap_restart_required
+ *
  * @hdd_ctx: pointer to hdd context
  * @value: value to set
  *
@@ -194,6 +201,26 @@ hdd_change_sap_restart_required_status(hdd_context_t *hdd_ctx,
     spin_lock(&hdd_ctx->sap_update_info_lock);
     hdd_ctx->is_sap_restart_required = value;
     spin_unlock(&hdd_ctx->sap_update_info_lock);
+}
+
+/**
+ * hdd_change_ch_avoidance_status() - update is_ch_avoid_in_progress flag
+ *
+ * @hdd_ctx: pointer to hdd context
+ * @value: value to set
+ *
+ * This function will change the value of is_ch_avoid_in_progress
+ *
+ * Return: none
+ */
+static inline void
+hdd_change_ch_avoidance_status(hdd_context_t *hdd_ctx,
+                               bool value)
+{
+    spin_lock(&hdd_ctx->sap_update_info_lock);
+    hdd_ctx->is_ch_avoid_in_progress = value;
+    spin_unlock(&hdd_ctx->sap_update_info_lock);
+    hddLog(LOG1, FL("is_ch_avoid_in_progress %d"), value);
 }
 
 #endif    // end #if !defined( WLAN_HDD_HOSTAPD_H )

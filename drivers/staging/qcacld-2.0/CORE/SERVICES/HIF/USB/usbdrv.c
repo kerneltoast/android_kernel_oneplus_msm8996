@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -439,6 +439,7 @@ static void usb_hif_usb_recv_prestart_complete(struct urb *urb)
 	A_STATUS status = A_OK;
 	adf_nbuf_t buf = NULL;
 	HIF_USB_PIPE *pipe = urb_context->pipe;
+	unsigned long flags;
 
 	AR_DEBUG_PRINTF(USB_HIF_DEBUG_BULK_IN, (
 				"+%s: recv pipe: %d, stat:%d,len:%d urb:0x%p\n",
@@ -501,9 +502,11 @@ static void usb_hif_usb_recv_prestart_complete(struct urb *urb)
 	usb_hif_cleanup_recv_urb(urb_context);
 
 	/* Prestart URBs runs out and now start working receive pipe. */
+	spin_lock_irqsave(&pipe->device->rx_prestart_lock, flags);
 	if (--pipe->urb_prestart_cnt == 0) {
 		usb_hif_start_recv_pipes(pipe->device);
 	}
+	spin_unlock_irqrestore(&pipe->device->rx_prestart_lock, flags);
 
 	AR_DEBUG_PRINTF(USB_HIF_DEBUG_BULK_IN, ("-%s\n", __func__));
 }
@@ -758,9 +761,11 @@ static void usb_hif_post_recv_prestart_transfers(HIF_USB_PIPE *recv_pipe,
 	a_uint32_t len;
 	struct urb *urb;
 	int i, usb_status, buffer_length = HIF_USB_RX_BUFFER_SIZE;
+	unsigned long flags;
 
 	AR_DEBUG_PRINTF(ATH_DEBUG_TRC, ("+%s\n", __func__));
 
+	spin_lock_irqsave(&recv_pipe->device->rx_prestart_lock, flags);
 	for (i = 0; i < prestart_urb; i++) {
 		urb_context = usb_hif_alloc_urb_from_pipe(recv_pipe);
 		if (NULL == urb_context)
@@ -807,6 +812,7 @@ static void usb_hif_post_recv_prestart_transfers(HIF_USB_PIPE *recv_pipe,
 			recv_pipe->urb_prestart_cnt++;
 
 	}
+	spin_unlock_irqrestore(&recv_pipe->device->rx_prestart_lock, flags);
 
 	AR_DEBUG_PRINTF(ATH_DEBUG_TRC, ("-%s\n", __func__));
 }
@@ -1006,7 +1012,7 @@ A_STATUS usb_hif_submit_ctrl_out(HIF_DEVICE_USB *device,
 	do {
 
 		if (size > 0) {
-			buf = kmalloc(size, GFP_KERNEL);
+			buf = vos_mem_malloc(size);
 			if (NULL == buf) {
 				ret = A_NO_MEMORY;
 				break;
@@ -1035,7 +1041,7 @@ A_STATUS usb_hif_submit_ctrl_out(HIF_DEVICE_USB *device,
 	} while (FALSE);
 
 	if (buf != NULL)
-		kfree(buf);
+		vos_mem_free(buf);
 
 	return ret;
 }
@@ -1052,7 +1058,7 @@ A_STATUS usb_hif_submit_ctrl_in(HIF_DEVICE_USB *device,
 	do {
 
 		if (size > 0) {
-			buf = kmalloc(size, GFP_KERNEL);
+			buf = vos_mem_malloc(size);
 			if (NULL == buf) {
 				ret = A_NO_MEMORY;
 				break;
@@ -1083,7 +1089,7 @@ A_STATUS usb_hif_submit_ctrl_in(HIF_DEVICE_USB *device,
 	} while (FALSE);
 
 	if (buf != NULL)
-		kfree(buf);
+		vos_mem_free(buf);
 
 	return ret;
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2014, 2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -329,6 +329,30 @@ v_TIME_t vos_timer_get_system_ticks( v_VOID_t );
   ------------------------------------------------------------------------*/
 v_TIME_t vos_timer_get_system_time( v_VOID_t );
 
+/**
+ * vos_system_ticks() - get system ticks
+ *
+ * Return: system tick in jiffies
+ */
+static inline vos_time_t vos_system_ticks(void)
+{
+	return __vos_system_ticks();
+}
 
+/**
+ * vos_system_ticks_to_msecs() - convert system ticks into milli seconds
+ * @ticks: System ticks
+ *
+ * Return: system tick converted into milli seconds
+ */
+static inline uint32_t vos_system_ticks_to_msecs(vos_time_t ticks)
+{
+	return __vos_system_ticks_to_msecs(ticks);
+}
 
+unsigned long vos_get_time_of_the_day_ms(void);
+void vos_get_time_of_the_day_in_hr_min_sec_usec(char *tbuf, int len);
+void vos_process_wd_timer(void);
+void vos_wdthread_init_timer_work(void *callbackptr);
+void vos_wdthread_flush_timer_work(void);
 #endif // #if !defined __VOSS_TIMER_H

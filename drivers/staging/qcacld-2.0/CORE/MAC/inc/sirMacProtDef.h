@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -148,7 +148,10 @@
 #define SIR_MAC_ACTION_WME            17
 #define SIR_MAC_ACTION_FST            18
 #define SIR_MAC_ACTION_VHT            21
+#define SIR_MAC_ACTION_MAX            256
 
+#define SIR_MAC_ACTION_TX             1
+#define SIR_MAC_ACTION_RX             2
 // QoS management action codes
 
 #define SIR_MAC_QOS_ADD_TS_REQ      0
@@ -503,6 +506,8 @@
 #define SIR_MAC_NUM_TARGET_IPV6_NS_OFFLOAD_NA   16
 #define SIR_MAC_IPV6_ADDR_LEN               16
 #define SIR_IPV6_ADDR_VALID                 1
+#define SIR_IPV6_ADDR_UC_TYPE               0
+#define SIR_IPV6_ADDR_AC_TYPE               1
 #endif //WLAN_NS_OFFLOAD
 #define SIR_MAC_ARP_OFFLOAD_SIZE        1
 

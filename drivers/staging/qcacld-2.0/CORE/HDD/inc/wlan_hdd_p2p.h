@@ -53,6 +53,9 @@
 #define P2P_ROC_DURATION_MULTIPLIER_GO_PRESENT   2
 #define P2P_ROC_DURATION_MULTIPLIER_GO_ABSENT    5
 
+#define ACTION_FRAME_RSP_WAIT 500
+#define ACTION_FRAME_ACK_WAIT 300
+
 #ifdef WLAN_FEATURE_11W
 #define WLAN_HDD_SET_WEP_FRM_FC(__fc__)     ( (__fc__) = ((__fc__) | 0x40))
 #endif //WLAN_FEATURE_11W
@@ -69,6 +72,7 @@ enum hdd_rx_flags {
 #define P2P_POWER_SAVE_TYPE_OPPORTUNISTIC        (1 << 0)
 #define P2P_POWER_SAVE_TYPE_PERIODIC_NOA         (1 << 1)
 #define P2P_POWER_SAVE_TYPE_SINGLE_NOA           (1 << 2)
+#define NOA_INTERVAL_IN_TU                        102400
 
 #ifdef WLAN_FEATURE_P2P_DEBUG
 typedef enum  { P2P_NOT_ACTIVE,
@@ -167,7 +171,14 @@ int wlan_hdd_mgmt_tx( struct wiphy *wiphy, struct net_device *dev,
 #endif
 
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,7,0)) || defined(WITH_BACKPORTS)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0))
+struct wireless_dev *wlan_hdd_add_virtual_intf(struct wiphy *wiphy,
+                                               const char *name,
+                                               unsigned char name_assign_type,
+                                               enum nl80211_iftype type,
+                                               u32 *flags,
+                                               struct vif_params *params);
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3,7,0)) || defined(WITH_BACKPORTS)
 struct wireless_dev* wlan_hdd_add_virtual_intf(
                   struct wiphy *wiphy, const char *name,
                   enum nl80211_iftype type,
@@ -184,8 +195,12 @@ struct net_device* wlan_hdd_add_virtual_intf(
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,6,0)) || defined(WITH_BACKPORTS)
 int wlan_hdd_del_virtual_intf( struct wiphy *wiphy, struct wireless_dev *wdev );
+int __wlan_hdd_del_virtual_intf(struct wiphy *wiphy,
+                                        struct wireless_dev *wdev);
 #else
 int wlan_hdd_del_virtual_intf( struct wiphy *wiphy, struct net_device *dev );
+int __wlan_hdd_del_virtual_intf(struct wiphy *wiphy,
+                                        struct net_device *dev);
 #endif
 
 void wlan_hdd_cleanup_remain_on_channel_ctx(hdd_adapter_t *pAdapter);

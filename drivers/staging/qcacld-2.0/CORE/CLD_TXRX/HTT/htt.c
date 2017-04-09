@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011, 2014-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011, 2014-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -242,6 +242,7 @@ htt_attach(
 
     HTT_TX_MUTEX_INIT(&pdev->htt_tx_mutex);
     HTT_TX_NBUF_QUEUE_MUTEX_INIT(pdev);
+    HTT_TX_MUTEX_INIT(&pdev->credit_mutex);
 
     /* pre-allocate some HTC_PACKET objects */
     for (i = 0; i < HTT_HTC_PKT_POOL_INIT_SIZE; i++) {
@@ -399,6 +400,7 @@ htt_detach(htt_pdev_handle pdev)
 #endif
     HTT_TX_MUTEX_DESTROY(&pdev->htt_tx_mutex);
     HTT_TX_NBUF_QUEUE_MUTEX_DESTROY(pdev);
+    HTT_TX_MUTEX_DESTROY(&pdev->credit_mutex);
 #ifdef DEBUG_RX_RING_BUFFER
     if (pdev->rx_buff_list)
         adf_os_mem_free(pdev->rx_buff_list);
@@ -655,4 +657,24 @@ void htt_clear_bundle_stats(htt_pdev_handle pdev)
     HTCClearBundleStats(pdev->htc_pdev);
 }
 #endif
+
+/**
+ * htt_mark_first_wakeup_packet() - set flag to indicate that
+ *    fw is compatible for marking first packet after wow wakeup
+ * @pdev: pointer to htt pdev
+ * @value: 1 for enabled/ 0 for disabled
+ *
+ * Return: None
+ */
+void htt_mark_first_wakeup_packet(htt_pdev_handle pdev,
+			uint8_t value)
+{
+	if (!pdev) {
+		adf_os_print("%s: htt pdev is NULL", __func__);
+		return;
+	}
+
+	pdev->cfg.is_first_wakeup_packet = value;
+}
+
 

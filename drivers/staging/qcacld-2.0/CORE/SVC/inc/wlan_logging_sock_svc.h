@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2014-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -48,6 +48,7 @@ int wlan_log_to_user(VOS_TRACE_LEVEL log_level, char *to_be_sent, int length);
 void wlan_logging_set_per_pkt_stats(void);
 void wlan_logging_set_log_level(void);
 void wlan_logging_set_fw_flush_complete(void);
+void wlan_flush_host_logs_for_fatal(void);
 #else
 static inline void wlan_logging_set_per_pkt_stats(void)
 {
@@ -61,6 +62,11 @@ static inline void wlan_logging_set_fw_flush_complete(void)
 {
 	return;
 }
+static inline void wlan_flush_host_logs_for_fatal(void)
+{
+	return;
+}
+
 #endif /* WLAN_LOGGING_SOCK_SVC_ENABLE */
 #ifdef FEATURE_WLAN_DIAG_SUPPORT
 void wlan_report_log_completion(uint32_t is_fatal,
@@ -74,4 +80,9 @@ static inline void wlan_report_log_completion(uint32_t is_fatal,
 	return;
 }
 #endif /* FEATURE_WLAN_DIAG_SUPPORT */
+
+void wlan_pkt_stats_to_logger_thread(void *pl_hdr, void *pkt_dump, void *data);
+
+void wlan_deregister_txrx_packetdump(void);
+void wlan_register_txrx_packetdump(void);
 #endif /* WLAN_LOGGING_SOCK_SVC_H */

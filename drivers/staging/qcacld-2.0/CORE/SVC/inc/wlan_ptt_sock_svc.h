@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -67,6 +67,10 @@
 #define ANI_MSG_CHANNEL_INFO_RSP    (ANI_DRIVER_MSG_START + 5)
 #define ANI_MSG_OEM_ERROR           (ANI_DRIVER_MSG_START + 6)
 #define ANI_MSG_PEER_STATUS_IND     (ANI_DRIVER_MSG_START + 7)
+#define ANI_MSG_SET_OEM_CAP_REQ     (ANI_DRIVER_MSG_START + 8)
+#define ANI_MSG_SET_OEM_CAP_RSP     (ANI_DRIVER_MSG_START + 9)
+#define ANI_MSG_GET_OEM_CAP_REQ     (ANI_DRIVER_MSG_START + 10)
+#define ANI_MSG_GET_OEM_CAP_RSP     (ANI_DRIVER_MSG_START + 11)
 
 #define ANI_MAX_RADIOS      3
 #define ANI_NL_MSG_OK       0
@@ -96,16 +100,6 @@
 int ptt_sock_activate_svc(void *pAdapter);
 int ptt_sock_send_msg_to_app(tAniHdr *wmsg, int radio, int src_mod, int pid);
 
-/*
- * Format of message exchanged between the PTT Socket App in userspace and the
- * WLAN Driver, in either direction. Each msg will begin with this header and
- * will followed by the Quarky message
- */
-typedef struct sAniNlMsg {
-    struct  nlmsghdr nlh;             // Netlink Header
-    int radio;                        // unit number of the radio
-    tAniHdr wmsg;                     // Airgo Message Header
-} tAniNlHdr;
 typedef struct sAniAppRegReq {
     tAniNlModTypes type;              // module id
     int pid;                          // process id

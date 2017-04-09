@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -40,11 +40,16 @@
 #include <linux/mmc/sdio_ids.h>
 #include <linux/mmc/sdio.h>
 #include <linux/mmc/sd.h>
+#include "vos_cnss.h"
+#include "wlan_hdd_main.h"
+#include "wlan_nlink_common.h"
 #include "bmi_msg.h" /* TARGET_TYPE_ */
 #include "if_ath_sdio.h"
 #include "vos_api.h"
 #include "vos_sched.h"
 #include "regtable.h"
+#include "wlan_hdd_power.h"
+#include "targaddrs.h"
 
 #ifndef REMOVE_PKT_LOG
 #include "ol_txrx_types.h"
@@ -60,6 +65,12 @@
 #endif /* CONFIG_PM */
 #endif /* ATH_BUS_PM */
 
+#ifndef offsetof
+#define offsetof(type, field) ((adf_os_size_t)(&((type *)0)->field))
+#endif
+
+#define FW_IND_HELPER		0x8000
+
 #ifndef REMOVE_PKT_LOG
 struct ol_pl_os_dep_funcs *g_ol_pl_os_dep_funcs = NULL;
 #endif
@@ -72,6 +83,58 @@ extern void __hdd_wlan_exit(void);
 
 struct ath_hif_sdio_softc *sc = NULL;
 
+#if defined(CONFIG_CNSS) && defined(HIF_SDIO)
+static inline void *hif_get_virt_ramdump_mem(unsigned long *size)
+{
+	if (!sc)
+		return NULL;
+
+	return vos_get_virt_ramdump_mem(sc->dev, size);
+}
+
+static inline void hif_release_ramdump_mem(unsigned long *address)
+{
+}
+#else
+#ifndef TARGET_DUMP_FOR_NON_QC_PLATFORM
+static inline void *hif_get_virt_ramdump_mem(unsigned long *size)
+{
+	void *addr;
+	addr = ioremap(RAMDUMP_ADDR, RAMDUMP_SIZE);
+	if (addr)
+		*size = RAMDUMP_SIZE;
+	return addr;
+}
+
+static inline void hif_release_ramdump_mem(unsigned long *address)
+{
+	if (address)
+		iounmap(address);
+}
+#else
+static inline void *hif_get_virt_ramdump_mem(unsigned long *size)
+{
+	size_t length = 0;
+	int flags = GFP_KERNEL;
+
+	length = DRAM_SIZE + IRAM_SIZE + AXI_SIZE;
+
+	if (size != NULL)
+		*size = (unsigned long)length;
+
+	if (in_interrupt() || irqs_disabled() || in_atomic())
+		flags = GFP_ATOMIC;
+
+	return kzalloc(length, flags);
+}
+
+static inline void hif_release_ramdump_mem(unsigned long *address)
+{
+	if (address != NULL)
+		kfree(address);
+}
+#endif
+#endif
 static A_STATUS
 ath_hif_sdio_probe(void *context, void *hif_handle)
 {
@@ -121,7 +184,10 @@ ath_hif_sdio_probe(void *context, void *hif_handle)
         target_type = TARGET_TYPE_AR9888;
 #elif defined(CONFIG_AR6320_SUPPORT)
         id = ((HIF_DEVICE*)hif_handle)->id;
-        if ((id->device & MANUFACTURER_ID_AR6K_BASE_MASK) == MANUFACTURER_ID_QCA9377_BASE) {
+        if (((id->device & MANUFACTURER_ID_AR6K_BASE_MASK) ==
+             MANUFACTURER_ID_QCA9377_BASE) ||
+            ((id->device & MANUFACTURER_ID_AR6K_BASE_MASK) ==
+             MANUFACTURER_ID_QCA9379_BASE)) {
             hif_register_tbl_attach(HIF_TYPE_AR6320V2);
             target_register_tbl_attach(TARGET_TYPE_AR6320V2);
         } else if ((id->device & MANUFACTURER_ID_AR6K_BASE_MASK) == MANUFACTURER_ID_AR6320_BASE) {
@@ -141,6 +207,7 @@ ath_hif_sdio_probe(void *context, void *hif_handle)
 #endif
     }
     func = ((HIF_DEVICE*)hif_handle)->func;
+    sc->dev = &func->dev;
 
     ol_sc = A_MALLOC(sizeof(*ol_sc));
     if (!ol_sc){
@@ -159,14 +226,17 @@ ath_hif_sdio_probe(void *context, void *hif_handle)
 
     ol_sc->hif_hdl = hif_handle;
 
-#ifndef TARGET_DUMP_FOR_NON_QC_PLATFORM
-    ol_sc->ramdump_base = ioremap(RAMDUMP_ADDR, RAMDUMP_SIZE);
-    ol_sc->ramdump_size = RAMDUMP_SIZE;
-    if (ol_sc->ramdump_base == NULL) {
-        ol_sc->ramdump_base = 0;
-        ol_sc->ramdump_size = 0;
+    /* Get RAM dump memory address and size */
+    ol_sc->ramdump_base = hif_get_virt_ramdump_mem(&ol_sc->ramdump_size);
+    if (ol_sc->ramdump_base == NULL || !ol_sc->ramdump_size) {
+        VOS_TRACE(VOS_MODULE_ID_HIF, VOS_TRACE_LEVEL_ERROR,
+            "%s: Failed to get RAM dump memory address or size!\n",
+            __func__);
+    } else {
+        VOS_TRACE(VOS_MODULE_ID_HIF, VOS_TRACE_LEVEL_INFO,
+            "%s: ramdump base 0x%p size %d\n",
+            __func__, ol_sc->ramdump_base, (int)ol_sc->ramdump_size);
     }
-#endif
     init_waitqueue_head(&ol_sc->sc_osdev->event_queue);
 
     if (athdiag_procfs_init(sc) != 0) {
@@ -176,8 +246,14 @@ ath_hif_sdio_probe(void *context, void *hif_handle)
         goto err_attach1;
     }
     ret = hif_init_adf_ctx(ol_sc);
-    if (ret == 0)
-        ret = hdd_wlan_startup(&(func->dev), ol_sc);
+    if (ret == 0) {
+        if (vos_is_logp_in_progress(VOS_MODULE_ID_HIF, NULL)) {
+            ret = hdd_wlan_re_init(ol_sc);
+            vos_set_logp_in_progress(VOS_MODULE_ID_HIF, FALSE);
+        } else{
+            ret = hdd_wlan_startup(&(func->dev), ol_sc);
+        }
+    }
     if ( ret ) {
         VOS_TRACE(VOS_MODULE_ID_HIF, VOS_TRACE_LEVEL_FATAL," hdd_wlan_startup failed");
         goto err_attach2;
@@ -228,11 +304,8 @@ ath_hif_sdio_remove(void *context, void *hif_handle)
 
     athdiag_procfs_remove();
 
-#ifndef TARGET_DUMP_FOR_NON_QC_PLATFORM
-    if (sc && sc->ol_sc && sc->ol_sc->ramdump_base){
-        iounmap(sc->ol_sc->ramdump_base);
-    }
-#endif
+    if (sc && sc->ol_sc && sc->ol_sc->ramdump_base)
+        hif_release_ramdump_mem(sc->ol_sc->ramdump_base);
 
 #ifndef REMOVE_PKT_LOG
     if (vos_get_conparam() != VOS_FTM_MODE &&
@@ -243,8 +316,11 @@ ath_hif_sdio_remove(void *context, void *hif_handle)
 #endif
 
     //cleaning up the upper layers
-    __hdd_wlan_exit();
-
+    if (vos_is_logp_in_progress(VOS_MODULE_ID_HIF, NULL)) {
+        hdd_wlan_shutdown();
+    } else {
+        __hdd_wlan_exit();
+    }
     if (sc && sc->ol_sc){
        hif_deinit_adf_ctx(sc->ol_sc);
        A_FREE(sc->ol_sc);
@@ -262,15 +338,15 @@ ath_hif_sdio_remove(void *context, void *hif_handle)
 static A_STATUS
 ath_hif_sdio_suspend(void *context)
 {
-    printk(KERN_INFO "ol_ath_sdio_suspend TODO\n");
-    return 0;
+	pr_debug("%s TODO\n", __func__);
+	return 0;
 }
 
 static A_STATUS
 ath_hif_sdio_resume(void *context)
 {
-    printk(KERN_INFO "ol_ath_sdio_resume ODO\n");
-    return 0;
+	pr_debug("%s TODO\n", __func__);
+	return 0;
 }
 
 static A_STATUS
@@ -424,4 +500,38 @@ void hif_get_hw_info(void *ol_sc, u32 *version, u32 *revision)
 void hif_set_fw_info(void *ol_sc, u32 target_fw_version)
 {
     ((struct ol_softc *)ol_sc)->target_fw_version = target_fw_version;
+}
+
+/**
+ * hif_sdio_check_fw_reg() - Check wether a self recovery is needed
+ * @ol_sc: os layser software context
+ *
+ * For scenario such as AXI error, cold reset is needed to recover FW.
+ * FW will set FW_IND_HELPER in such a scenario.
+ *
+ */
+int hif_sdio_check_fw_reg(void * ol_sc)
+{
+	int ret = 1;
+	unsigned int addr = 0;
+	unsigned int fw_indication = 0;
+	struct ol_softc *scn = (struct ol_softc *) ol_sc;
+
+	addr = host_interest_item_address(scn->target_type,
+					offsetof(struct host_interest_s,
+					hi_option_flag2));
+
+	if (HIFDiagReadMem(scn->hif_hdl, addr,
+				(unsigned char *)&fw_indication,
+				4) != A_OK) {
+		printk("%s Get fw indication failed\n", __func__);
+		return -ENOENT;
+	}
+
+	printk("%s: fw indication is 0x%x.\n", __func__, fw_indication);
+
+	if (fw_indication & FW_IND_HELPER)
+		ret = 0;
+
+	return ret;
 }

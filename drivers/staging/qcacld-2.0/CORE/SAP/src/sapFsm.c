@@ -345,6 +345,22 @@ tSapChanMatrixInfo ht80_chan[] =
     ,{144, SAP_TX_LEAKAGE_MIN}
 #endif
 }},
+
+#ifdef FEATURE_WLAN_CH144
+ {144,
+   {{36, 695},            {40, 695 },
+    {44, 684},            {48, 684 },
+    {52, 664},            {56, 664 },
+    {60, 658},            {64, 658 },
+    {100, 601},{104, 601 },
+    {108, 545},{112, 545 },
+    {116, SAP_TX_LEAKAGE_AUTO_MIN}, {120, SAP_TX_LEAKAGE_AUTO_MIN},
+    {124, SAP_TX_LEAKAGE_AUTO_MIN}, {128, SAP_TX_LEAKAGE_AUTO_MIN},
+    {132, 262},{136, 262},
+    {140, SAP_TX_LEAKAGE_MIN},
+    {144, SAP_TX_LEAKAGE_MIN}
+}},
+#endif
 };
 
 /* channel tx leakage table - ht40 */
@@ -589,8 +605,23 @@ tSapChanMatrixInfo ht40_chan[] =
     ,{144, SAP_TX_LEAKAGE_MIN}
 #endif
 }},
-};
 
+#ifdef FEATURE_WLAN_CH144
+ {144,
+   {{36, 695},            {40, 695 },
+    {44, 684},            {48, 684 },
+    {52, 664},            {56, 664 },
+    {60, 658},            {64, 658 },
+    {100, 601},{104, 601 },
+    {108, 545},{112, 545 },
+    {116, SAP_TX_LEAKAGE_AUTO_MIN}, {120, SAP_TX_LEAKAGE_AUTO_MIN},
+    {124, SAP_TX_LEAKAGE_AUTO_MIN}, {128, SAP_TX_LEAKAGE_AUTO_MIN},
+    {132, 262},{136, 262},
+    {140, SAP_TX_LEAKAGE_MIN},
+    {144, SAP_TX_LEAKAGE_MIN}
+}},
+#endif
+};
 
 /* channel tx leakage table - ht20 */
 tSapChanMatrixInfo ht20_chan[] =
@@ -834,6 +865,22 @@ tSapChanMatrixInfo ht20_chan[] =
     ,{144, SAP_TX_LEAKAGE_MIN}
 #endif
 }},
+
+#ifdef FEATURE_WLAN_CH144
+ {144,
+   {{36, 679},            {40, 673},
+    {44, 667},            {48, 656},
+    {52, 634},            {56, 663},
+    {60, 662},            {64, 660},
+    {100, SAP_TX_LEAKAGE_MAX},{104, SAP_TX_LEAKAGE_MAX},
+    {108, SAP_TX_LEAKAGE_MAX},{112, 590},
+    {116, 573},           {120, 553},
+    {124, 533},{128, 513},
+    {132, 490},{136, SAP_TX_LEAKAGE_MIN},
+    {140, SAP_TX_LEAKAGE_MIN},
+    {144, SAP_TX_LEAKAGE_MIN}
+}},
+#endif
 };
 #endif //end of WLAN_ENABLE_CHNL_MATRIX_RESTRICTION
 
@@ -1114,7 +1161,6 @@ sapMarkChannelsLeakingIntoNOL(ptSapContext sapContext,
                                   dfs_nol_channel,
                                   pTempChannelList[j]);
                         pTempChannelList[j] = 0;
-                        break;
                     }
                     j++;
                     k++;
@@ -1581,8 +1627,8 @@ static v_U8_t sapRandomChannelSel(ptSapContext sapContext)
         channelBitmap.chanBondingSet[1].startChannel = 52;
         channelBitmap.chanBondingSet[2].startChannel = 100;
         channelBitmap.chanBondingSet[3].startChannel = 116;
-        channelBitmap.chanBondingSet[3].startChannel = 132;
-        channelBitmap.chanBondingSet[4].startChannel = 149;
+        channelBitmap.chanBondingSet[4].startChannel = 132;
+        channelBitmap.chanBondingSet[5].startChannel = 149;
         /* now loop through whatever is left of channel list */
         VOS_TRACE(VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_ERROR,
                   FL("sapdfs: Moving temp channel list to final."));
@@ -1746,6 +1792,8 @@ void sapMarkDfsChannels(ptSapContext sapContext, v_U8_t* channels,
     v_U8_t nRegDomainDfsChannels;
     tHalHandle hHal;
     tpAniSirGlobal pMac;
+    v_U64_t time_elapsed_since_last_radar;
+    v_U64_t time_when_radar_found;
 
     hHal = VOS_GET_HAL_CB(sapContext->pvosGCtx);
 
@@ -1779,12 +1827,18 @@ void sapMarkDfsChannels(ptSapContext sapContext, v_U8_t* channels,
             if (psapDfsChannelNolList[j].dfs_channel_number ==
                     channels[i])
             {
+                time_when_radar_found =
+                        psapDfsChannelNolList[j].radar_found_timestamp;
+                time_elapsed_since_last_radar = time -
+                                         time_when_radar_found;
                 /* If channel is already in NOL, don't update it again.
                  * This is useful when marking bonding channels which are
                  * already unavailable.
                  */
-                if( psapDfsChannelNolList[j].radar_status_flag ==
-                        eSAP_DFS_CHANNEL_UNAVAILABLE)
+                if ((psapDfsChannelNolList[j].radar_status_flag ==
+                        eSAP_DFS_CHANNEL_UNAVAILABLE)&&
+                    (time_elapsed_since_last_radar <
+                                             SAP_DFS_NON_OCCUPANCY_PERIOD))
                 {
                     VOS_TRACE(VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_INFO_HIGH,
                             FL("Channel=%d already in NOL"),
@@ -2103,10 +2157,9 @@ sapGotoChannelSel
         return VOS_STATUS_E_FAULT;
     }
 
-#ifdef WLAN_FEATURE_MBSSID
     if (vos_concurrent_beaconing_sessions_running()) {
         con_ch = sme_GetConcurrentOperationChannel(hHal);
-
+#ifdef FEATURE_WLAN_STA_AP_MODE_DFS_DISABLE
         if (con_ch && sapContext->channel == AUTO_CHANNEL_SELECT) {
             sapContext->dfs_ch_disable = VOS_TRUE;
         } else if (con_ch && sapContext->channel != con_ch &&
@@ -2115,8 +2168,19 @@ sapGotoChannelSel
                        "In %s, MCC DFS not supported in AP_AP Mode", __func__);
             return VOS_STATUS_E_ABORTED;
         }
+#endif
 #ifdef FEATURE_WLAN_MCC_TO_SCC_SWITCH
-        if (sapContext->cc_switch_mode != VOS_MCC_TO_SCC_SWITCH_DISABLE) {
+        if (sapContext->cc_switch_mode != VOS_MCC_TO_SCC_SWITCH_DISABLE
+            && sapContext->channel) {
+            /*
+             * For ACS request ,the sapContext->channel is 0, we skip
+             * below overlap checking. When the ACS finish and SAP
+             * BSS start, the sapContext->channel will not be 0. Then
+             * the overlap checking will be reactivated.
+             * If we use sapContext->channel = 0 to perform the overlap
+             * checking, an invalid overlap channel con_ch could be
+             * created. That may cause SAP start failed.
+             */
             con_ch = sme_CheckConcurrentChannelOverlap(hHal,
                                         sapContext->channel,
                                         sapContext->csrRoamProfile.phyMode,
@@ -2130,7 +2194,6 @@ sapGotoChannelSel
         }
 #endif
     }
-#endif
 
     if (vos_get_concurrency_mode() == VOS_STA_SAP)
     {
@@ -2144,7 +2207,8 @@ sapGotoChannelSel
         }
 #endif
 #ifdef FEATURE_WLAN_MCC_TO_SCC_SWITCH
-        if (sapContext->cc_switch_mode != VOS_MCC_TO_SCC_SWITCH_DISABLE) {
+        if (sapContext->cc_switch_mode != VOS_MCC_TO_SCC_SWITCH_DISABLE
+            && sapContext->channel) {
              con_ch = sme_CheckConcurrentChannelOverlap(hHal,
                                         sapContext->channel,
                                         sapContext->csrRoamProfile.phyMode,
@@ -2359,31 +2423,22 @@ sapGotoChannelSel
 
     return VOS_STATUS_SUCCESS;
 }// sapGotoChannelSel
+#define SAP_OPEN_SESSION_TIMEOUT 500
 
-/*==========================================================================
-  FUNCTION    sap_OpenSession
+/**
+ * sap_OpenSession() - Opens a SAP session
+ * @hHal: Hal handle
+ * @sapContext:  Sap Context value
+ * @session_id: Pointer to the session id
+ *
+ * Function for opening SME and SAP sessions when system is in SoftAP role
+ *
+ * Return: eHalStatus
+ */
 
-  DESCRIPTION
-    Function for opening SME and SAP sessions when system is in SoftAP role
-
-  DEPENDENCIES
-    NA.
-
-  PARAMETERS
-
-    IN
-    hHal        : Hal handle
-    sapContext  : Sap Context value
-
-  RETURN VALUE
-    The VOS_STATUS code associated with performing the operation
-
-    VOS_STATUS_SUCCESS: Success
-
-  SIDE EFFECTS
-============================================================================*/
-VOS_STATUS
-sap_OpenSession (tHalHandle hHal, ptSapContext sapContext)
+eHalStatus
+sap_OpenSession (tHalHandle hHal, ptSapContext sapContext,
+                 uint32_t *session_id)
 {
     tANI_U32 type, subType;
     eHalStatus halStatus;
@@ -2400,6 +2455,7 @@ sap_OpenSession (tHalHandle hHal, ptSapContext sapContext)
         VOS_TRACE( VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_FATAL, "failed to get vdev type");
         return VOS_STATUS_E_FAILURE;
     }
+    vos_event_reset(&sapContext->sap_session_opened_evt);
     /* Open SME Session for Softap */
     halStatus = sme_OpenSession(hHal,
                                 &WLANSAP_RoamCallback,
@@ -2417,11 +2473,23 @@ sap_OpenSession (tHalHandle hHal, ptSapContext sapContext)
         return VOS_STATUS_E_FAILURE;
     }
 
+    sme_set_allowed_action_frames(hHal, ALLOWED_ACTION_FRAMES_BITMAP0_SAP);
+    status = vos_wait_single_event(
+            &sapContext->sap_session_opened_evt,
+            SAP_OPEN_SESSION_TIMEOUT);
+    if (!VOS_IS_STATUS_SUCCESS(status)) {
+        VOS_TRACE(VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_ERROR,
+                  "wait for sap open session event timed out");
+        return VOS_STATUS_E_FAILURE;
+    }
+
     pMac->sap.sapCtxList [ sapContext->sessionId ].sessionID =
                                sapContext->sessionId;
     pMac->sap.sapCtxList [ sapContext->sessionId ].pSapContext = sapContext;
     pMac->sap.sapCtxList [ sapContext->sessionId ].sapPersona=
                                sapContext->csrRoamProfile.csrPersona;
+    *session_id = sapContext->sessionId;
+    sapContext->isSapSessionOpen = eSAP_TRUE;
     return VOS_STATUS_SUCCESS;
 }
 
@@ -2489,17 +2557,17 @@ sapGotoStarting
                             eSME_REASON_OTHER);
     }
 
-    halStatus = sap_OpenSession(hHal, sapContext);
+    VOS_TRACE(VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_INFO,
+            "%s: session: %d", __func__, sapContext->sessionId);
 
-    if(eHAL_STATUS_SUCCESS != halStatus )
-    {
+    halStatus = sme_RoamConnect(hHal, sapContext->sessionId,
+            &sapContext->csrRoamProfile,
+            &sapContext->csrRoamId);
+    if (eHAL_STATUS_SUCCESS != halStatus)
         VOS_TRACE(VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_ERROR,
-                  "Error: In %s calling sap_OpenSession status = %d",
-                  __func__, halStatus);
-        return VOS_STATUS_E_FAILURE;
-    }
+        "%s: Failed to issue sme_RoamConnect", __func__);
+        return halStatus;
 
-    return VOS_STATUS_SUCCESS;
 }// sapGotoStarting
 
 /*==========================================================================
@@ -3079,6 +3147,7 @@ eHalStatus sap_CloseSession(tHalHandle hHal,
     sapContext->isCacStartNotified = VOS_FALSE;
     sapContext->isCacEndNotified = VOS_FALSE;
     pMac->sap.sapCtxList[sapContext->sessionId].pSapContext = NULL;
+    sapContext->isSapSessionOpen = false;
 
     if (NULL == sap_find_valid_concurrent_session(hHal))
     {
@@ -3100,6 +3169,14 @@ eHalStatus sap_CloseSession(tHalHandle hHal,
         pMac->sap.SapDfsInfo.cac_state = eSAP_DFS_DO_NOT_SKIP_CAC;
         sap_CacResetNotify(hHal);
         vos_mem_zero(&pMac->sap, sizeof(pMac->sap));
+
+        /*
+         * No valid concurrent AP sessions(SAP/P2PGO), switch back the
+         * allowed action frames bitmask to STA mode and set the same
+         * to FW
+         */
+        sme_set_allowed_action_frames(hHal,
+                           ALLOWED_ACTION_FRAMES_BITMAP0_STA);
     }
 
     return halstatus;
@@ -3343,44 +3420,36 @@ sapFsm
             if ((msg == eSAP_HDD_START_INFRA_BSS))
             {
                 /* Transition from eSAP_DISCONNECTED to eSAP_CH_SELECT (both without substates) */
-                VOS_TRACE( VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_INFO_HIGH, "In %s, new from state %s => %s",
-                            __func__, "eSAP_DISCONNECTED", "eSAP_CH_SELECT");
+                VOS_TRACE( VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_INFO_HIGH, "In %s, new from state %s => %s, session id %d",
+                            __func__, "eSAP_DISCONNECTED", "eSAP_CH_SELECT", sapContext->sessionId);
 
-                /* There can be one SAP Session for softap */
-                if (sapContext->isSapSessionOpen == eSAP_TRUE)
-                {
-                   VOS_TRACE( VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_FATAL,
-                        "%s:SME Session is already opened\n",__func__);
-                   return VOS_STATUS_E_EXISTS;
+                if (sapContext->isSapSessionOpen == eSAP_FALSE) {
+                    uint32_t type, subtype;
+                    if (sapContext->csrRoamProfile.csrPersona ==
+                            VOS_P2P_GO_MODE)
+                        vosStatus = vos_get_vdev_types(VOS_P2P_GO_MODE,
+                                &type, &subtype);
+                    else
+                        vosStatus = vos_get_vdev_types(VOS_STA_SAP_MODE,
+                                &type, &subtype);
+                    if (VOS_STATUS_SUCCESS != vosStatus) {
+                        VOS_TRACE(VOS_MODULE_ID_SAP,
+                                VOS_TRACE_LEVEL_FATAL,
+                                "failed to get vdev type");
+                        return VOS_STATUS_E_FAILURE;
+                    }
+                    vosStatus = sme_OpenSession(hHal, &WLANSAP_RoamCallback,
+                            sapContext, sapContext->self_mac_addr,
+                            &sapContext->sessionId, type, subtype);
+                    if (VOS_STATUS_SUCCESS != vosStatus) {
+                        VOS_TRACE(VOS_MODULE_ID_SAP,
+                                VOS_TRACE_LEVEL_ERROR,
+                                FL("Error: calling sme_OpenSession"));
+                        return VOS_STATUS_E_FAILURE;
+                    }
+                    sapContext->isSapSessionOpen = eSAP_TRUE;
                 }
 
-                sapContext->sessionId = 0xff;
-
-                if ((sapContext->channel == AUTO_CHANNEL_SELECT) &&
-                    (sapContext->isScanSessionOpen == eSAP_FALSE))
-                {
-                    tANI_U32 type, subType;
-                    tHalHandle hHal = VOS_GET_HAL_CB(sapContext->pvosGCtx);
-                    if (NULL == hHal)
-                    {
-                        VOS_TRACE( VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_ERROR,
-                            "In %s, NULL hHal in state %s, msg %d",
-                            __func__, "eSAP_DISCONNECTED", msg);
-                    }
-                    else if(VOS_STATUS_SUCCESS == vos_get_vdev_types(VOS_STA_MODE,
-                           &type, &subType)) {
-                           /* Open SME Session for scan */
-                           if(eHAL_STATUS_SUCCESS  != sme_OpenSession(hHal,
-                                 NULL, sapContext, sapContext->self_mac_addr,
-                                 &sapContext->sessionId, type, subType))
-                           {
-                                 VOS_TRACE( VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_ERROR,
-                                     "Error: In %s calling sme_OpenSession", __func__);
-                           } else {
-                                 sapContext->isScanSessionOpen = eSAP_TRUE;
-                           }
-                    }
-                }
                 /* init dfs channel nol */
                 sapInitDfsChannelNolList(sapContext);
 
@@ -3394,9 +3463,6 @@ sapFsm
                  */
                 vosStatus = sapGotoChannelSel(sapContext, sapEvent, VOS_FALSE);
 
-                /* Transition from eSAP_DISCONNECTED to eSAP_CH_SELECT (both without substates) */
-                VOS_TRACE( VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_INFO_HIGH, "In %s, from state %s => %s",
-                           __func__, "eSAP_DISCONNECTED", "eSAP_CH_SELECT");
             }
             else if (msg == eSAP_DFS_CHANNEL_CAC_START)
             {
@@ -3438,26 +3504,6 @@ sapFsm
             break;
 
         case eSAP_CH_SELECT:
-            if (sapContext->isScanSessionOpen == eSAP_TRUE)
-            {
-                 /* scan completed, so close the session */
-                 tHalHandle  hHal = VOS_GET_HAL_CB(sapContext->pvosGCtx);
-                 if (NULL == hHal)
-                 {
-                     VOS_TRACE( VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_ERROR, "In %s, NULL hHal in state %s, msg %d",
-                             __func__, "eSAP_CH_SELECT", msg);
-                 } else {
-                     if(eHAL_STATUS_SUCCESS != sme_CloseSession(hHal,
-                                      sapContext->sessionId, NULL, NULL))
-                     {
-                         VOS_TRACE( VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_ERROR, "In %s CloseSession error event msg %d",
-                                __func__, msg);
-                     } else {
-                         sapContext->isScanSessionOpen = eSAP_FALSE;
-                     }
-                 }
-                 sapContext->sessionId = 0xff;
-            }
 
             if (msg == eSAP_MAC_SCAN_COMPLETE)
             {
@@ -3524,7 +3570,6 @@ sapFsm
                          eCSR_DOT11_MODE_11g_ONLY))
                      sapContext->csrRoamProfile.phyMode = eCSR_DOT11_MODE_11a;
 
-#ifdef WLAN_FEATURE_MBSSID
                  /* when AP2 is started while AP1 is performing ACS, we may not
                   * have the AP1 channel yet.So here after the completion of AP2
                   * ACS check if AP1 ACS resulting channel is DFS and if yes
@@ -3537,7 +3582,6 @@ sapFsm
                      if (con_ch && VOS_IS_DFS_CH(con_ch))
                          sapContext->channel = con_ch;
                  }
-#endif
                  /* Transition from eSAP_CH_SELECT to eSAP_STARTING (both without substates) */
                  VOS_TRACE( VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_INFO_HIGH, "In %s, from state %s => %s",
                             __func__, "eSAP_CH_SELECT", "eSAP_STARTING");
@@ -3549,6 +3593,10 @@ sapFsm
                  sapContext->csrRoamProfile.operationChannel = (tANI_U8)sapContext->channel;
                  sapContext->csrRoamProfile.vht_channel_width =
                                                sapContext->vht_channel_width;
+
+                 sapContext->csrRoamProfile.beacon_tx_rate =
+                                                    sapContext->beacon_tx_rate;
+
                  VOS_TRACE( VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_INFO_HIGH,
                          "%s: notify hostapd about channel selection: %d",
                          __func__, sapContext->channel);
@@ -3723,16 +3771,25 @@ sapFsm
                     }
                  }
              }
-             else if (msg == eSAP_HDD_STOP_INFRA_BSS ||
-                      msg == eSAP_MAC_START_FAILS)
+             else if (msg == eSAP_HDD_STOP_INFRA_BSS)
+             {
+                 /* Transition from eSAP_STARTING to eSAP_DISCONNECTPENDING */
+                 VOS_TRACE( VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_INFO_HIGH, "In %s, from state %s => %s",
+                             __func__, "eSAP_STARTING", "eSAP_DISCONNECTPENDING");
+                 sapContext->sapsMachine = eSAP_DISCONNECTPENDING;
+             }
+             else if (msg == eSAP_MAC_START_FAILS)
              {
                  /*Transition from eSAP_STARTING to eSAP_DISCONNECTED (both without substates)*/
-                 VOS_TRACE( VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_INFO_HIGH, "In %s, from state %s => %s",
-                             __func__, "eSAP_STARTING", "eSAP_DISCONNECTED");
+                 VOS_TRACE(VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_INFO_HIGH,
+                            "In %s, from state %s => %s", __func__,
+                            "eSAP_STARTING", "eSAP_DISCONNECTED");
 
                  /*Advance outer statevar */
                  sapContext->sapsMachine = eSAP_DISCONNECTED;
-                 vosStatus = sapSignalHDDevent( sapContext, NULL, eSAP_START_BSS_EVENT, (v_PVOID_t)eSAP_STATUS_FAILURE);
+                 vosStatus = sapSignalHDDevent(sapContext, NULL,
+                                               eSAP_START_BSS_EVENT,
+                                               (v_PVOID_t)eSAP_STATUS_FAILURE);
                  vosStatus = sapGotoDisconnected(sapContext);
                  /* Close the SME session*/
 
@@ -3777,7 +3834,51 @@ sapFsm
                  /* Intentionally left blank */
              }
              break;
+        case eSAP_DISCONNECTPENDING:
+            /* eSAP_DISCONNECTPENDING is state for handling SAP Disconnection
+             * when DUT is in eSAP_STARTING state. Should not used for OTHER
+             * purpose.
+             */
+            if (msg == eSAP_MAC_START_BSS_SUCCESS) {
+                VOS_TRACE(VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_INFO_HIGH,
+                           "In %s, from state %s => %s", __func__,
+                           "eSAP_DISCONNECTPENDING", "eSAP_DISCONNECTING");
+                sapContext->sapsMachine = eSAP_DISCONNECTING;
+                vosStatus = sapSignalHDDevent(sapContext, NULL,
+                                              eSAP_START_BSS_EVENT,
+                                              (v_PVOID_t)eSAP_STATUS_FAILURE);
+                vosStatus = sapGotoDisconnecting(sapContext);
+            } else if (msg == eSAP_MAC_START_FAILS) {
+                VOS_TRACE(VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_INFO_HIGH,
+                           "In %s, from state %s => %s", __func__,
+                           "eSAP_DISCONNECTPENDING", "eSAP_DISCONNECTED");
 
+                sapContext->sapsMachine = eSAP_DISCONNECTED;
+                vosStatus = sapSignalHDDevent(sapContext, NULL,
+                                              eSAP_START_BSS_EVENT,
+                                              (v_PVOID_t)eSAP_STATUS_FAILURE);
+                vosStatus = sapGotoDisconnected(sapContext);
+                if (eSAP_TRUE == sapContext->isSapSessionOpen)
+                {
+                    tHalHandle hHal = VOS_GET_HAL_CB(sapContext->pvosGCtx);
+                    if (NULL == hHal)
+                    {
+                       VOS_TRACE(VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_ERROR,
+                                  "In %s, NULL hHal in state %s, msg %d",
+                                  __func__, "eSAP_DISCONNECTPENDING", msg);
+                    }
+                    else if (eHAL_STATUS_SUCCESS ==
+                         sap_CloseSession(hHal, sapContext, NULL, FALSE))
+                    {
+                         sapContext->isSapSessionOpen = eSAP_FALSE;
+                    }
+                }
+            } else {
+                VOS_TRACE(VOS_MODULE_ID_SAP, VOS_TRACE_LEVEL_ERROR,
+                           "In %s, in state %s, invalid event msg %d",
+                            __func__, "eSAP_DISCONNECTPENDING", msg);
+            }
+            break;
         case eSAP_STARTED:
             if (msg == eSAP_HDD_STOP_INFRA_BSS)
             {
@@ -3848,7 +3949,7 @@ sapFsm
                     else
                     {
                         sapContext->isSapSessionOpen = eSAP_FALSE;
-                        if (!HAL_STATUS_SUCCESS(
+                        if (!(eHAL_STATUS_SUCCESS ==
                             sap_CloseSession(hHal,
                                      sapContext,
                                      sapRoamSessionCloseCallback, TRUE)))
@@ -4060,6 +4161,22 @@ sapconvertToCsrProfile(tsap_Config_t *pconfig_params, eCsrRoamBssType bssType, t
         profile->addIeParams.probeRespBCNData_buff = NULL;
     }
     profile->sap_dot11mc = pconfig_params->sap_dot11mc;
+
+    if (pconfig_params->supported_rates.numRates) {
+        vos_mem_copy(profile->supported_rates.rate,
+                pconfig_params->supported_rates.rate,
+                pconfig_params->supported_rates.numRates);
+        profile->supported_rates.numRates =
+            pconfig_params->supported_rates.numRates;
+    }
+
+    if (pconfig_params->extended_rates.numRates) {
+        vos_mem_copy(profile->extended_rates.rate,
+                pconfig_params->extended_rates.rate,
+                pconfig_params->extended_rates.numRates);
+        profile->extended_rates.numRates =
+            pconfig_params->extended_rates.numRates;
+    }
 
     return eSAP_STATUS_SUCCESS; /* Success. */
 }

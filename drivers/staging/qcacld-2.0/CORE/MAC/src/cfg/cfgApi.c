@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -869,7 +869,8 @@ cfgGetCapabilityInfo(tpAniSirGlobal pMac, tANI_U16 *pCap,tpPESession sessionEntr
              LIM_IS_BT_AMP_STA_ROLE(sessionEntry) ||
              LIM_IS_STA_ROLE(sessionEntry))
         pCapInfo->ess = 1; // ESS bit
-    else if (LIM_IS_P2P_DEVICE_ROLE(sessionEntry)) {
+    else if (LIM_IS_P2P_DEVICE_ROLE(sessionEntry) ||
+             LIM_IS_NDI_ROLE(sessionEntry)) {
         pCapInfo->ess = 0;
         pCapInfo->ibss = 0;
     }
@@ -1077,8 +1078,6 @@ Notify(tpAniSirGlobal pMac, tANI_U16 cfgId, tANI_U32 ntfMask)
     mmhMsg.type = SIR_CFG_PARAM_UPDATE_IND;
     mmhMsg.bodyval = (tANI_U32)cfgId;
     mmhMsg.bodyptr = NULL;
-
-    MTRACE(macTraceMsgTx(pMac, NO_SESSION, mmhMsg.type));
 
     if ((ntfMask & CFG_CTL_NTF_SCH) != 0)
         schPostMessage(pMac, &mmhMsg);

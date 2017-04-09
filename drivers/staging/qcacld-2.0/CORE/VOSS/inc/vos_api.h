@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -74,6 +74,8 @@
 #include <vos_pack_align.h>
 
 #define VOS_WDA_TIMEOUT 15000
+
+#define vos_roundup(x, y) roundup(x, y);
 
 /*-------------------------------------------------------------------------
   Function declarations and documenation
@@ -176,6 +178,8 @@ void vos_set_load_unload_in_progress(VOS_MODULE_ID moduleId, v_U8_t value);
 v_U8_t vos_is_unload_in_progress(void);
 void vos_set_unload_in_progress(v_U8_t value);
 
+v_U8_t vos_is_load_in_progress(VOS_MODULE_ID moduleId, v_VOID_t *moduleContext);
+void vos_set_load_in_progress(VOS_MODULE_ID moduleId, v_U8_t value);
 
 bool vos_is_shutdown_in_progress(VOS_MODULE_ID moduleId,
                                  v_VOID_t *moduleContext);
@@ -333,14 +337,11 @@ VOS_STATUS vos_wlanRestart(void);
 v_VOID_t vos_fwDumpReq(tANI_U32 cmd, tANI_U32 arg1, tANI_U32 arg2,
                         tANI_U32 arg3, tANI_U32 arg4);
 
-v_VOID_t vos_flush_work(v_VOID_t *work);
-v_VOID_t vos_flush_delayed_work(v_VOID_t *dwork);
-
 v_BOOL_t vos_is_packet_log_enabled(void);
 
 v_U64_t vos_get_monotonic_boottime(void);
 
-void vos_trigger_recovery(void);
+void vos_trigger_recovery(bool);
 
 #ifdef FEATURE_WLAN_D0WOW
 v_VOID_t vos_pm_control(v_BOOL_t vote);
@@ -355,14 +356,25 @@ uint8_t vos_is_multicast_logging(void);
 VOS_STATUS vos_set_log_completion(uint32_t is_fatal,
 		uint32_t type,
 		uint32_t sub_type);
-void vos_get_log_completion(uint32_t *is_fatal,
+void vos_get_log_and_reset_completion(uint32_t *is_fatal,
 		uint32_t *type,
-		uint32_t *sub_type);
+		uint32_t *sub_type,
+		uint32_t *is_ssr_needed);
 bool vos_is_log_report_in_progress(void);
+bool vos_is_fatal_event_enabled(void);
+uint32_t vos_get_log_indicator(void);
 void vos_init_log_completion(void);
 void vos_deinit_log_completion(void);
 VOS_STATUS vos_flush_logs(uint32_t is_fatal,
 		uint32_t indicator,
-		uint32_t reason_code);
+		uint32_t reason_code,
+		uint32_t dump_vos_trace);
+void vos_wlan_flush_host_logs_for_fatal(void);
 void vos_logging_set_fw_flush_complete(void);
+void vos_probe_threads(void);
+void vos_set_fatal_event(bool value);
+void vos_pkt_stats_to_logger_thread(void *pl_hdr, void *pkt_dump, void *data);
+int vos_get_radio_index(void);
+int vos_set_radio_index(int radio_index);
+void vos_svc_fw_shutdown_ind(struct device *dev);
 #endif // if !defined __VOS_API_H

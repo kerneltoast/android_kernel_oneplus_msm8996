@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2014 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2014, 2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -39,6 +39,8 @@
 #include "wlan_tgt_def_config.h"
 #endif
 
+#include "ol_txrx_ctrl_api.h"
+
 /**
  * @brief format of data frames delivered to/from the WLAN driver by/to the OS
  */
@@ -48,6 +50,12 @@ enum wlan_frm_fmt {
     wlan_frm_fmt_native_wifi,
     wlan_frm_fmt_802_3,
 };
+
+/* Throttle period Different level Duty Cycle values*/
+#define THROTTLE_DUTY_CYCLE_LEVEL0 (0)
+#define THROTTLE_DUTY_CYCLE_LEVEL1 (50)
+#define THROTTLE_DUTY_CYCLE_LEVEL2 (75)
+#define THROTTLE_DUTY_CYCLE_LEVEL3 (94)
 
 #ifdef IPA_UC_OFFLOAD
 struct wlan_ipa_uc_rsc_t {
@@ -76,6 +84,7 @@ struct txrx_pdev_cfg_t {
 	u32 max_vdev;
 	u32 max_nbuf_frags;
 	u32 throttle_period_ms;
+	u8 dutycycle_level[4];
 	enum wlan_frm_fmt frame_type;
 	u8 rx_fwd_disabled;
 	u8 is_packet_log_enabled;
@@ -83,6 +92,10 @@ struct txrx_pdev_cfg_t {
 #ifdef IPA_UC_OFFLOAD
 	struct wlan_ipa_uc_rsc_t ipa_uc_rsc;
 #endif /* IPA_UC_OFFLOAD */
+	uint16_t pkt_bundle_timer_value;
+	uint16_t pkt_bundle_size;
+
+	struct ol_tx_sched_wrr_ac_specs_t ac_specs[OL_TX_NUM_WMM_AC];
 };
 
 /**
@@ -352,6 +365,17 @@ int ol_cfg_rx_host_defrag_timeout_duplicate_check(ol_pdev_handle pdev);
 int ol_cfg_throttle_period_ms(ol_pdev_handle pdev);
 
 /**
+ * brief Query for the duty cycle in percentage used for throttling for
+ * thermal mitigation
+ *
+ * @param pdev - handle to the physical device
+ * @param level - duty cycle level
+ * @return the duty cycle level in percentage
+ */
+int ol_cfg_throttle_duty_cycle_level(ol_pdev_handle pdev, int level);
+
+
+/**
  * brief Check whether full reorder offload is
  * enabled/disable by the host
  * @details
@@ -497,4 +521,35 @@ unsigned int ol_cfg_ipa_uc_rx_ind_ring_size(ol_pdev_handle pdev);
  */
 unsigned int ol_cfg_ipa_uc_tx_partition_base(ol_pdev_handle pdev);
 #endif /* IPA_UC_OFFLOAD */
+
+#define DEFAULT_BUNDLE_TIMER_VALUE 100
+
+#ifdef QCA_SUPPORT_TXRX_HL_BUNDLE
+int ol_cfg_get_bundle_timer_value(ol_pdev_handle pdev);
+int ol_cfg_get_bundle_size(ol_pdev_handle pdev);
+#else
+static inline
+int ol_cfg_get_bundle_timer_value(ol_pdev_handle pdev)
+{
+	return DEFAULT_BUNDLE_TIMER_VALUE;
+}
+
+static inline
+int ol_cfg_get_bundle_size(ol_pdev_handle pdev)
+{
+	return 0;
+}
+#endif
+
+
+int ol_cfg_get_wrr_skip_weight(ol_pdev_handle pdev, int ac);
+
+uint32_t ol_cfg_get_credit_threshold(ol_pdev_handle pdev, int ac);
+
+uint16_t ol_cfg_get_send_limit(ol_pdev_handle pdev, int ac);
+
+int ol_cfg_get_credit_reserve(ol_pdev_handle pdev, int ac);
+
+int ol_cfg_get_discard_weight(ol_pdev_handle pdev, int ac);
+
 #endif /* _OL_CFG__H_ */

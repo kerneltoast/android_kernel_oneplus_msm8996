@@ -241,7 +241,7 @@ tSirRetStatus schSetFixedBeaconFields(tpAniSirGlobal pMac,tpPESession psessionEn
 
     /* Skip over the time stamp (it'll be updated later). */
 
-    pBcn1->BeaconInterval.interval = pMac->sch.schObject.gSchBeaconInterval;
+    pBcn1->BeaconInterval.interval = psessionEntry->beaconParams.beaconInterval;
     PopulateDot11fCapabilities( pMac, &pBcn1->Capabilities, psessionEntry );
     if (psessionEntry->ssidHidden)
     {
@@ -492,7 +492,7 @@ tSirRetStatus schSetFixedBeaconFields(tpAniSirGlobal pMac,tpPESession psessionEn
         /* merge extcap IE */
         if (extcap_present &&
             psessionEntry->limSystemRole != eLIM_STA_IN_IBSS_ROLE)
-            lim_merge_extcap_struct(&pBcn2->ExtCap, &extracted_extcap);
+            lim_merge_extcap_struct(&pBcn2->ExtCap, &extracted_extcap, true);
 
     }
 

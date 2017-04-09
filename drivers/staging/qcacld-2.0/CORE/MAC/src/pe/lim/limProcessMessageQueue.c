@@ -73,6 +73,7 @@
 #include "vos_types.h"
 #include "vos_packet.h"
 #include "vos_memory.h"
+#include "nan_datapath.h"
 
 void limLogSessionStates(tpAniSirGlobal pMac);
 
@@ -717,6 +718,13 @@ limHandle80211Frames(tpAniSirGlobal pMac, tpSirMsgQ limMsg, tANI_U8 *pDeferMsg)
     fcOffset = (v_U8_t)WDA_GET_RX_MPDU_HEADER_OFFSET(pRxPacketInfo);
     fc = pHdr->fc;
 
+    if (pMac->sap.SapDfsInfo.is_dfs_cac_timer_running) {
+        psessionEntry = peFindSessionByBssid(pMac, pHdr->bssId, &sessionId);
+        if (psessionEntry && (VOS_STA_SAP_MODE == psessionEntry->pePersona)) {
+            limLog(pMac, LOG1, FL("CAC timer running - drop the frame"));
+            goto end;
+        }
+    }
 #ifdef WLAN_DUMP_MGMTFRAMES
     limLog( pMac, LOGE, FL("ProtVersion %d, Type %d, Subtype %d rateIndex=%d"),
             fc.protVer, fc.type, fc.subType,
@@ -724,16 +732,18 @@ limHandle80211Frames(tpAniSirGlobal pMac, tpSirMsgQ limMsg, tANI_U8 *pDeferMsg)
     VOS_TRACE_HEX_DUMP(VOS_MODULE_ID_PE, VOS_TRACE_LEVEL_ERROR, pHdr,
                        WDA_GET_RX_MPDU_HEADER_LEN(pRxPacketInfo));
 #endif
-    if (pMac->fEnableDebugLog & 0x1) {
-        if ((fc.type == SIR_MAC_MGMT_FRAME) &&
-                (fc.subType != SIR_MAC_MGMT_PROBE_REQ) &&
-                (fc.subType != SIR_MAC_MGMT_PROBE_RSP) &&
-                (fc.subType != SIR_MAC_MGMT_BEACON))
-        {
-            limLog(pMac, LOGE, FL("RX MGMT - Type %hu, SubType %hu"),
-                    fc.type, fc.subType);
-        }
-    }
+    if ((fc.type == SIR_MAC_MGMT_FRAME) &&
+            (fc.subType != SIR_MAC_MGMT_BEACON))
+    {
+         limLog(pMac, LOG1, FL("RX MGMT - Type %hu, SubType %hu, "
+                "BSSID: "MAC_ADDRESS_STR " RSSI %d Seq.no %d"),
+                fc.type, fc.subType, MAC_ADDR_ARRAY(pHdr->bssId),
+                (uint8_t)abs(
+                (tANI_S8)WDA_GET_RX_RSSI_NORMALIZED(pRxPacketInfo)),
+                ((pHdr->seqControl.seqNumHi << 4) |
+                               (pHdr->seqControl.seqNumLo)));
+     }
+
 #ifdef FEATURE_WLAN_EXTSCAN
     if (WMA_IS_EXTSCAN_SCAN_SRC(pRxPacketInfo) ||
         WMA_IS_EPNO_SCAN_SRC(pRxPacketInfo)) {
@@ -1109,29 +1119,6 @@ void limMessageProcessor(tpAniSirGlobal pMac, tpSirMsgQ limMsg)
 }
 
 #ifdef FEATURE_OEM_DATA_SUPPORT
-
-void limOemDataRspHandleResumeLinkRsp(tpAniSirGlobal pMac, eHalStatus status, tANI_U32* mlmOemDataRsp)
-{
-    if(status != eHAL_STATUS_SUCCESS)
-    {
-        limLog(pMac, LOGE, FL("OEM Data Rsp failed to get the response for resume link"));
-    }
-
-    if(NULL != pMac->lim.gpLimMlmOemDataReq)
-    {
-        vos_mem_free(pMac->lim.gpLimMlmOemDataReq);
-        pMac->lim.gpLimMlmOemDataReq = NULL;
-    }
-
-    //"Failure" status doesn't mean that Oem Data Rsp did not happen
-    //and hence we need to respond to upper layers. Only Resume link is failed, but
-    //we got the oem data response already.
-    //Post the meessage to MLM
-    limPostSmeMessage(pMac, LIM_MLM_OEM_DATA_CNF, (tANI_U32*)(mlmOemDataRsp));
-
-    return;
-}
-
 void limProcessOemDataRsp(tpAniSirGlobal pMac, tANI_U32* body)
 {
     tpLimMlmOemDataRsp mlmOemDataRsp = NULL;
@@ -1203,7 +1190,23 @@ limProcessMessages(tpAniSirGlobal pMac, tpSirMsgQ  limMsg)
     pMac->lim.numTot++;
 #endif
 
-    MTRACE(macTraceMsgRx(pMac, NO_SESSION, LIM_TRACE_MAKE_RXMSG(limMsg->type, LIM_MSG_PROCESSED));)
+   /*
+    * MTRACE logs not captured for events received from SME
+    * SME enums (eWNI_SME_START_REQ) starts with 0x16xx.
+    * Compare received SME events with SIR_SME_MODULE_ID
+    */
+    if (SIR_SME_MODULE_ID == (tANI_U8)MAC_TRACE_GET_MODULE_ID(limMsg->type)) {
+       MTRACE(macTrace(pMac, TRACE_CODE_RX_SME_MSG, NO_SESSION, limMsg->type));
+    } else {
+       /*
+        * Omitting below message types as these are too frequent and when crash
+        * happens we loose critical trace logs if these are also logged
+        */
+       if (limMsg->type != SIR_CFG_PARAM_UPDATE_IND &&
+          limMsg->type != SIR_BB_XPORT_MGMT_MSG)
+           MTRACE(macTraceMsgRx(pMac, NO_SESSION,
+                 LIM_TRACE_MAKE_RXMSG(limMsg->type, LIM_MSG_PROCESSED));)
+    }
 
     switch (limMsg->type)
     {
@@ -1360,10 +1363,14 @@ limProcessMessages(tpAniSirGlobal pMac, tpSirMsgQ  limMsg)
         case eWNI_SME_TDLS_LINK_ESTABLISH_REQ:
 #endif
         case eWNI_SME_RESET_AP_CAPS_CHANGED:
+        case eWNI_SME_UPDATE_ACCESS_POLICY_VENDOR_IE:
             // These messages are from HDD
             limProcessNormalHddMsg(pMac, limMsg, true);  //need to response to hdd
             break;
-
+        case eWNI_SME_SEND_DISASSOC_FRAME:
+            /* Need to response to hdd */
+            limProcessNormalHddMsg(pMac, limMsg, true);
+            break;
         case eWNI_SME_SCAN_ABORT_IND:
           {
             tSirMbMsg *pMsg = limMsg->bodyptr;
@@ -1435,6 +1442,9 @@ limProcessMessages(tpAniSirGlobal pMac, tpSirMsgQ  limMsg)
         case eWNI_SME_EXT_CHANGE_CHANNEL:
         case eWNI_SME_ROAM_SCAN_OFFLOAD_REQ:
         case eWNI_SME_REGISTER_MGMT_FRAME_CB:
+        case eWNI_SME_NDP_INITIATOR_REQ:
+        case eWNI_SME_NDP_RESPONDER_REQ:
+        case eWNI_SME_NDP_END_REQ:
         case eWNI_SME_REGISTER_P2P_ACK_CB:
             // These messages are from HDD
             limProcessNormalHddMsg(pMac, limMsg, false);   //no need to response to hdd
@@ -1607,6 +1617,12 @@ limProcessMessages(tpAniSirGlobal pMac, tpSirMsgQ  limMsg)
             {
                 limProcessChannelSwitchTimeout(pMac);
             }
+            vos_mem_free(limMsg->bodyptr);
+            limMsg->bodyptr = NULL;
+            break;
+
+        case eWNI_SME_MON_INIT_SESSION:
+            lim_mon_init_session(pMac, limMsg->bodyptr);
             vos_mem_free(limMsg->bodyptr);
             limMsg->bodyptr = NULL;
             break;
@@ -1794,16 +1810,6 @@ limProcessMessages(tpAniSirGlobal pMac, tpSirMsgQ  limMsg)
             //if (pMac->sys.gSysEnableScanMode)
             pMac->lim.gLimReportBackgroundScanResults = FALSE;
             limTriggerBackgroundScan(pMac);
-            break;
-
-
-        case SIR_LIM_HASH_MISS_THRES_TIMEOUT:
-
-            /*
-            ** clear the credit to the send disassociate frame bucket
-            **/
-
-            pMac->lim.gLimDisassocFrameCredit = 0;
             break;
 
         case SIR_LIM_CNF_WAIT_TIMEOUT:
@@ -2040,8 +2046,11 @@ limProcessMessages(tpAniSirGlobal pMac, tpSirMsgQ  limMsg)
         {
 #ifdef WLAN_ACTIVEMODE_OFFLOAD_FEATURE
             tpPESession     psessionEntry;
-            tANI_U8 sessionId = (tANI_U8)limMsg->bodyval ;
-            psessionEntry = &pMac->lim.gpSession[sessionId];
+            tANI_U8 session_id;
+            tSirSetActiveModeSetBncFilterReq *bcn_filter_req =
+               (tSirSetActiveModeSetBncFilterReq *)limMsg->bodyptr;
+            psessionEntry = peFindSessionByBssid(pMac, bcn_filter_req->bssid,
+                                                 &session_id);
             if(psessionEntry != NULL && IS_ACTIVEMODE_OFFLOAD_FEATURE_ENABLE)
             {
                // sending beacon filtering information down to HAL
@@ -2171,13 +2180,19 @@ limProcessMessages(tpAniSirGlobal pMac, tpSirMsgQ  limMsg)
         lim_sap_offload_del_sta(pMac, limMsg);
         break;
 #endif /* SAP_AUTH_OFFLOAD */
-
     case eWNI_SME_DEL_ALL_TDLS_PEERS:
         lim_process_sme_del_all_tdls_peers(pMac, limMsg->bodyptr);
         vos_mem_free((v_VOID_t*)limMsg->bodyptr);
         limMsg->bodyptr = NULL;
         break;
-
+    case SIR_HAL_NDP_INITIATOR_RSP:
+    case SIR_HAL_NDP_INDICATION:
+    case SIR_HAL_NDP_CONFIRM:
+    case SIR_HAL_NDP_RESPONDER_RSP:
+    case SIR_HAL_NDP_END_RSP:
+    case SIR_HAL_NDP_END_IND:
+        lim_handle_ndp_event_message(pMac, limMsg);
+        break;
     default:
         vos_mem_free((v_VOID_t*)limMsg->bodyptr);
         limMsg->bodyptr = NULL;

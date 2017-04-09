@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2006-2007, 2014-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2006-2007, 2014-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -120,6 +120,7 @@ const EID_AID                        =  197;
 const EID_EXT_CAP           	     =  127;
 const EID_OPERATING_MODE             =  199;
 const EID_WIDER_BW_CHANNEL_SWITCH_ANN=  194;
+const VHT_TRANSMIT_POWER_ENVELOPE    = 195;
 const EID_CHANNEL_SWITCH_WRAPPER     = 196;
 const EID_VENDOR_SPECIFIC            = 221;
 
@@ -2044,10 +2045,6 @@ IE Vendor1IE (EID_VENDOR_SPECIFIC) OUI (0x00, 0x10, 0x18)
 {
 }
 
-IE Vendor2IE (EID_VENDOR_SPECIFIC) OUI (0x00, 0x90, 0x4C)
-{
-}
-
 IE Vendor3IE (EID_VENDOR_SPECIFIC) OUI (0x00, 0x16, 0x32)
 {
 }
@@ -2419,13 +2416,19 @@ IE WiderBWChanSwitchAnn (EID_WIDER_BW_CHANNEL_SWITCH_ANN)
    newCenterChanFreq1,    1;
 }
 
+IE vht_transmit_power_env (VHT_TRANSMIT_POWER_ENVELOPE)
+{
+    bytes[2..5];
+}
+
 IE ChannelSwitchWrapper (EID_CHANNEL_SWITCH_WRAPPER)
 {
     OPTIE IE  WiderBWChanSwitchAnn;
+    OPTIE IE  vht_transmit_power_env;
 }
 IE ExtCap (EID_EXT_CAP)
 {
-    bytes[8..9];
+    bytes[1..9];
 }
 
 IE HTCaps (EID_HT_CAPABILITIES)
@@ -3014,6 +3017,14 @@ MULTIIE P2PPresenceResponse ( EID_VENDOR_SPECIFIC ) OUI( 0x50, 0x6F, 0x9A, 0x09 
    MANDATORYTLV NoticeOfAbsence;
 }
 
+IE vendor2_ie (EID_VENDOR_SPECIFIC) OUI (0x00, 0x90, 0x4c)
+{
+   type, 1;
+   sub_type, 1;
+   OPTIE IE VHTCaps;
+   OPTIE IE VHTOperation;
+}
+
 
 /////////////////////////////////////////////////////////////////////////////
 // Frames
@@ -3070,7 +3081,7 @@ FRAME Beacon                              // C.f. Sec. 7.2.3.1
     OPTIE  WiderBWChanSwitchAnn;
     OPTIE  OBSSScanParameters;
     OPTIE  Vendor1IE;
-    OPTIE  Vendor2IE;
+    OPTIE  vendor2_ie;
     OPTIE  Vendor3IE;
     OPTIE  ChannelSwitchWrapper;
     OPTIE  QComVendorIE;
@@ -3157,7 +3168,7 @@ FRAME Beacon2
     OPTIE  WiderBWChanSwitchAnn;
     OPTIE  OBSSScanParameters;
     OPTIE  Vendor1IE;
-    OPTIE  Vendor2IE;
+    OPTIE  vendor2_ie;
     OPTIE  Vendor3IE;
     OPTIE  ChannelSwitchWrapper;
     OPTIE  QComVendorIE;
@@ -3221,7 +3232,7 @@ FRAME BeaconIEs
     OPTIE  WiderBWChanSwitchAnn;
     OPTIE  OBSSScanParameters;
     OPTIE  Vendor1IE;
-    OPTIE  Vendor2IE;
+    OPTIE  vendor2_ie;
     OPTIE  Vendor3IE;
     OPTIE  ChannelSwitchWrapper;
     OPTIE  QComVendorIE;
@@ -3262,6 +3273,7 @@ FRAME AssocRequest                        // 7.2.3.4
     OPTIE  ExtCap;
     OPTIE  OperatingMode;
     OPTIE  QosMapSet;
+    OPTIE  vendor2_ie;
 } // End frame AssocRequest.
 
 FRAME AssocResponse                       // 7.2.3.5
@@ -3295,6 +3307,7 @@ FRAME AssocResponse                       // 7.2.3.5
     OPTIE  ExtCap;
     OPTIE  OBSSScanParameters;
     OPTIE  QosMapSet;
+    OPTIE  vendor2_ie;
 } // End frame AssocResponse.
 
 FRAME ReAssocRequest                      // 7.2.3.6
@@ -3331,6 +3344,7 @@ FRAME ReAssocRequest                      // 7.2.3.6
     OPTIE  ExtCap;
     OPTIE  OperatingMode;
     OPTIE  QosMapSet;
+    OPTIE  vendor2_ie;
 } // End frame ReAssocRequest.
 
 FRAME ReAssocResponse                     // 7.2.3.7
@@ -3365,6 +3379,7 @@ FRAME ReAssocResponse                     // 7.2.3.7
     OPTIE  ExtCap;
     OPTIE  OBSSScanParameters;
     OPTIE  QosMapSet;
+    OPTIE  vendor2_ie;
 } // End frame ReAssocResponse.
 
 FRAME ProbeRequest                        // 7.2.3.8
@@ -3431,7 +3446,7 @@ FRAME ProbeResponse                       // 7.2.3.9
     OPTIE  ExtCap;
     OPTIE  OBSSScanParameters;
     OPTIE  Vendor1IE;
-    OPTIE  Vendor2IE;
+    OPTIE  vendor2_ie;
     OPTIE  Vendor3IE;
     OPTIE  ChannelSwitchWrapper;
     OPTIE  QComVendorIE;
@@ -3995,7 +4010,7 @@ FRAME TimingAdvertisementFrame            // 8.3.3.15
     OPTIE  TimeAdvertisement;
     OPTIE  ExtCap;
     OPTIE  Vendor1IE;
-    OPTIE  Vendor2IE;
+    OPTIE  vendor2_ie;
     OPTIE  Vendor3IE;
 }
 

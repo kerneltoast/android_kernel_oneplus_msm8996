@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -827,6 +827,16 @@ void HIFIpaGetCEResource(HIF_DEVICE *hif_device,
 
 void HIFSetMailboxSwap(HIF_DEVICE  *device);
 
+int hif_register_driver(void);
+void hif_unregister_driver(void);
+/* The API's check if FW can be suspended as part of cfg80211 suspend.
+ * This is done for SDIO drivers, for other bus types it's NO OP, they
+ * enable/disable wow in bus suspend callback.
+ * In SDIO driver bus suspend host will configure 4 bit sdio mode to
+ * 1 bit sdio mode and set the appropriate host flags.
+ */
+bool hif_is_80211_fw_wow_required(void);
+
 #ifdef FEATURE_RUNTIME_PM
 /* Runtime power management API of HIF to control
  * runtime pm. During Runtime Suspend the get API
@@ -843,6 +853,7 @@ int hif_pm_runtime_prevent_suspend(void *ol_sc, void *data);
 int hif_pm_runtime_allow_suspend(void *ol_sc, void *data);
 int hif_pm_runtime_prevent_suspend_timeout(void *ol_sc, void *data,
 						unsigned int delay);
+void hif_request_runtime_pm_resume(void *ol_sc);
 #else
 static inline int hif_pm_runtime_get(HIF_DEVICE *device) { return 0; }
 static inline int hif_pm_runtime_put(HIF_DEVICE *device) { return 0; }
@@ -860,6 +871,8 @@ static inline void *
 hif_runtime_pm_prevent_suspend_init(const char *name) { return NULL; }
 static inline void
 hif_runtime_pm_prevent_suspend_deinit(void *context) { }
+static inline void hif_request_runtime_pm_resume(void *ol_sc)
+{ }
 #endif
 #ifdef __cplusplus
 }
@@ -867,4 +880,12 @@ hif_runtime_pm_prevent_suspend_deinit(void *context) { }
 
 A_BOOL HIFIsMailBoxSwapped(HIF_DEVICE *hd);
 
+#ifdef HIF_PCI
+int hif_addr_in_boundary(HIF_DEVICE *hif_device, A_UINT32 offset);
+#else
+static inline int hif_addr_in_boundary(HIF_DEVICE *hif_device, A_UINT32 offset)
+{
+	return 0;
+}
+#endif
 #endif /* _HIF_H_ */

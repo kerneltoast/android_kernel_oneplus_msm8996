@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011, 2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -57,6 +57,9 @@ struct htt_host_fw_desc_base {
         A_UINT32 dummy_pad; /* make sure it is DOWRD aligned */
     } u;
 };
+
+/* mark the first packet after wow wakeup */
+#define HTT_MARK_FIRST_WAKEUP_PACKET   0x80000000
 
 /*
  * This struct defines the basic descriptor information used by host,
@@ -251,14 +254,12 @@ htt_print_rx_desc(struct htt_host_rx_desc_base *rx_desc)
 #define HTT_MAX_SEND_QUEUE_DEPTH 64
 
 
-#define IS_PWR2(value) (((value) ^ ((value)-1)) == ((value) << 1) - 1)
-
-
 /* FIX THIS
  * Should be: sizeof(struct htt_host_rx_desc) + max rx MSDU size,
  * rounded up to a cache line size.
  */
 #define HTT_RX_BUF_SIZE 1920
+#define MAX_RX_PAYLOAD_SZ (HTT_RX_BUF_SIZE - RX_STD_DESC_SIZE)
 /*
  * DMA_MAP expects the buffer to be an integral number of cache lines.
  * Rather than checking the actual cache line size, this code makes a

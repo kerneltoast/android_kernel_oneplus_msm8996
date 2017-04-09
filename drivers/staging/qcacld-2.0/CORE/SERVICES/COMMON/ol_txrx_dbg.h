@@ -36,7 +36,6 @@
 #include <adf_os_lock.h>   /* adf_os_mutex_t */
 #include <htt.h>           /* htt_dbg_stats_type */
 #include <ol_txrx_stats.h> /* ol_txrx_stats */
-#include "vos_status.h"
 
 typedef void (*ol_txrx_stats_callback)(
     void *ctxt,

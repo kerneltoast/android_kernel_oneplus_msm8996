@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -55,14 +55,13 @@
 #include "hif_pci.h"
 #include "vos_trace.h"
 #include "vos_api.h"
-#if  defined(CONFIG_CNSS)
-#include <net/cnss.h>
-#endif
+#include "vos_cnss.h"
 #include <vos_getBin.h>
 #include "epping_main.h"
 #ifdef CONFIG_PCI_MSM
 #include <linux/msm_pcie.h>
 #endif
+#include "adf_trace.h"
 
 /* use credit flow control over HTC */
 unsigned int htc_credit_flow = 1;
@@ -77,7 +76,7 @@ OSDRV_CALLBACKS HIF_osDrvcallback;
 #define HIF_PCI_IPA_UC_ASSIGNED_CE  5
 #endif /* IPA_UC_OFFLOAD */
 
-#if defined(DEBUG)
+#if defined(WLAN_DEBUG)
 static ATH_DEBUG_MASK_DESCRIPTION g_HIFDebugDescription[] = {
     {HIF_PCI_DEBUG,"hif_pci"},
 };
@@ -97,9 +96,6 @@ unsigned int pcie_access_log_seqnum = 0;
 HIF_ACCESS_LOG pcie_access_log[PCIE_ACCESS_LOG_NUM];
 static void HIFTargetDumpAccessLog(void);
 #endif
-
-/* Forward references */
-static int hif_post_recv_buffers_for_pipe(struct HIF_CE_pipe_info *pipe_info);
 
 /*
  * Host software's Copy Engine configuration.
@@ -373,6 +369,10 @@ HIFSend_head(HIF_DEVICE *hif_device,
         return A_ERROR;
     }
 
+    NBUF_UPDATE_TX_PKT_COUNT(nbuf, NBUF_TX_PKT_HIF);
+    DPTRACE(adf_dp_trace(nbuf, ADF_DP_TRACE_HIF_PACKET_PTR_RECORD,
+                adf_nbuf_data_addr(nbuf),
+                sizeof(adf_nbuf_data(nbuf)), ADF_TX));
     status = CE_sendlist_send(ce_hdl, nbuf, &sendlist, transfer_id);
     A_ASSERT(status == A_OK);
 
@@ -1587,6 +1587,7 @@ hif_post_recv_buffers_for_pipe(struct HIF_CE_pipe_info *pipe_info)
                 ("%s CE_recv_buf_enqueue error [%d] needed %d\n",
                 __func__, pipe_info->pipe_num,
                 atomic_read(&pipe_info->recv_bufs_needed)));
+            adf_nbuf_unmap_single(scn->adf_dev, nbuf, ADF_OS_DMA_FROM_DEVICE);
             atomic_inc(&pipe_info->recv_bufs_needed);
             adf_nbuf_free(nbuf);
             adf_os_spin_lock_bh(&pipe_info->recv_bufs_needed_lock);
@@ -1809,8 +1810,9 @@ hif_send_buffer_cleanup_on_pipe(struct HIF_CE_pipe_info *pipe_info)
                 return;
             }
             /* Indicate the completion to higer layer to free the buffer */
-            hif_state->msg_callbacks_current.txCompletionHandler(
-                hif_state->msg_callbacks_current.Context, netbuf, id);
+            if (hif_state->msg_callbacks_current.txCompletionHandler)
+                hif_state->msg_callbacks_current.txCompletionHandler(
+                    hif_state->msg_callbacks_current.Context, netbuf, id);
         }
     }
 }
@@ -2860,9 +2862,7 @@ HIFTargetSleepStateAdjust(A_target_id_t targid,
                             VOS_BUG(0);
                     sc->recovery = true;
                     vos_set_logp_in_progress(VOS_MODULE_ID_VOSS, TRUE);
-#ifdef CONFIG_CNSS
-                    cnss_wlan_pci_link_down();
-#endif
+                    vos_wlan_pci_link_down();
                     return -EACCES;
                 }
 
@@ -3594,4 +3594,62 @@ void hif_pm_ssr_runtime_allow_suspend(struct hif_pci_softc *sc, void *context)
 {
 	__hif_pm_runtime_allow_suspend(sc, context);
 }
+
+/**
+ * hif_request_runtime_pm_resume() - API to do runtime resume
+ * @ol_sc: HIF context
+ *
+ * API to request runtime resume
+ *
+ * Return: void
+ */
+void hif_request_runtime_pm_resume(void *ol_sc)
+{
+	struct ol_softc *sc = (struct ol_softc *)ol_sc;
+	struct hif_pci_softc *hif_sc = sc->hif_sc;
+	struct device *dev = hif_sc->dev;
+
+	hif_pm_request_resume(dev);
+	hif_pm_runtime_mark_last_busy(dev);
+}
 #endif
+
+/**
+ * hif_is_80211_fw_wow_required() - API to check if target suspend is needed
+ *
+ * API determines if fw can be suspended and returns true/false to the caller.
+ * Caller will call WMA WoW API's to suspend.
+ * This API returns true only for SDIO bus types, for others it's a false.
+ *
+ * Return: bool
+ */
+bool hif_is_80211_fw_wow_required(void)
+{
+	return false;
+}
+
+/* hif_addr_in_boundary() - API to check if addr is with in PCIE BAR range
+ * @hif_device:  context of cd
+ * @offset: offset from PCI BAR mapped base address.
+ *
+ * API determines if address to be accessed is with in range or out
+ * of bound.
+ *
+ * Return: success if address is with in PCI BAR range.
+ */
+int hif_addr_in_boundary(HIF_DEVICE *hif_device, A_UINT32 offset)
+{
+	struct HIF_CE_state *hif_state;
+	struct hif_pci_softc *sc;
+
+	hif_state = (struct HIF_CE_state *)hif_device;
+	sc = hif_state->sc;
+	if (unlikely(offset + sizeof(unsigned int) > sc->mem_len)) {
+		VOS_TRACE(VOS_MODULE_ID_HIF, VOS_TRACE_LEVEL_ERROR,
+			"refusing to read mmio out of bounds at 0x%08x - 0x%08zx (max 0x%08zx)\n",
+			offset, offset + sizeof(unsigned int), sc->mem_len);
+		return -EINVAL;
+	}
+
+	return 0;
+}

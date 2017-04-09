@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2014 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2014, 2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -134,6 +134,8 @@ static tvosTraceData gvosTraceData;
  */
 static tpvosTraceCb vostraceCBTable[VOS_MODULE_ID_MAX];
 static tpvosTraceCb vostraceRestoreCBTable[VOS_MODULE_ID_MAX];
+static tp_vos_state_info_cb vos_state_info_table[VOS_MODULE_ID_MAX];
+
 /*-------------------------------------------------------------------------
   Functions
   ------------------------------------------------------------------------*/
@@ -333,6 +335,10 @@ void vos_trace_display(void)
    }
 }
 
+#define ROW_SIZE 16
+/* Buffer size = data bytes(2 hex chars plus space) + NULL */
+#define BUFFER_SIZE ((ROW_SIZE * 3) + 1)
+
 /*----------------------------------------------------------------------------
 
   \brief vos_trace_hex_dump() - Externally called hex dump function
@@ -356,43 +362,25 @@ void vos_trace_display(void)
   \sa
   --------------------------------------------------------------------------*/
 void vos_trace_hex_dump( VOS_MODULE_ID module, VOS_TRACE_LEVEL level,
-                                void *data, int buf_len )
+		void *data, int buf_len )
 {
-    char *buf = (char *)data;
-    int i;
+	const u8 *ptr = data;
+	int i, linelen, remaining = buf_len;
+	unsigned char linebuf[BUFFER_SIZE];
 
-    if (!(gVosTraceInfo[module].moduleTraceLevel &
-                VOS_TRACE_LEVEL_TO_MODULE_BITMASK(level)))
-        return;
+	if (!(gVosTraceInfo[module].moduleTraceLevel &
+				VOS_TRACE_LEVEL_TO_MODULE_BITMASK(level)))
+		return;
 
-    for (i=0; (i+15)< buf_len; i+=16)
-    {
-        vos_trace_msg( module, level,
-                 "%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
-                 buf[i],
-                 buf[i+1],
-                 buf[i+2],
-                 buf[i+3],
-                 buf[i+4],
-                 buf[i+5],
-                 buf[i+6],
-                 buf[i+7],
-                 buf[i+8],
-                 buf[i+9],
-                 buf[i+10],
-                 buf[i+11],
-                 buf[i+12],
-                 buf[i+13],
-                 buf[i+14],
-                 buf[i+15]);
-    }
+	for (i = 0; i < buf_len; i += ROW_SIZE) {
+		linelen = min(remaining, ROW_SIZE);
+		remaining -= ROW_SIZE;
 
-    // Dump the bytes in the last line
-    for (; i < buf_len; i++)
-    {
-        vos_trace_msg( module, level, "%02x ", buf[i]);
-    }
+		hex_dump_to_buffer(ptr + i, linelen, ROW_SIZE, 1,
+				linebuf, sizeof(linebuf), false);
 
+		vos_trace_msg(module, level, "%.8x: %s", i, linebuf);
+	}
 }
 
 #endif
@@ -485,6 +473,20 @@ void vosTraceInit()
     }
 }
 
+/**
+ * vos_register_debugcb_init() - initializes debug callbacks
+ * to NULL
+ *
+ * Return: None
+ */
+void vos_register_debugcb_init(void)
+{
+	uint8_t i;
+
+	for (i = 0; i < VOS_MODULE_ID_MAX; i++)
+		vos_state_info_table[i] = NULL;
+}
+
 /*-----------------------------------------------------------------------------
   \brief vos_trace() - puts the messages in to ring-buffer
 
@@ -501,6 +503,7 @@ void vos_trace(v_U8_t module, v_U8_t code, v_U16_t session, v_U32_t data)
 {
     tpvosTraceRecord rec = NULL;
     unsigned long flags;
+    char time[20];
 
     if (!gvosTraceData.enable)
     {
@@ -511,6 +514,8 @@ void vos_trace(v_U8_t module, v_U8_t code, v_U16_t session, v_U32_t data)
     if (NULL == vostraceCBTable[module]) {
          return;
     }
+
+    vos_get_time_of_the_day_in_hr_min_sec_usec(time, sizeof(time));
 
     /* Aquire the lock so that only one thread at a time can fill the ring buffer */
     spin_lock_irqsave(&ltraceLock, flags);
@@ -549,13 +554,12 @@ void vos_trace(v_U8_t module, v_U8_t code, v_U16_t session, v_U32_t data)
 
         gvosTraceData.tail = tail;
     }
-
     rec = &gvosTraceTbl[gvosTraceData.tail];
     rec->code = code;
     rec->session = session;
     rec->data = data;
-    rec->time = adf_get_boottime();
-    rec->module =  module;
+    snprintf(rec->time, sizeof(rec->time), "%s", time);
+    rec->module = module;
     rec->pid = (in_interrupt() ? 0 : current->pid);
     gvosTraceData.numSinceLastDump ++;
     spin_unlock_irqrestore(&ltraceLock, flags);
@@ -698,4 +702,51 @@ void vosTraceDumpAll(void *pMac, v_U8_t code, v_U8_t session,
     {
         spin_unlock(&ltraceLock);
     }
+}
+
+/**
+ * vos_register_debug_callback() - stores callback handlers to print
+ * state information
+ * @module_id: module id of layer
+ * @vos_state_infocb: callback to be registered
+ *
+ * This function is used to store callback handlers to print
+ * state information
+ *
+ * Return: None
+ */
+void vos_register_debug_callback(VOS_MODULE_ID module_id,
+					tp_vos_state_info_cb vos_state_infocb)
+{
+	vos_state_info_table[module_id] = vos_state_infocb;
+}
+
+/**
+ * vos_state_info_dump_all() - it invokes callback of layer which registered
+ * its callback to print its state information.
+ * @buf:  buffer pointer to be passed
+ * @size:  size of buffer to be filled
+ * @driver_dump_size: actual size of buffer used
+ *
+ * Return: zero on success
+ */
+int vos_state_info_dump_all(char *buf, uint16_t size,
+			uint16_t *driver_dump_size)
+{
+	uint8_t module, ret = 0;
+	uint16_t buf_len = size;
+	char *buf_ptr = buf;
+
+	for (module = 0; module < VOS_MODULE_ID_MAX; module++) {
+		if (NULL != vos_state_info_table[module]) {
+			vos_state_info_table[module](&buf_ptr, &buf_len);
+			if (!buf_len) {
+				ret = 1;
+				break;
+			}
+		}
+	}
+
+	*driver_dump_size = size - buf_len;
+	return ret;
 }

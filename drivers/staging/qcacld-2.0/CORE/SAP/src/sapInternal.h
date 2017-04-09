@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -95,13 +95,7 @@ when           who        what, where, why
 #define SAP_DEBUG
 // Used to enable or disable security on the BT-AMP link
 #define WLANSAP_SECURITY_ENABLED_STATE VOS_TRUE
-#ifdef WLAN_FEATURE_MBSSID
-// When MBSSID feature is enabled, SAP context is directly passed to SAP APIs
 #define VOS_GET_SAP_CB(ctx) (ptSapContext)(ctx)
-#else
-// How do I get SAP context from voss context?
-#define VOS_GET_SAP_CB(ctx) vos_get_context( VOS_MODULE_ID_SAP, ctx)
-#endif
 
 #define VOS_GET_HAL_CB(ctx) vos_get_context( VOS_MODULE_ID_PE, ctx)
 //MAC Address length
@@ -141,7 +135,8 @@ typedef enum {
     eSAP_DFS_CAC_WAIT,
     eSAP_STARTING,
     eSAP_STARTED,
-    eSAP_DISCONNECTING
+    eSAP_DISCONNECTING,
+    eSAP_DISCONNECTPENDING
 } eSapFsmStates_t;
 
 /*----------------------------------------------------------------------------
@@ -279,8 +274,7 @@ typedef struct sSapContext {
     v_U8_t             cc_switch_mode;
 #endif
 
-#if defined(FEATURE_WLAN_STA_AP_MODE_DFS_DISABLE) ||\
-    defined(WLAN_FEATURE_MBSSID)
+#if defined(FEATURE_WLAN_STA_AP_MODE_DFS_DISABLE)
     v_BOOL_t           dfs_ch_disable;
 #endif
     tANI_BOOLEAN       isCacEndNotified;
@@ -301,14 +295,18 @@ typedef struct sSapContext {
      */
     struct sap_avoid_channels_info sap_detected_avoid_ch_ie;
 #endif /* FEATURE_AP_MCC_CH_AVOIDANCE */
+    enum sap_acs_dfs_mode  dfs_mode;
+
+    uint16_t beacon_tx_rate;
+    tSirMacRateSet supp_rate_set;
+    tSirMacRateSet extended_rate_set;
+    vos_event_t sap_session_opened_evt;
 } *ptSapContext;
 
 
 /*----------------------------------------------------------------------------
  *  External declarations for global context
  * -------------------------------------------------------------------------*/
-//  The main per-Physical Link (per WLAN association) context.
-extern ptSapContext  gpSapCtx;
 
 /*----------------------------------------------------------------------------
  *  SAP state machine event definition
@@ -1089,6 +1087,13 @@ void sap_config_acs_result(tHalHandle hal, ptSapContext sap_ctx,
  */
 bool sap_check_in_avoid_ch_list(ptSapContext sap_ctx, uint8_t channel);
 #endif
+
+eHalStatus sap_OpenSession(tHalHandle hHal, ptSapContext sapContext,
+                            uint32_t *session_id);
+eHalStatus sap_CloseSession(tHalHandle hHal,
+                            ptSapContext sapContext,
+                            csrRoamSessionCloseCallback callback,
+                            v_BOOL_t valid);
 #ifdef __cplusplus
 }
 #endif

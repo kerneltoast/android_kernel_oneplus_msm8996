@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -56,6 +56,7 @@ enum wlan_op_mode {
 	wlan_op_mode_sta,
 	wlan_op_mode_monitor,
 	wlan_op_mode_ocb,
+	wlan_op_mode_ndi,
 };
 
 #define OL_TXQ_PAUSE_REASON_FW                (1 << 0)
@@ -63,17 +64,60 @@ enum wlan_op_mode {
 #define OL_TXQ_PAUSE_REASON_TX_ABORT          (1 << 2)
 #define OL_TXQ_PAUSE_REASON_VDEV_STOP         (1 << 3)
 #define OL_TXQ_PAUSE_REASON_VDEV_SUSPEND      (1 << 4)
+#define OL_TXQ_PAUSE_REASON_MCC_VDEV_START    (1 << 5)
+#define OL_TXQ_PAUSE_REASON_THROTTLE          (1 << 6)
+
+/**
+ * enum netif_action_type - Type of actions on netif queues
+ * @WLAN_STOP_ALL_NETIF_QUEUE: stop all netif queues
+ * @WLAN_START_ALL_NETIF_QUEUE: start all netif queues
+ * @WLAN_WAKE_ALL_NETIF_QUEUE: wake all netif queues
+ * @WLAN_STOP_ALL_NETIF_QUEUE_N_CARRIER: stop all queues and off carrier
+ * @WLAN_START_ALL_NETIF_QUEUE_N_CARRIER: start all queues and on carrier
+ * @WLAN_NETIF_TX_DISABLE: disable tx
+ * @WLAN_NETIF_TX_DISABLE_N_CARRIER: disable tx and off carrier
+ * @WLAN_NETIF_CARRIER_ON: on carrier
+ * @WLAN_NETIF_CARRIER_OFF: off carrier
+ */
+enum netif_action_type {
+	WLAN_STOP_ALL_NETIF_QUEUE = 1,
+	WLAN_START_ALL_NETIF_QUEUE,
+	WLAN_WAKE_ALL_NETIF_QUEUE,
+	WLAN_STOP_ALL_NETIF_QUEUE_N_CARRIER,
+	WLAN_START_ALL_NETIF_QUEUE_N_CARRIER,
+	WLAN_NETIF_TX_DISABLE,
+	WLAN_NETIF_TX_DISABLE_N_CARRIER,
+	WLAN_NETIF_CARRIER_ON,
+	WLAN_NETIF_CARRIER_OFF,
+	WLAN_NETIF_ACTION_TYPE_MAX,
+};
+
+/**
+ * enum netif_reason_type - reason for netif queue action
+ * @WLAN_CONTROL_PATH: action from control path
+ * @WLAN_DATA_FLOW_CONTROL: because of flow control
+ * @WLAN_REASON_TYPE_MAX: max netif reason
+ */
+enum netif_reason_type {
+	WLAN_CONTROL_PATH = 1,
+	WLAN_DATA_FLOW_CONTROL,
+	WLAN_REASON_TYPE_MAX,
+};
 
 /* command options for dumpStats*/
 #define WLAN_HDD_STATS               0
 #define WLAN_TXRX_STATS              1
 #define WLAN_TXRX_HIST_STATS         2
+#define WLAN_TXRX_DESC_STATS         3
+#define WLAN_HDD_NETIF_OPER_HISTORY  4
 #ifdef CONFIG_HL_SUPPORT
 #define WLAN_SCHEDULER_STATS        21
 #define WLAN_TX_QUEUE_STATS         22
 #define WLAN_BUNDLE_STATS           23
 #define WLAN_CREDIT_STATS           24
 #endif
+
+#define OL_TXSTATS_DUMP_MOD_FREQ    10
 
 /**
  * @brief Set up the data SW subsystem.
@@ -203,12 +247,12 @@ ol_txrx_peer_update(ol_txrx_vdev_handle data_vdev, u_int8_t *peer_mac,
 		    ol_txrx_peer_update_select_t select);
 
 enum {
-    OL_TX_WMM_AC_BE,
-    OL_TX_WMM_AC_BK,
-    OL_TX_WMM_AC_VI,
-    OL_TX_WMM_AC_VO,
+	OL_TX_WMM_AC_BE,
+	OL_TX_WMM_AC_BK,
+	OL_TX_WMM_AC_VI,
+	OL_TX_WMM_AC_VO,
 
-    OL_TX_NUM_WMM_AC
+	OL_TX_NUM_WMM_AC
 };
 
 /**
@@ -448,6 +492,50 @@ ol_txrx_pdev_unpause(ol_txrx_pdev_handle data_pdev, u_int32_t reason);
 #endif /* CONFIG_HL_SUPPORT */
 
 /**
+ * ol_txrx_pdev_pause_other_vdev() - Suspend all tx data for the specified physical device except
+ * current vdev.
+ * @data_pdev: the physical device being paused.
+ * @reason:  pause reason.
+ *		One can provide multiple line descriptions
+ *		for arguments.
+ * @current_id: do not pause this vdev id queues
+ *
+ * This function applies to HL systems -
+ * in LL systems, applies when txrx_vdev_pause_all is enabled.
+ * In some cases it is necessary to be able to temporarily
+ * suspend other vdevs traffic, e.g. to avoid current EAPOL frames credit starvation
+ *
+ * Return: None
+ */
+#if defined(CONFIG_HL_SUPPORT)
+void
+ol_txrx_pdev_pause_other_vdev(ol_txrx_pdev_handle data_pdev, u_int32_t reason, u_int32_t current_id);
+#else
+#define ol_txrx_pdev_pause_other_vdev(data_pdev,reason,current_id) /* no-op */
+#endif /* CONFIG_HL_SUPPORT */
+
+/**
+ * ol_txrx_pdev_unpause_other_vdev() - Resume tx for the paused vdevs..
+ * @data_pdev: the physical device being paused.
+ * @reason:  pause reason.
+ * @current_id: do not unpause this vdev
+ *
+ *  This function applies to HL systems -
+ *  in LL systems, applies when txrx_vdev_pause_all is enabled.
+ *
+ *
+ * Return: None
+ */
+#if defined(CONFIG_HL_SUPPORT)
+void
+ol_txrx_pdev_unpause_other_vdev(ol_txrx_pdev_handle data_pdev, u_int32_t reason, u_int32_t current_id);
+#else
+#define ol_txrx_pdev_unpause_other_vdev(data_pdev,reason,current_id) /* no-op */
+#endif /* CONFIG_HL_SUPPORT */
+
+
+
+/**
  * @brief Synchronize the data-path tx with a control-path target download
  * @dtails
  * @param data_pdev - the data-path physical device object
@@ -678,6 +766,19 @@ int
 ol_txrx_get_tx_pending(
     ol_txrx_pdev_handle pdev);
 
+/**
+ * ol_txrx_get_queue_status() - Get the status of tx queues.
+ * @pdev: the data physical device object
+ *
+ * This api is used while trying to go in suspend mode.
+ *
+ * Return - status: A_OK - if all queues are empty
+ *                  A_ERROR - if any queue is not empty
+ */
+A_STATUS
+ol_txrx_get_queue_status(
+	ol_txrx_pdev_handle pdev);
+
 void ol_txrx_dump_tx_desc(ol_txrx_pdev_handle pdev);
 
 /**
@@ -866,6 +967,30 @@ ol_txrx_peer_stats_copy(
 #define ol_txrx_peer_stats_copy(pdev, peer, stats) A_ERROR /* failure */
 #endif /* QCA_ENABLE_OL_TXRX_PEER_STATS */
 
+/**
+ * struct ol_tx_sched_wrr_ac_specs_t - the wrr ac specs params structure
+ * @wrr_skip_weight: map to ol_tx_sched_wrr_adv_category_info_t.specs.
+ *                            wrr_skip_weight
+ * @credit_threshold: map to ol_tx_sched_wrr_adv_category_info_t.specs.
+ *                            credit_threshold
+ * @send_limit: map to ol_tx_sched_wrr_adv_category_info_t.specs.
+ *                            send_limit
+ * @credit_reserve: map to ol_tx_sched_wrr_adv_category_info_t.specs.
+ *                            credit_reserve
+ * @discard_weight: map to ol_tx_sched_wrr_adv_category_info_t.specs.
+ *                            discard_weight
+ *
+ * This structure is for wrr ac specs params set from user, it will update
+ * its content corresponding to the ol_tx_sched_wrr_adv_category_info_t.specs.
+ */
+struct ol_tx_sched_wrr_ac_specs_t {
+	int wrr_skip_weight;
+	uint32_t credit_threshold;
+	uint16_t send_limit;
+	int credit_reserve;
+	int discard_weight;
+};
+
 /* Config parameters for txrx_pdev */
 struct txrx_pdev_cfg_param_t {
     u_int8_t is_full_reorder_offload;
@@ -879,6 +1004,10 @@ struct txrx_pdev_cfg_param_t {
     u_int32_t uc_rx_indication_ring_count;
     /* IPA Micro controller data path offload TX partition base */
     u_int32_t uc_tx_partition_base;
+    uint16_t pkt_bundle_timer_value;
+    uint16_t pkt_bundle_size;
+
+    struct ol_tx_sched_wrr_ac_specs_t ac_specs[OL_TX_NUM_WMM_AC];
 };
 
 /**
@@ -1078,10 +1207,13 @@ static inline void ol_tx_throttle_set_level(struct ol_txrx_pdev_t *pdev,
  *
  * @param pdev - the physics device being throttled
  */
-void ol_tx_throttle_init_period(struct ol_txrx_pdev_t *pdev, int period);
+void ol_tx_throttle_init_period(struct ol_txrx_pdev_t *pdev, int period,
+    u_int8_t *dutycycle_level);
+
 #else
 static inline void ol_tx_throttle_init_period(struct ol_txrx_pdev_t *pdev,
-    int period)
+    int period, u_int8_t *dutycycle_level)
+
 {
     /* no-op */
 }
@@ -1328,7 +1460,25 @@ void ol_txrx_set_ocb_peer(struct ol_txrx_pdev_t *pdev, struct ol_txrx_peer_t *pe
  */
 a_bool_t ol_txrx_get_ocb_peer(struct ol_txrx_pdev_t *pdev, struct ol_txrx_peer_t **peer);
 
+/**
+ * ol_txrx_set_ocb_def_tx_param() - Set the default OCB TX parameters
+ * @vdev: The OCB vdev that will use these defaults.
+ * @_def_tx_param: The default TX parameters.
+ * @def_tx_param_size: The size of the _def_tx_param buffer.
+ *
+ * Return: true if the default parameters were set correctly, false if there
+ * is an error, for example an invalid parameter. In the case that false is
+ * returned, see the kernel log for the error description.
+ */
+bool ol_txrx_set_ocb_def_tx_param(ol_txrx_vdev_handle vdev,
+	void *def_tx_param, uint32_t def_tx_param_size);
+
 void ol_txrx_display_stats(struct ol_txrx_pdev_t *pdev, uint16_t bitmap);
 void ol_txrx_clear_stats(struct ol_txrx_pdev_t *pdev, uint16_t bitmap);
+
+void ol_rx_reset_pn_replay_counter(struct ol_txrx_pdev_t *pdev);
+uint32_t ol_rx_get_tkip_replay_counter(struct ol_txrx_pdev_t *pdev);
+uint32_t ol_rx_get_ccmp_replay_counter(struct ol_txrx_pdev_t *pdev);
+void ol_tx_mark_first_wakeup_packet(uint8_t value);
 
 #endif /* _OL_TXRX_CTRL_API__H_ */

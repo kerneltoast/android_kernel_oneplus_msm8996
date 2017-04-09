@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2014 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2014,2016 The Linux Foundation. All rights reserved.
  *
  *Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -288,8 +288,10 @@ A_STATUS HIFRegBasedGetTargetInfo(HIF_DEVICE *device, struct bmi_target_info *ta
      * So wait 100 ms here to wait target ready to avoid -110 error
      * when loading driver
      */
-    if ((device->id->device & MANUFACTURER_ID_AR6K_BASE_MASK) ==
-        MANUFACTURER_ID_QCA9377_BASE) {
+    if (((device->id->device & MANUFACTURER_ID_AR6K_BASE_MASK) ==
+        MANUFACTURER_ID_QCA9377_BASE) ||
+        ((device->id->device & MANUFACTURER_ID_AR6K_BASE_MASK) ==
+        MANUFACTURER_ID_QCA9379_BASE)) {
         msleep(100);
     }
 
@@ -298,13 +300,8 @@ A_STATUS HIFRegBasedGetTargetInfo(HIF_DEVICE *device, struct bmi_target_info *ta
 
     status = bmiBufferSend(device, (A_UCHAR *)&cid, sizeof(cid));
     if (status != A_OK) {
-        AR_DEBUG_PRINTF(ATH_DEBUG_ERR, ("Unable to write to the device, try again.\n"));
-        mdelay(100);
-        status = bmiBufferSend(device, (A_UCHAR *)&cid, sizeof(cid));
-        if (status != A_OK) {
-            AR_DEBUG_PRINTF(ATH_DEBUG_ERR, ("Still unable to write to the device!\n"));
-            return A_ERROR;
-        }
+        AR_DEBUG_PRINTF(ATH_DEBUG_ERR, ("Unable to write to the device.\n"));
+        return A_ERROR;
     }
 
     status = bmiBufferReceive(device, (A_UCHAR *)&targ_info->target_ver,

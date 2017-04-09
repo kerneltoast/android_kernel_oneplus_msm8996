@@ -125,6 +125,8 @@ typedef struct sPESession           // Added to Support BT-AMP
     tANI_U8                 operMode;               // AP - 0; STA - 1 ;
     tSirNwType              nwType;
     tpSirSmeStartBssReq     pLimStartBssReq;        //handle to smestart bss req
+    bool                    osen_association;
+    bool                    wps_registration;
     tpSirSmeJoinReq         pLimJoinReq;            // handle to sme join req
     tpSirSmeJoinReq         pLimReAssocReq;         //handle to sme reassoc req
     tpLimMlmJoinReq         pLimMlmJoinReq;         //handle to MLM join Req
@@ -495,10 +497,18 @@ typedef struct sPESession           // Added to Support BT-AMP
     tANI_U8 countryInfoPresent;
     uint8_t vdev_nss;
     bool roaming_in_progress;
+    bool add_bss_failed;
     /* Supported NSS is intersection of self and peer NSS */
     bool supported_nss_1x1;
-    bool add_bss_failed;
     bool is_ext_caps_present;
+    bool is_vendor_specific_vhtcaps;
+    uint8_t vendor_specific_vht_ie_type;
+    uint8_t vendor_specific_vht_ie_sub_type;
+    bool vendor_vht_for_24ghz_sap;
+    uint16_t beacon_tx_rate;
+    uint8_t *access_policy_vendor_ie;
+    uint8_t access_policy;
+
 } tPESession, *tpPESession;
 
 /*-------------------------------------------------------------------------
@@ -638,6 +648,8 @@ void peDeleteSession(tpAniSirGlobal pMac, tpPESession psessionEntry);
  */
 tpPESession pe_find_session_by_sme_session_id(tpAniSirGlobal mac_ctx,
 					   uint8_t sme_session_id);
+uint8_t pe_count_session_with_sme_session_id(tpAniSirGlobal mac_ctx,
+	uint8_t sme_session_id);
 
 int pe_get_active_session_count(tpAniSirGlobal mac_ctx);
 #endif //#if !defined( __LIM_SESSION_H )

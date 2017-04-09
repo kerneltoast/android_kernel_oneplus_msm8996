@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -165,6 +165,7 @@ typedef struct _tx_peer_threshold{
 struct ol_tx_desc_t {
 	adf_nbuf_t netbuf;
 	void *htt_tx_desc;
+	uint16_t id;
 	u_int32_t htt_tx_desc_paddr;
 	adf_os_atomic_t ref_cnt;
 	enum htt_tx_status status;
@@ -191,19 +192,17 @@ struct ol_tx_desc_t {
 	/* used by tx encap, to restore the os buf start offset after tx complete*/
 	u_int8_t orig_l2_hdr_bytes;
 #endif
-#if defined(CONFIG_HL_SUPPORT)
+
 	struct ol_txrx_vdev_t* vdev;
-#endif
+
 	void *txq;
-	void *p_link;
-	uint16_t id;
 };
 
 typedef TAILQ_HEAD(, ol_tx_desc_t) ol_tx_desc_list;
 
-struct ol_tx_desc_list_elem_t {
-	struct ol_tx_desc_list_elem_t *next;
-	struct ol_tx_desc_t *tx_desc;
+union ol_tx_desc_list_elem_t {
+	union ol_tx_desc_list_elem_t *next;
+	struct ol_tx_desc_t tx_desc;
 };
 
 union ol_txrx_align_mac_addr_t {
@@ -360,7 +359,12 @@ struct ol_tx_sched_t;
 typedef struct ol_tx_sched_t *ol_tx_sched_handle;
 
 #ifndef OL_TXRX_NUM_LOCAL_PEER_IDS
-#define OL_TXRX_NUM_LOCAL_PEER_IDS 33 /* default */
+
+/*
+ * Each AP will occupy one ID, so it will occupy two IDs for AP-AP mode.
+ * And the remainder IDs will be assigned to other 32 clients.
+ */
+#define OL_TXRX_NUM_LOCAL_PEER_IDS (2 + 32)
 #endif
 
 #ifndef ol_txrx_local_peer_id_t
@@ -405,7 +409,7 @@ typedef enum _throttle_phase {
 	THROTTLE_PHASE_MAX,
 } throttle_phase ;
 
-#define THROTTLE_TX_THRESHOLD (100)
+#define THROTTLE_TX_THRESHOLD (400)
 
 #ifdef IPA_UC_OFFLOAD
 typedef void (*ipa_uc_op_cb_type)(u_int8_t *op_msg, void *osif_ctxt);
@@ -588,12 +592,20 @@ struct ol_txrx_pdev_t {
 		} callbacks[OL_TXRX_MGMT_NUM_TYPES];
 	} tx_mgmt;
 
+	/* packetdump callback functions */
+	tp_ol_packetdump_cb ol_tx_packetdump_cb;
+	tp_ol_packetdump_cb ol_rx_packetdump_cb;
+
 	/* tx descriptor pool */
 	struct {
 		u_int16_t pool_size;
 		u_int16_t num_free;
-		struct ol_tx_desc_list_elem_t *array;
-		struct ol_tx_desc_list_elem_t *freelist;
+		union ol_tx_desc_list_elem_t *freelist;
+		uint32_t page_size;
+		uint16_t desc_reserved_size;
+		uint8_t page_divider;
+		uint32_t offset_filter;
+		struct adf_os_mem_multi_page_t desc_pages;
 	} tx_desc;
 
 	struct {
@@ -604,6 +616,8 @@ struct ol_txrx_pdev_t {
 				int opmode);
 		int len;
 	} rx_pn[htt_num_sec_types];
+
+	uint32_t pn_replays[OL_RX_NUM_PN_REPLAY_TYPES];
 
 	/* tx mutex */
 	OL_TX_MUTEX_TYPE tx_mutex;
@@ -829,11 +843,8 @@ struct ol_txrx_pdev_t {
 	struct ol_txrx_peer_t *ocb_peer;
 	int tid_to_ac[OL_TX_NUM_TIDS + OL_TX_VDEV_NUM_QUEUES];
 
-	unsigned int page_size;
-	unsigned int desc_mem_size;
-	unsigned int num_desc_pages;
-	unsigned int num_descs_per_page;
-	void **desc_pages;
+	struct ol_txrx_peer_t *self_peer;
+	uint32_t total_bundle_queue_length;
 };
 
 struct ol_txrx_ocb_chan_info {
@@ -902,6 +913,7 @@ struct ol_txrx_vdev_t {
 
 #if defined(CONFIG_HL_SUPPORT)
 	struct ol_tx_frms_queue_t txqs[OL_TX_VDEV_NUM_QUEUES];
+	u_int32_t hl_paused_reason;
 #endif
 
 	struct {
@@ -910,7 +922,8 @@ struct ol_txrx_vdev_t {
 			adf_nbuf_t tail;
 			int depth;
 		} txq;
-		u_int32_t paused_reason;
+		uint32_t paused_reason;
+		uint64_t pause_timestamp;
 		adf_os_spinlock_t mutex;
 		adf_os_timer_t timer;
 		int max_q_depth;
@@ -925,6 +938,17 @@ struct ol_txrx_vdev_t {
 	u_int16_t tx_fl_lwm;
 	u_int16_t tx_fl_hwm;
 	ol_txrx_tx_flow_control_fp osif_flow_control_cb;
+
+	bool bundling_reqired;
+	struct {
+		struct {
+			adf_nbuf_t head;
+			adf_nbuf_t tail;
+			int depth;
+		} txq;
+		adf_os_spinlock_t mutex;
+		adf_os_timer_t timer;
+	} bundle_queue;
 
 #if defined(CONFIG_HL_SUPPORT) && defined(FEATURE_WLAN_TDLS)
         union ol_txrx_align_mac_addr_t hl_tdls_ap_mac_addr;
@@ -948,6 +972,13 @@ struct ol_txrx_vdev_t {
 	/* Information about the schedules in the schedule */
 	struct ol_txrx_ocb_chan_info *ocb_channel_info;
 	uint32_t ocb_channel_count;
+
+	/* Default OCB TX parameter */
+	struct ocb_tx_ctrl_hdr_t *ocb_def_tx_param;
+
+	/* intra bss forwarded tx and rx packets count */
+	uint64_t fwd_tx_packets;
+	uint64_t fwd_rx_packets;
 };
 
 struct ol_rx_reorder_array_elem_t {
@@ -979,6 +1010,33 @@ enum {
 };
 
 typedef A_STATUS (*ol_tx_filter_func)(struct ol_txrx_msdu_info_t *tx_msdu_info);
+
+#define OL_TXRX_PEER_SECURITY_MULTICAST  0
+#define OL_TXRX_PEER_SECURITY_UNICAST    1
+#define OL_TXRX_PEER_SECURITY_MAX        2
+
+enum ol_rx_reorder_msg_type {
+	reorder_store = 0,
+	reorder_release,
+	reorder_flush
+};
+
+struct ol_rx_reorder_record {
+	uint8_t msg_type;
+	uint8_t tid;
+	uint16_t peer_id;
+	uint8_t start_seq;
+	uint8_t end_seq;
+	uint8_t reorder_idx;
+};
+
+#define OL_MAX_RX_REORDER_HISTORY  50
+struct ol_rx_reorder_history {
+	uint8_t curr_index;
+	uint8_t wrap_around;
+	struct ol_rx_reorder_record record[OL_MAX_RX_REORDER_HISTORY];
+};
+
 
 struct ol_txrx_peer_t {
 	struct ol_txrx_vdev_t *vdev;
@@ -1024,8 +1082,8 @@ struct ol_txrx_peer_t {
 
 	struct {
 		enum htt_sec_type sec_type;
-		u_int32_t michael_key[2]; /* relevant for TKIP */
-	} security[2]; /* 0 -> multicast, 1 -> unicast */
+		u_int32_t michael_key[OL_TXRX_PEER_SECURITY_MAX]; /* relevant for TKIP */
+	} security[OL_TXRX_PEER_SECURITY_MAX]; /* 0 -> multicast, 1 -> unicast */
 
 	/*
 	 * rx proc function: this either is a copy of pdev's rx_opt_proc for
@@ -1083,6 +1141,10 @@ struct ol_txrx_peer_t {
 	u_int16_t tx_limit_flag;
 	u_int16_t tx_pause_flag;
 #endif
+	adf_os_time_t last_assoc_rcvd;
+	adf_os_time_t last_disassoc_rcvd;
+	adf_os_time_t last_deauth_rcvd;
+	struct ol_rx_reorder_history * reorder_history;
 };
 
 #endif /* _OL_TXRX_TYPES__H_ */

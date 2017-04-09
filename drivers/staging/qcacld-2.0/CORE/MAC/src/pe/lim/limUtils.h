@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -540,6 +540,8 @@ typedef enum
     WLAN_PE_DIAG_ROAM_ASSOC_COMP_EVENT,
     RESERVED1, /* = 72 for SCAN_COMPLETE */
     RESERVED2, /*  = 73 for SCAN_RES_FOUND */
+    WLAN_PE_DIAG_ASSOC_TIMEOUT,
+    WLAN_PE_DIAG_AUTH_TIMEOUT,
 } WLAN_PE_DIAG_EVENT_TYPE;
 
 void limDiagEventReport(tpAniSirGlobal pMac, tANI_U16 eventType, tpPESession pSessionEntry, tANI_U16 status, tANI_U16 reasonCode);
@@ -661,13 +663,17 @@ void lim_update_extcap_struct(tpAniSirGlobal mac_ctx, uint8_t *buf,
 			       tDot11fIEExtCap *ext_cap);
 tSirRetStatus lim_strip_extcap_update_struct(tpAniSirGlobal mac_ctx,
 		uint8_t* addn_ie, uint16_t *addn_ielen, tDot11fIEExtCap *dst);
-void lim_merge_extcap_struct(tDot11fIEExtCap *dst, tDot11fIEExtCap *src);
+void lim_merge_extcap_struct(tDot11fIEExtCap *dst, tDot11fIEExtCap *src,
+			bool add);
 uint8_t
 lim_get_80Mhz_center_channel(uint8_t primary_channel);
-bool lim_is_ext_cap_ie_present (struct s_ext_cap *ext_cap);
+tANI_U8 lim_compute_ext_cap_ie_length (tDot11fIEExtCap *ext_cap);
 bool lim_is_robust_mgmt_action_frame(uint8_t action_catagory);
 void lim_update_caps_info_for_bss(tpAniSirGlobal mac_ctx,
 				uint16_t *caps, uint16_t bss_caps);
+void lim_parse_beacon_for_tim(tpAniSirGlobal mac_ctx, uint8_t* rx_packet_info,
+	tpPESession session);
 eHalStatus limP2PActionCnf(tpAniSirGlobal mac_ctx,
 				uint32_t tx_complete_success);
+
 #endif /* __LIM_UTILS_H */

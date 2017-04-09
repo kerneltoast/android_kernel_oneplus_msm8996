@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2014-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -204,11 +204,9 @@ VOS_STATUS hdd_string_to_hex( char *pSrcMac, int length, char *pDescMac )
    char temp[3] = {0};
    int rv;
 
-   //18 is MAC Address length plus the colons
-   if ( !pSrcMac && (length > 18 || length < 18) )
-   {
+   if (!pSrcMac || (length != MAC_ADDRESS_STR_LEN))
       return VOS_STATUS_E_FAILURE;
-   }
+
    i = k = 0;
    while ( i < length )
    {
@@ -233,14 +231,17 @@ VOS_STATUS hdd_string_to_hex( char *pSrcMac, int length, char *pDescMac )
  *
  * Return: none
  */
-void hdd_dp_util_send_rps_ind(hdd_context_t  *hdd_ctxt)
+void hdd_dp_util_send_rps_ind(hdd_adapter_t *adapter)
 {
 	int i = 0;
 	uint8_t cpu_map_list_len = 0;
-	hdd_adapter_t *adapter;
-	hdd_adapter_list_node_t *adapter_node, *next;
-	VOS_STATUS status = VOS_STATUS_SUCCESS;
+	hdd_context_t *hdd_ctxt;
 	struct wlan_rps_data rps_data;
+
+	if (NULL == adapter)
+		return;
+
+	hdd_ctxt = WLAN_HDD_GET_CTX(adapter);
 
 	rps_data.num_queues = NUM_TX_QUEUES;
 
@@ -269,18 +270,11 @@ void hdd_dp_util_send_rps_ind(hdd_context_t  *hdd_ctxt)
 			i, rps_data.cpu_map_list[i]);
 	}
 
-	status = hdd_get_front_adapter (hdd_ctxt, &adapter_node);
-	while (NULL != adapter_node && VOS_STATUS_SUCCESS == status) {
-		adapter = adapter_node->pAdapter;
-		if (NULL != adapter) {
-			strlcpy(rps_data.ifname, adapter->dev->name,
-				sizeof(rps_data.ifname));
-			wlan_hdd_send_svc_nlink_msg(WLAN_SVC_RPS_ENABLE_IND,
-				&rps_data, sizeof(rps_data));
-		}
-		status = hdd_get_next_adapter (hdd_ctxt, adapter_node, &next);
-		adapter_node = next;
-	}
+	strlcpy(rps_data.ifname, adapter->dev->name,
+		sizeof(rps_data.ifname));
+	wlan_hdd_send_svc_nlink_msg(hdd_ctxt->radio_index,
+			WLAN_SVC_RPS_ENABLE_IND,
+			&rps_data, sizeof(rps_data));
 }
 #endif /* QCA_FEATURE_RPS */
 

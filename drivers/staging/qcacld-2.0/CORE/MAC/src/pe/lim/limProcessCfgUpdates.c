@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2014 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2014, 2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -552,6 +552,24 @@ limHandleCFGparamUpdate(tpAniSirGlobal pMac, tANI_U32 cfgId)
         pMac->lim.gLimAssocStaLimit = (tANI_U16)val1;
         break;
 
+    case WNI_CFG_ASSOC_STA_LIMIT_GO:
+        if(wlan_cfgGetInt(pMac, WNI_CFG_ASSOC_STA_LIMIT_GO, &val1)
+                                                 != eSIR_SUCCESS) {
+            limLog(pMac, LOGE, FL("Unable to get WNI_CFG_ASSOC_STA_LIMIT_GO"));
+            break;
+        }
+        pMac->lim.glim_assoc_sta_limit_go = (tANI_U16)val1;
+        break;
+
+    case WNI_CFG_ASSOC_STA_LIMIT_AP:
+        if(wlan_cfgGetInt(pMac, WNI_CFG_ASSOC_STA_LIMIT_AP, &val1)
+                                                 != eSIR_SUCCESS) {
+            limLog(pMac, LOGE, FL("Unable to get WNI_CFG_ASSOC_STA_LIMIT_AP"));
+            break;
+        }
+        pMac->lim.glim_assoc_sta_limit_ap = (tANI_U16)val1;
+        break;
+
     case WNI_CFG_DEL_ALL_RX_BA_SESSIONS_2_4_G_BTC:
         if (wlan_cfgGetInt
            (pMac, WNI_CFG_DEL_ALL_RX_BA_SESSIONS_2_4_G_BTC, &val1) !=
@@ -642,8 +660,8 @@ limApplyConfiguration(tpAniSirGlobal pMac,tpPESession psessionEntry)
         return;
     }
 
-    PELOG1(limLog(pMac, LOG1, FL("pMac->lim.gScanInPowersave = %hu"),
-                pMac->lim.gScanInPowersave);)
+    limLog(pMac, LOG1, FL("pMac->lim.gScanInPowersave = %hu"),
+                pMac->lim.gScanInPowersave);
     pMac->lim.gScanInPowersave = (tANI_U8) val;
 
 } /*** end limApplyConfiguration() ***/

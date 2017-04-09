@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -170,16 +170,6 @@ pktlog_getbuf(struct ol_pktlog_dev_t *pl_dev,
 		pktlog_getbuf_intsafe(&plarg);
 		PKTLOG_UNLOCK(pl_info);
 	}
-
-	/*
-	 * We do not want to do this packet stats related processing when
-	 * packet log tool is run. i.e., we want this processing to be
-	 * done only when start logging command of packet stats is initiated.
-	 */
-	if (vos_get_ring_log_level(RING_ID_PER_PACKET_STATS) ==
-							WLAN_LOG_LEVEL_ACTIVE)
-		pktlog_check_threshold(pl_info, log_size);
-
 	return plarg.buf;
 }
 
@@ -269,6 +259,8 @@ process_tx_info(struct ol_txrx_pdev_t *txrx_pdev,
 		A_UINT32 desc_id = (A_UINT32)
 				*((A_UINT32 *)(data + sizeof(pl_hdr)));
 		A_UINT32 vdev_id = desc_id;
+		struct ol_tx_desc_t *tx_desc;
+		adf_nbuf_t netbuf;
 
 		/* if the pkt log msg is for the bcn frame the vdev id
 		 * is piggybacked in desc_id and the MSB of the desc ID
@@ -287,10 +279,11 @@ process_tx_info(struct ol_txrx_pdev_t *txrx_pdev,
 				adf_os_mem_free(data);
 			}
 		} else {
-			/*
-			 * TODO: get the hdr content for mgmt frames from
-			 * Tx mgmt desc pool
-			 */
+			tx_desc = ol_tx_desc_find(txrx_pdev, desc_id);
+			adf_os_assert(tx_desc);
+			netbuf = tx_desc->netbuf;
+			if (netbuf)
+				process_ieee_hdr(adf_nbuf_data(netbuf));
 		}
 	}
 
@@ -320,6 +313,10 @@ process_tx_info(struct ol_txrx_pdev_t *txrx_pdev,
 		adf_os_assert(txctl_log.txdesc_hdr_ctl);
 		adf_os_mem_copy(txctl_log.txdesc_hdr_ctl, &txctl_log.priv,
 				sizeof(txctl_log.priv));
+
+		pl_hdr.size = log_size;
+		vos_pkt_stats_to_logger_thread(&pl_hdr, NULL,
+						txctl_log.txdesc_hdr_ctl);
 		/* Add Protocol information and HT specific information */
 	}
 
@@ -333,6 +330,8 @@ process_tx_info(struct ol_txrx_pdev_t *txrx_pdev,
 		adf_os_mem_copy(txstat_log.ds_status,
 				((void *)data + sizeof(struct ath_pktlog_hdr)),
 				pl_hdr.size);
+		vos_pkt_stats_to_logger_thread(&pl_hdr, NULL,
+						txstat_log.ds_status);
 	}
 
 	if (pl_hdr.log_type == PKTLOG_TYPE_TX_MSDU_ID) {
@@ -427,6 +426,8 @@ process_tx_info(struct ol_txrx_pdev_t *txrx_pdev,
 				sizeof(pl_msdu_info.priv.msdu_id_info));
 		adf_os_mem_copy(pl_msdu_info.ath_msdu_info, &pl_msdu_info.priv,
 				sizeof(pl_msdu_info.priv));
+		vos_pkt_stats_to_logger_thread(&pl_hdr, NULL,
+						pl_msdu_info.ath_msdu_info);
 	}
 	return A_OK;
 }
@@ -476,6 +477,8 @@ process_rx_info_remote(void *pdev, adf_nbuf_t amsdu)
 		adf_os_mem_copy(rxstat_log.rx_desc, (void *)rx_desc +
 				sizeof(struct htt_host_fw_desc_base),
 				pl_hdr.size);
+		vos_pkt_stats_to_logger_thread(&pl_hdr, NULL,
+						rxstat_log.rx_desc);
 		msdu = adf_nbuf_next(msdu);
 	}
 	return A_OK;
@@ -518,7 +521,7 @@ process_rx_info(void *pdev, void *data)
 	adf_os_mem_copy(rxstat_log.rx_desc,
 			(void *)data + sizeof(struct ath_pktlog_hdr),
 			pl_hdr.size);
-
+	vos_pkt_stats_to_logger_thread(&pl_hdr, NULL, rxstat_log.rx_desc);
 	return A_OK;
 }
 
@@ -574,7 +577,7 @@ process_rate_find(void *pdev, void *data)
 	adf_os_mem_copy(rcf_log.rcFind,
 			((char *)data + sizeof(struct ath_pktlog_hdr)),
 			pl_hdr.size);
-
+	vos_pkt_stats_to_logger_thread(&pl_hdr, NULL, rcf_log.rcFind);
 	return A_OK;
 }
 
@@ -628,6 +631,7 @@ process_rate_update(void *pdev, void *data)
 	adf_os_mem_copy(rcu_log.txRateCtrl,
 			((char *)data + sizeof(struct ath_pktlog_hdr)),
 			pl_hdr.size);
+	vos_pkt_stats_to_logger_thread(&pl_hdr, NULL, rcu_log.txRateCtrl);
 	return A_OK;
 }
 #endif /*REMOVE_PKT_LOG*/

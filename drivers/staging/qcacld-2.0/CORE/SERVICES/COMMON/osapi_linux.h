@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -55,7 +55,9 @@
 #include "a_types.h"
 
 #ifdef __GNUC__
+#ifndef __ATTRIB_PACK
 #define __ATTRIB_PACK           __attribute__ ((packed))
+#endif
 #define __ATTRIB_PRINTF         __attribute__ ((format (printf, 1, 2)))
 #define __ATTRIB_NORETURN       __attribute__ ((noreturn))
 #else /* Not GCC */
@@ -131,7 +133,7 @@ extern int logger_write(const enum logidx idx,
     else \
         printk(KERN_ALERT args); \
 } while (0)
-#ifdef DEBUG
+#ifdef WLAN_DEBUG
 #define A_LOGGER_MODULE_NAME(x) #x
 #define A_LOGGER(mask, mod, args...) \
     A_ANDROID_PRINTF(mask, &GET_ATH_MODULE_DEBUG_VAR_NAME(mod), "ar6k_" A_LOGGER_MODULE_NAME(mod), args);
@@ -242,7 +244,7 @@ do {                                                                    \
 
 #define A_WAKE_UP(head)                 wake_up(head)
 
-#ifdef DEBUG
+#ifdef WLAN_DEBUG
 #ifdef A_SIMOS_DEVHOST
 extern unsigned int panic_on_assert;
 #define A_ASSERT(expr)  \
@@ -258,7 +260,7 @@ extern unsigned int panic_on_assert;
 #endif
 #else
 #define A_ASSERT(expr)
-#endif /* DEBUG */
+#endif /* WLAN_DEBUG */
 
 #ifdef ANDROID_ENV
 struct firmware;
@@ -437,7 +439,9 @@ typedef struct ieee80211_cb wbuf_context;
 #else /* __KERNEL__ */
 
 #ifdef __GNUC__
+#ifndef __ATTRIB_PACK
 #define __ATTRIB_PACK           __attribute__ ((packed))
+#endif
 #define __ATTRIB_PRINTF         __attribute__ ((format (printf, 1, 2)))
 #define __ATTRIB_NORETURN       __attribute__ ((noreturn))
 #ifndef INLINE

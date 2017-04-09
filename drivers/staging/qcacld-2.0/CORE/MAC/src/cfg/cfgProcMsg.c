@@ -1905,7 +1905,21 @@ struct cgstatic cfg_static[CFG_PARAM_MAX_NUM] = {
 	 CFG_CTL_VALID | CFG_CTL_RE | CFG_CTL_WE | CFG_CTL_INT,
 	 WNI_CFG_TGT_GTX_USR_CFG_STAMIN,
 	 WNI_CFG_TGT_GTX_USR_CFG_STAMAX,
-	 WNI_CFG_TGT_GTX_USR_CFG_STADEF}
+	 WNI_CFG_TGT_GTX_USR_CFG_STADEF},
+
+	{WNI_CFG_ASSOC_STA_LIMIT_AP,
+	 CFG_CTL_VALID | CFG_CTL_RE | CFG_CTL_WE | CFG_CTL_INT |
+	 CFG_CTL_NTF_LIM,
+	 WNI_CFG_ASSOC_STA_LIMIT_AP_STAMIN,
+	 WNI_CFG_ASSOC_STA_LIMIT_AP_STAMAX,
+	 WNI_CFG_ASSOC_STA_LIMIT_AP_STADEF},
+
+	{WNI_CFG_ASSOC_STA_LIMIT_GO,
+	 CFG_CTL_VALID | CFG_CTL_RE | CFG_CTL_WE | CFG_CTL_INT |
+	 CFG_CTL_NTF_LIM,
+	 WNI_CFG_ASSOC_STA_LIMIT_GO_STAMIN,
+	 WNI_CFG_ASSOC_STA_LIMIT_GO_STAMAX,
+	 WNI_CFG_ASSOC_STA_LIMIT_GO_STADEF}
 };
 
 struct cfgstatic_string cfg_static_string[CFG_MAX_STATIC_STRING] = {
@@ -2635,7 +2649,7 @@ ProcSetReqInternal(tpAniSirGlobal pMac, tANI_U16 length, tANI_U32 *pParam, tANI_
     tANI_U32    value, result;
     tANI_U32    param_list[WNI_CFG_SET_CNF_NUM];
 
-    PELOG1(cfgLog(pMac, LOGl, FL("Rcvd cfg set request %d bytes"), length);)
+    PELOG1(cfgLog(pMac, LOG1, FL("Rcvd cfg set request %d bytes"), length);)
 
     if (!pMac->cfg.gCfgStatus)
     {

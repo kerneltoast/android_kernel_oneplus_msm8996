@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2014 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -391,6 +391,20 @@ limProcessProbeReqFrame(tpAniSirGlobal pMac, tANI_U8 *pRxPacketInfo,tpPESession 
             // Get pointer to Probe Request frame body
            pBody = WDA_GET_RX_MPDU_DATA(pRxPacketInfo);
 
+            /* check for vendor IE presence */
+            if ((psessionEntry->access_policy_vendor_ie) &&
+                    (psessionEntry->access_policy ==
+                     LIM_ACCESS_POLICY_RESPOND_IF_IE_IS_PRESENT)) {
+                if (!cfg_get_vendor_ie_ptr_from_oui(pMac,
+                            &psessionEntry->access_policy_vendor_ie[2],
+                            3, pBody, frameLen)) {
+                    limLog(pMac, LOG1, FL(
+                                "Vendor IE is not present and access policy is %x, dropping probe request"),
+                            psessionEntry->access_policy);
+                    break;
+                }
+            }
+
             // Parse Probe Request frame
             if (sirConvertProbeReqFrame2Struct(pMac, pBody, frameLen, &probeReq)==eSIR_FAILURE)
             {
@@ -491,7 +505,8 @@ limProcessProbeReqFrame(tpAniSirGlobal pMac, tANI_U8 *pRxPacketInfo,tpPESession 
                         pSirSmeProbeReq->sessionId = psessionEntry->smeSessionId;
                         vos_mem_copy(pSirSmeProbeReq->peerMacAddr, pHdr->sa, sizeof(tSirMacAddr));
                         pSirSmeProbeReq->devicePasswdId = probeReq.probeReqWscIeInfo.DevicePasswordID.id;
-                        MTRACE(macTraceMsgTx(pMac, psessionEntry->peSessionId, msgQ.type));
+                        MTRACE(macTrace(pMac, TRACE_CODE_TX_SME_MSG,
+                            psessionEntry->peSessionId, msgQ.type));
                        if (limSysProcessMmhMsgApi(pMac, &msgQ,  ePROT) != eSIR_SUCCESS){
                             PELOG3(limLog(pMac, LOG3, FL("couldnt send the probe req to wsm "));)
                         }
@@ -551,6 +566,7 @@ limProcessProbeReqFrame(tpAniSirGlobal pMac, tANI_U8 *pRxPacketInfo,tpPESession 
                       /*We are returning from here as probe request contains the broadcast SSID.
                         So no need to send the probe resp*/
                            return;
+
                     limSendProbeRspMgmtFrame(pMac, pHdr->sa, &ssId, DPH_USE_MGMT_STAID,
                                              DPH_NON_KEEPALIVE_FRAME, psessionEntry,
                                              probeReq.p2pIePresent);
@@ -724,7 +740,8 @@ limSendSmeProbeReqInd(tpAniSirGlobal pMac,
     vos_mem_copy(pSirSmeProbeReqInd->bssId, psessionEntry->bssId, sizeof(tSirMacAddr));
     vos_mem_copy(pSirSmeProbeReqInd->WPSPBCProbeReq.peerMacAddr, peerMacAddr, sizeof(tSirMacAddr));
 
-    MTRACE(macTraceMsgTx(pMac, psessionEntry->peSessionId, msgQ.type));
+    MTRACE(macTrace(pMac, TRACE_CODE_TX_SME_MSG, psessionEntry->peSessionId,
+                                                               msgQ.type));
     pSirSmeProbeReqInd->WPSPBCProbeReq.probeReqIELen = (tANI_U16)ProbeReqIELen;
     vos_mem_copy(pSirSmeProbeReqInd->WPSPBCProbeReq.probeReqIE, pProbeReqIE, ProbeReqIELen);
 

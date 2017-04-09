@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -694,6 +694,16 @@ limStartBssReqSerDes(tpAniSirGlobal pMac, tpSirSmeStartBssReq pStartBssReq, tANI
     pStartBssReq->sap_dot11mc = *pBuf++;
     len--;
 
+    /* extract vendor_vht_for_24ghz_sap */
+    pStartBssReq->vendor_vht_for_24ghz_sap = *pBuf;
+    len -= sizeof(pStartBssReq->vendor_vht_for_24ghz_sap);
+    pBuf += sizeof(pStartBssReq->vendor_vht_for_24ghz_sap);
+
+    vos_mem_copy(&(pStartBssReq->beacon_tx_rate), pBuf,
+            sizeof(pStartBssReq->beacon_tx_rate));
+    len -= sizeof(pStartBssReq->beacon_tx_rate);
+    pBuf += sizeof(pStartBssReq->beacon_tx_rate);
+
     if (len)
     {
         limLog(pMac, LOGW, FL("Extra bytes left in SME_START_BSS_REQ, len=%d"), len);
@@ -928,7 +938,20 @@ limJoinReqSerDes(tpAniSirGlobal pMac, tpSirSmeJoinReq pJoinReq, tANI_U8 *pBuf)
         limLog(pMac, LOGE, FL("remaining len %d is too short"), len);
         return eSIR_FAILURE;
     }
-
+    pJoinReq->osen_association = *pBuf++;
+    len--;
+    if (limCheckRemainingLength(pMac, len) == eSIR_FAILURE)
+    {
+        limLog(pMac, LOGE, FL("remaining len %d is too short"), len);
+        return eSIR_FAILURE;
+    }
+    pJoinReq->wps_registration = *pBuf++;
+    len--;
+    if (limCheckRemainingLength(pMac, len) == eSIR_FAILURE)
+    {
+        limLog(pMac, LOGE, FL("remaining len %d is too short"), len);
+        return eSIR_FAILURE;
+    }
     // Extract cbMode
     pJoinReq->cbMode = (ePhyChanBondState)limGetU32(pBuf);
     pBuf += sizeof(ePhyChanBondState);
@@ -2771,3 +2794,81 @@ limUpdateAPWPARSNIEsReqSerDes(tpAniSirGlobal pMac, tpSirUpdateAPWPARSNIEsReq pUp
 
     return eSIR_SUCCESS;
 } /*** end limUpdateAPWPARSNIEsReqSerDes() ***/
+
+/**
+ * lim_send_disassoc_frm_req_ser_des - called on receiving SME_DISASSOC_REQ
+ * @mac_ctx: pointer to mac context
+ * @disassoc_frm_req: pointer to structure sme_send_disassoc_frm_req
+ *
+ * function send's disassoc frame request on receiving SME_DISASSOC_REQ
+ *
+ * return: eSIR_SUCCESS:Success Error value: Failure
+ */
+tSirRetStatus lim_send_disassoc_frm_req_ser_des(tpAniSirGlobal mac_ctx,
+			struct sme_send_disassoc_frm_req *disassoc_frm_req,
+			uint8_t *buf)
+{
+	tANI_S16 len = 0;
+#ifdef PE_DEBUG_LOG1
+	uint8_t *temp = buf;
+#endif
+
+	if (!disassoc_frm_req || !buf)
+		return eSIR_FAILURE;
+
+	disassoc_frm_req->msg_type = limGetU16(buf);
+	buf += sizeof(tANI_U16);
+
+	len = disassoc_frm_req->length = limGetU16(buf);
+	buf += sizeof(tANI_U16);
+
+	PELOG1(limLog(mac_ctx, LOG1,
+		FL("SME_DISASSOC_REQ length %d bytes is:"), len);)
+	PELOG1(sirDumpBuf(mac_ctx, SIR_LIM_MODULE_ID, LOG1, temp, len);)
+
+	if (len < (tANI_S16) sizeof(tANI_U32))
+		return eSIR_FAILURE;
+
+	/* skip message header */
+	len -= sizeof(tANI_U32);
+	if (limCheckRemainingLength(mac_ctx, len) == eSIR_FAILURE)
+		return eSIR_FAILURE;
+
+	/* Extract sessionID */
+	disassoc_frm_req->session_id = *buf;
+	buf += sizeof(tANI_U8);
+	len -= sizeof(tANI_U8);
+	if (limCheckRemainingLength(mac_ctx, len) == eSIR_FAILURE)
+		return eSIR_FAILURE;
+
+	/* Extract transactionid */
+	disassoc_frm_req->trans_id = limGetU16(buf);
+	buf += sizeof(tANI_U16);
+	len -= sizeof(tANI_U16);
+
+	if (limCheckRemainingLength(mac_ctx, len) == eSIR_FAILURE)
+		return eSIR_FAILURE;
+
+	/* Extract peerMacAddr */
+	vos_mem_copy(disassoc_frm_req->peer_mac, buf, sizeof(tSirMacAddr));
+	buf += sizeof(tSirMacAddr);
+	len  -= sizeof(tSirMacAddr);
+
+	if (limCheckRemainingLength(mac_ctx, len) == eSIR_FAILURE)
+		return eSIR_FAILURE;
+
+	/* Extract reasonCode */
+	disassoc_frm_req->reason = limGetU16(buf);
+	buf += sizeof(tANI_U16);
+	len  -= sizeof(tANI_U16);
+
+	if (limCheckRemainingLength(mac_ctx, len) == eSIR_FAILURE)
+		return eSIR_FAILURE;
+
+	disassoc_frm_req->wait_for_ack = *buf;
+	buf += sizeof(tANI_U8);
+	len -= sizeof(tANI_U8);
+
+	return eSIR_SUCCESS;
+
+}

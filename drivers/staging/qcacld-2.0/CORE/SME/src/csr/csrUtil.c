@@ -636,6 +636,23 @@ tANI_BOOLEAN csrIsAnySessionInConnectState( tpAniSirGlobal pMac )
     return ( fRc );
 }
 
+/**
+ * csr_is_ndi_started() - function to check if NDI is started
+ * @mac_ctx: handle to mac context
+ * @session_id: session identifier
+ *
+ * returns: true if NDI is started, false otherwise
+ */
+bool csr_is_ndi_started(tpAniSirGlobal mac_ctx, uint32_t session_id)
+{
+	tCsrRoamSession *session = CSR_GET_SESSION(mac_ctx, session_id);
+
+	if (!session)
+		return false;
+
+	return (eCSR_CONNECT_STATE_TYPE_NDI_STARTED == session->connectState);
+}
+
 tANI_S8 csrGetInfraSessionId( tpAniSirGlobal pMac )
 {
     tANI_U8 i;
@@ -1007,7 +1024,7 @@ tANI_BOOLEAN csrIsStaSessionConnected( tpAniSirGlobal pMac )
     return( fRc );
 }
 
-tANI_BOOLEAN csrIsP2pSessionConnected( tpAniSirGlobal pMac )
+tANI_BOOLEAN csrIsP2pOrSapSessionConnected(tpAniSirGlobal pMac)
 {
     tANI_U32 i;
     tANI_BOOLEAN fRc = eANI_BOOLEAN_FALSE;
@@ -1455,7 +1472,7 @@ eHalStatus csrParseBssDescriptionIEs(tHalHandle hHal, tSirBssDescription *pBssDe
 {
     eHalStatus status = eHAL_STATUS_FAILURE;
     tpAniSirGlobal pMac = PMAC_STRUCT( hHal );
-    int ieLen = (int)(pBssDesc->length + sizeof( pBssDesc->length ) - GET_FIELD_OFFSET( tSirBssDescription, ieFields ));
+    int ieLen = (int)GET_IE_LEN_IN_BSS(pBssDesc->length);
 
     if(ieLen > 0 && pIEStruct)
     {
@@ -1677,9 +1694,9 @@ eHalStatus csrGetPhyModeFromBss(tpAniSirGlobal pMac, tSirBssDescription *pBSSDes
         if (pIes->HTCaps.present) {
             phyMode = eCSR_DOT11_MODE_11n;
 #ifdef WLAN_FEATURE_11AC
-            if (IS_BSS_VHT_CAPABLE(pIes->VHTCaps)) {
+        if (IS_BSS_VHT_CAPABLE(pIes->VHTCaps) ||
+                        IS_BSS_VHT_CAPABLE(pIes->vendor2_ie.VHTCaps))
                  phyMode = eCSR_DOT11_MODE_11ac;
-            }
 #endif
         }
 
@@ -2165,16 +2182,6 @@ csrIsconcurrentsessionValid(tpAniSirGlobal pMac,tANI_U32 cursessionId,
                      return eHAL_STATUS_SUCCESS;
 
              case VOS_STA_SAP_MODE:
-#ifndef WLAN_FEATURE_MBSSID
-                     if ((bss_persona == VOS_STA_SAP_MODE) &&
-                         (connect_state !=
-                          eCSR_ASSOC_STATE_TYPE_NOT_CONNECTED)) {
-                         VOS_TRACE(VOS_MODULE_ID_SME, VOS_TRACE_LEVEL_ERROR,
-                                   FL("**SoftAP mode already exists **"));
-                         return eHAL_STATUS_FAILURE;
-                     }
-                     else
-#endif
                      if (((bss_persona == VOS_P2P_GO_MODE) && (connect_state !=
                                 eCSR_ASSOC_STATE_TYPE_NOT_CONNECTED) &&
                                 (0 == automotive_support_enable)) ||
@@ -2225,6 +2232,13 @@ csrIsconcurrentsessionValid(tpAniSirGlobal pMac,tANI_U32 cursessionId,
                      VOS_TRACE(VOS_MODULE_ID_SME, VOS_TRACE_LEVEL_INFO,
                                FL("**P2P-Client session**"));
                      return eHAL_STATUS_SUCCESS;
+             case VOS_NDI_MODE:
+                     if (bss_persona != VOS_STA_MODE) {
+                         VOS_TRACE(VOS_MODULE_ID_SME, VOS_TRACE_LEVEL_ERROR,
+                             FL("***NDI mode can co-exist only with STA ***"));
+                         return eHAL_STATUS_FAILURE;
+                     }
+                     break;
              default :
                      VOS_TRACE(VOS_MODULE_ID_SME, VOS_TRACE_LEVEL_ERROR,
                                FL("**Persona not handled = %d**"),
@@ -3047,24 +3061,17 @@ csrIsPMFCapabilitiesInRSNMatch( tHalHandle hHal,
        /* Extracting MFPCapable bit from RSN Ie */
        apProfileMFPCapable  = (pRSNIe->RSN_Cap[0] >> 7) & 0x1;
        apProfileMFPRequired = (pRSNIe->RSN_Cap[0] >> 6) & 0x1;
+
+       VOS_TRACE(VOS_MODULE_ID_SME, VOS_TRACE_LEVEL_INFO,
+          FL("pFilterMFPEnabled=%d pFilterMFPRequired=%d pFilterMFPCapable=%d apProfileMFPCapable=%d apProfileMFPRequired=%d"),
+               *pFilterMFPEnabled, *pFilterMFPRequired, *pFilterMFPCapable,
+               apProfileMFPCapable, apProfileMFPRequired);
+
        if (*pFilterMFPEnabled && *pFilterMFPCapable && *pFilterMFPRequired
            && (apProfileMFPCapable == 0))
        {
            VOS_TRACE(VOS_MODULE_ID_SME, VOS_TRACE_LEVEL_INFO,
                      "AP is not capable to make PMF connection");
-           return VOS_FALSE;
-       }
-       else if (*pFilterMFPEnabled && *pFilterMFPCapable &&
-                !(*pFilterMFPRequired) && (apProfileMFPCapable == 0))
-       {
-           /*
-            * This is tricky, because supplicant asked us to make mandatory
-            * PMF connection even though PMF connection is optional here.
-            * so if AP is not capable of PMF then drop it. Don't try to
-            * connect with it.
-            */
-           VOS_TRACE(VOS_MODULE_ID_SME, VOS_TRACE_LEVEL_INFO,
-           "we need PMF connection & AP isn't capable to make PMF connection");
            return VOS_FALSE;
        }
        else if (!(*pFilterMFPCapable) &&
@@ -3078,13 +3085,6 @@ csrIsPMFCapabilitiesInRSNMatch( tHalHandle hHal,
             */
            VOS_TRACE(VOS_MODULE_ID_SME, VOS_TRACE_LEVEL_INFO,
            "AP needs PMF connection and we are not capable of pmf connection");
-           return VOS_FALSE;
-       }
-       else if (!(*pFilterMFPEnabled) && *pFilterMFPCapable &&
-                (apProfileMFPCapable == 1))
-       {
-           VOS_TRACE(VOS_MODULE_ID_SME, VOS_TRACE_LEVEL_INFO,
-           "we don't need PMF connection even though both parties are capable");
            return VOS_FALSE;
        }
     }
@@ -3135,7 +3135,7 @@ tANI_BOOLEAN csrLookupPMKID( tpAniSirGlobal pMac, tANI_U32 sessionId, tANI_U8 *p
     {
         for (Index = 0; Index < CSR_MAX_PMKID_ALLOWED; Index++)
         {
-            smsLog(pMac, LOG1, "match PMKID "MAC_ADDRESS_STR " to ",
+            smsLog(pMac, LOG2, "match PMKID "MAC_ADDRESS_STR " to ",
                    MAC_ADDR_ARRAY(pBSSId));
             if( vos_mem_compare(pBSSId, pSession->PmkidCacheInfo[Index].BSSID, sizeof(tCsrBssid)) )
             {
@@ -3152,7 +3152,7 @@ tANI_BOOLEAN csrLookupPMKID( tpAniSirGlobal pMac, tANI_U32 sessionId, tANI_U8 *p
         fRC = TRUE;
     }
     while( 0 );
-    smsLog(pMac, LOGW, "csrLookupPMKID called return match = %d pMac->roam.NumPmkidCache = %d",
+    smsLog(pMac, LOG1, "csrLookupPMKID called return match = %d pMac->roam.NumPmkidCache = %d",
         fRC, pSession->NumPmkidCache);
 
     return fRC;
@@ -3250,8 +3250,11 @@ tANI_U8 csrConstructRSNIe( tHalHandle hHal, tANI_U32 sessionId, tCsrRoamProfile 
         }
 
 #ifdef WLAN_FEATURE_11W
-        if ( pProfile->MFPEnabled )
-        {
+         /* Advertise BIP in group cipher key management only if PMF is enabled
+          * and AP is capable.
+          */
+        if (pProfile->MFPEnabled &&
+                (RSNCapabilities.MFPCapable && pProfile->MFPCapable)){
             pGroupMgmtCipherSuite = (tANI_U8 *) pPMK + sizeof ( tANI_U16 ) +
                 ( pPMK->cPMKIDs * CSR_RSN_PMKID_SIZE );
             vos_mem_copy(pGroupMgmtCipherSuite, csrRSNOui[07], CSR_WPA_OUI_SIZE);
@@ -3272,8 +3275,8 @@ tANI_U8 csrConstructRSNIe( tHalHandle hHal, tANI_U32 sessionId, tCsrRoamProfile 
                                         (pPMK->cPMKIDs * CSR_RSN_PMKID_SIZE));
         }
 #ifdef WLAN_FEATURE_11W
-        if ( pProfile->MFPEnabled )
-        {
+        if (pProfile->MFPEnabled &&
+                (RSNCapabilities.MFPCapable && pProfile->MFPCapable)){
             if ( 0 == pPMK->cPMKIDs )
                 pRSNIe->IeHeader.Length += sizeof( tANI_U16 );
             pRSNIe->IeHeader.Length += CSR_WPA_OUI_SIZE;
@@ -5549,6 +5552,9 @@ tSirBssType csrTranslateBsstypeToMacType(eCsrRoamBssType csrtype)
     case eCSR_BSS_TYPE_INFRA_AP:
         ret = eSIR_INFRA_AP_MODE;
         break;
+    case eCSR_BSS_TYPE_NDI:
+        ret = eSIR_NDI_MODE;
+        break;
     case eCSR_BSS_TYPE_ANY:
     default:
         ret = eSIR_AUTO_MODE;
@@ -6008,6 +6014,44 @@ const char * sme_requestTypetoString(const v_U8_t requestType)
         default:
             return "Unknown Scan Request Type";
     }
+}
+
+/**
+ * sme_scan_type_to_string() - converts scan type enum to string.
+ * @scan_type: scan type enum
+ *
+ * Return: printable string for scan type
+ */
+const char * sme_scan_type_to_string(const uint8_t scan_type)
+{
+	switch (scan_type) {
+	CASE_RETURN_STRING(eSIR_PASSIVE_SCAN);
+	CASE_RETURN_STRING(eSIR_ACTIVE_SCAN);
+	CASE_RETURN_STRING(eSIR_BEACON_TABLE);
+	default:
+		return "Unknown ScanType";
+	}
+}
+
+/**
+ * sme_bss_type_to_string() - converts bss type enum to string.
+ * @bss_type: bss type enum
+ *
+ * Return: printable string for bss type
+ */
+const char * sme_bss_type_to_string(const uint8_t bss_type)
+{
+	switch (bss_type) {
+	CASE_RETURN_STRING(eSIR_INFRASTRUCTURE_MODE);
+	CASE_RETURN_STRING(eSIR_INFRA_AP_MODE);
+	CASE_RETURN_STRING(eSIR_IBSS_MODE);
+	CASE_RETURN_STRING(eSIR_BTAMP_STA_MODE);
+	CASE_RETURN_STRING(eSIR_BTAMP_AP_MODE);
+	CASE_RETURN_STRING(eSIR_AUTO_MODE);
+	CASE_RETURN_STRING(eSIR_NDI_MODE);
+	default:
+		return "Unknown BssType";
+	}
 }
 
 VOS_STATUS csrAddToChannelListFront(

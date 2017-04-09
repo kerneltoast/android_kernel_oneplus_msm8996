@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2017 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -44,6 +44,11 @@
 #ifdef IPA_OFFLOAD
 #include <linux/ipa.h>
 
+enum hdd_ipa_forward_type {
+	HDD_IPA_FORWARD_PKT_NONE = 0,
+	HDD_IPA_FORWARD_PKT_LOCAL_STACK = 1,
+	HDD_IPA_FORWARD_PKT_DISCARD = 2
+};
 VOS_STATUS hdd_ipa_init(hdd_context_t *hdd_ctx);
 VOS_STATUS hdd_ipa_cleanup(hdd_context_t *hdd_ctx);
 int hdd_ipa_wlan_evt(hdd_adapter_t *adapter, uint8_t sta_id,
@@ -57,6 +62,7 @@ int hdd_ipa_set_perf_level(hdd_context_t *hdd_ctx, uint64_t tx_packets,
 
 int hdd_ipa_suspend(hdd_context_t *hdd_ctx);
 int hdd_ipa_resume(hdd_context_t *hdd_ctx);
+void hdd_ipa_ready_cb(hdd_context_t *hdd_ctx);
 bool hdd_ipa_is_present(hdd_context_t *hdd_ctx);
 void hdd_ipa_reset_ipaconfig(hdd_context_t *hdd_ctx, v_U32_t ipaconfig);
 
@@ -66,12 +72,13 @@ int hdd_ipa_send_mcc_scc_msg(hdd_context_t *hdd_ctx, bool mcc_mode);
 
 #ifdef IPA_UC_OFFLOAD
 void hdd_ipa_uc_force_pipe_shutdown(hdd_context_t *hdd_ctx);
-int hdd_ipa_uc_ssr_reinit(void);
+int hdd_ipa_uc_ssr_reinit(hdd_context_t *hdd_ctx);
 int hdd_ipa_uc_ssr_deinit(void);
 void hdd_ipa_uc_stat_query(hdd_context_t *pHddCtx,
 	uint32_t *ipa_tx_diff, uint32_t *ipa_rx_diff);
 void hdd_ipa_uc_stat_request( hdd_adapter_t *adapter, uint8_t reason);
 void hdd_ipa_uc_rt_debug_host_dump(hdd_context_t *hdd_ctx);
+void hdd_ipa_dump_info(hdd_context_t *hdd_ctx);
 #endif /* IPA_UC_OFFLOAD */
 #else /* IPA_OFFLOAD */
 #define hdd_ipa_set_perf_level(hdd_ctx, tx_p, rx_p) /* no-op */
@@ -110,6 +117,11 @@ void hdd_ipa_uc_force_pipe_shutdown(hdd_context_t *hdd_ctx)
 }
 static inline
 void hdd_ipa_uc_rt_debug_host_dump(hdd_context_t *hdd_ctx)
+{
+	return;
+}
+static inline
+void hdd_ipa_dump_info(hdd_context_t *hdd_ctx)
 {
 	return;
 }

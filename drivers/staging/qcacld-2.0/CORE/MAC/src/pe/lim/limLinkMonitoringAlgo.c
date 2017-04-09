@@ -277,13 +277,16 @@ limTriggerSTAdeletion(tpAniSirGlobal pMac, tpDphHashNode pStaDs, tpPESession pse
     }
 
     if ((pStaDs->mlmStaContext.mlmState == eLIM_MLM_WT_DEL_STA_RSP_STATE) ||
-        (pStaDs->mlmStaContext.mlmState == eLIM_MLM_WT_DEL_BSS_RSP_STATE)) {
+        (pStaDs->mlmStaContext.mlmState == eLIM_MLM_WT_DEL_BSS_RSP_STATE) ||
+        pStaDs->sta_deletion_in_progress) {
         /* Already in the process of deleting context for the peer */
-        PELOGE(limLog(pMac, LOGE,
-                FL("Deletion is in progress for peer:%p"), pStaDs->staAddr);)
+        limLog(pMac, LOG1,
+            FL("Deletion is in progress (%d) for peer:%p in mlmState %d"),
+            pStaDs->sta_deletion_in_progress, pStaDs->staAddr,
+            pStaDs->mlmStaContext.mlmState);
         return;
     }
-
+    pStaDs->sta_deletion_in_progress = true;
     pStaDs->mlmStaContext.disassocReason =
              eSIR_MAC_DISASSOC_DUE_TO_INACTIVITY_REASON;
     pStaDs->mlmStaContext.cleanupTrigger = eLIM_LINK_MONITORING_DISASSOC;
@@ -398,7 +401,9 @@ limTearDownLinkWithAp(tpAniSirGlobal pMac, tANI_U8 sessionId, tSirMacReasonCodes
         mlmDeauthInd.reasonCode    = (tANI_U8) pStaDs->mlmStaContext.disassocReason;
         mlmDeauthInd.deauthTrigger =  pStaDs->mlmStaContext.cleanupTrigger;
 
-        limPostSmeMessage(pMac, LIM_MLM_DEAUTH_IND, (tANI_U32 *) &mlmDeauthInd);
+        if (GET_LIM_SYSTEM_ROLE(psessionEntry) == eLIM_STA_ROLE)
+            limPostSmeMessage(pMac, LIM_MLM_DEAUTH_IND,
+                                    (tANI_U32 *) &mlmDeauthInd);
 
         limSendSmeDeauthInd(pMac, pStaDs, psessionEntry);
         limReInitScanResults(pMac);

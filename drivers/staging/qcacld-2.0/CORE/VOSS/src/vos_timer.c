@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2013, 2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2013, 2015-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -45,6 +45,8 @@
 #include <vos_api.h>
 #include "wlan_qct_sys.h"
 #include "vos_sched.h"
+#include <linux/rtc.h>
+#include "vos_cnss.h"
 
 /*--------------------------------------------------------------------------
   Preprocessor definitions and constants
@@ -121,6 +123,9 @@ static void vos_linux_timer_callback (unsigned long data)
    v_PVOID_t userData=NULL;
    int threadId;
    VOS_TIMER_TYPE type=VOS_TIMER_TYPE_SW;
+   v_CONTEXT_t vos_context = NULL;
+   pVosContextType vos_global_context;
+   struct vos_wdthread_timer_work *wdthread_timer_work;
 
    VOS_ASSERT(timer);
 
@@ -186,49 +191,44 @@ static void vos_linux_timer_callback (unsigned long data)
                  __func__);
        return;
    }
-   // If timer has expired then call vos_client specific callback
-   if ( vos_sched_is_tx_thread( threadId ) )
-   {
+   if (vos_is_wd_thread(threadId)) {
       VOS_TRACE(VOS_MODULE_ID_VOSS, VOS_TRACE_LEVEL_INFO,
-          "TIMER callback: running on TX thread");
-
-      //Serialize to the Tx thread
-      sysBuildMessageHeader( SYS_MSG_ID_TX_TIMER, &msg );
-      msg.callback = callback;
-      msg.bodyptr  = userData;
-      msg.bodyval  = 0;
-
-      if(vos_tx_mq_serialize( VOS_MQ_ID_SYS, &msg ) == VOS_STATUS_SUCCESS)
+                "TIMER callback: running on wd thread");
+      vos_context = vos_get_global_context(VOS_MODULE_ID_HDD, NULL);
+      if (!vos_context) {
+         VOS_TRACE(VOS_MODULE_ID_VOSS, VOS_TRACE_LEVEL_FATAL,
+                   "%s: Global VOS context is Null", __func__);
          return;
+      }
+      vos_global_context = (pVosContextType)vos_context;
+      wdthread_timer_work = vos_mem_malloc(sizeof(*wdthread_timer_work));
+      if (NULL == wdthread_timer_work) {
+          VOS_TRACE(VOS_MODULE_ID_VOSS, VOS_TRACE_LEVEL_ERROR,
+                    "%s: No memory available", __func__);
+          return;
+      }
+      wdthread_timer_work->callback = callback;
+      wdthread_timer_work->userdata = userData;
+      spin_lock(&vos_global_context->wdthread_work_lock);
+      list_add(&wdthread_timer_work->node,
+                    &vos_global_context->wdthread_timer_work_list);
+      spin_unlock(&vos_global_context->wdthread_work_lock);
+
+      schedule_work(&vos_global_context->wdthread_work);
+      return;
    }
-   else if ( vos_sched_is_rx_thread( threadId ) )
-   {
-      VOS_TRACE(VOS_MODULE_ID_VOSS, VOS_TRACE_LEVEL_INFO,
-          "TIMER callback: running on RX thread");
 
-      //Serialize to the Rx thread
-      sysBuildMessageHeader( SYS_MSG_ID_RX_TIMER, &msg );
-      msg.callback = callback;
-      msg.bodyptr  = userData;
-      msg.bodyval  = 0;
+   VOS_TRACE( VOS_MODULE_ID_VOSS, VOS_TRACE_LEVEL_INFO,
+       "TIMER callback: running on MC thread");
 
-      if(vos_rx_mq_serialize( VOS_MQ_ID_SYS, &msg ) == VOS_STATUS_SUCCESS)
-         return;
-   }
-   else
-   {
-      VOS_TRACE( VOS_MODULE_ID_VOSS, VOS_TRACE_LEVEL_INFO,
-          "TIMER callback: running on MC thread");
+   /* Serialize to MC thread */
+   sysBuildMessageHeader( SYS_MSG_ID_MC_TIMER, &msg );
+   msg.callback = callback;
+   msg.bodyptr  = userData;
+   msg.bodyval  = 0;
 
-      // Serialize to the MC thread
-      sysBuildMessageHeader( SYS_MSG_ID_MC_TIMER, &msg );
-      msg.callback = callback;
-      msg.bodyptr  = userData;
-      msg.bodyval  = 0;
-
-      if(vos_mq_post_message( VOS_MQ_ID_SYS, &msg ) == VOS_STATUS_SUCCESS)
-        return;
-   }
+   if(vos_mq_post_message( VOS_MQ_ID_SYS, &msg ) == VOS_STATUS_SUCCESS)
+     return;
 
    VOS_TRACE(VOS_MODULE_ID_VOSS, VOS_TRACE_LEVEL_ERROR,
              "%s: Could not enqueue timer to any queue", __func__);
@@ -871,4 +871,142 @@ v_TIME_t vos_timer_get_system_time( v_VOID_t )
    struct timeval tv;
    do_gettimeofday(&tv);
    return tv.tv_sec*1000 + tv.tv_usec/1000;
+}
+
+/**
+ * vos_get_time_of_the_day_ms() - get time in milisec
+ *
+ * Return: time of the day in ms
+ */
+unsigned long vos_get_time_of_the_day_ms(void)
+{
+	struct timeval tv;
+	unsigned long local_time;
+	struct rtc_time tm;
+
+	do_gettimeofday(&tv);
+
+	local_time = (uint32_t)(tv.tv_sec -
+		(sys_tz.tz_minuteswest * 60));
+	rtc_time_to_tm(local_time, &tm);
+	return ((tm.tm_hour * 60 * 60 * 1000) +
+		(tm.tm_min *60 * 1000) + (tm.tm_sec * 1000)+
+		(tv.tv_usec/1000));
+}
+
+void vos_get_time_of_the_day_in_hr_min_sec_usec(char *tbuf, int len)
+{
+       struct timeval tv;
+       struct rtc_time tm;
+       unsigned long local_time;
+
+       /* Format the Log time R#: [hr:min:sec.microsec] */
+       do_gettimeofday(&tv);
+       /* Convert rtc to local time */
+       local_time = (u32)(tv.tv_sec - (sys_tz.tz_minuteswest * 60));
+       rtc_time_to_tm(local_time, &tm);
+       snprintf(tbuf, len,
+               "[%02d:%02d:%02d.%06lu] ",
+               tm.tm_hour, tm.tm_min, tm.tm_sec, tv.tv_usec);
+}
+
+/**
+ * vos_wdthread_init_timer_work() -  Initialize timer work
+ * @callbackptr: timer work callback
+ *
+ * Initialize watchdog thread timer work structure and linked
+ * list.
+ * return - void
+ */
+void vos_wdthread_init_timer_work(void *callbackptr)
+{
+	pVosContextType context;
+
+	context = vos_get_global_context(VOS_MODULE_ID_SYS, NULL);
+	if (!context) {
+		VOS_TRACE(VOS_MODULE_ID_VOSS, VOS_TRACE_LEVEL_FATAL,
+			"%s: Global VOS context is Null", __func__);
+		return;
+	}
+
+	spin_lock_init(&context->wdthread_work_lock);
+	INIT_LIST_HEAD(&context->wdthread_timer_work_list);
+	vos_init_work(&context->wdthread_work, callbackptr);
+}
+
+/**
+ * vos_wdthread_flush_timer_work() -  Flush timer work
+ *
+ * Flush watchdog thread timer work structure.
+ * return - void
+ */
+void vos_wdthread_flush_timer_work()
+{
+	pVosContextType context;
+
+	context = vos_get_global_context(VOS_MODULE_ID_SYS, NULL);
+	if (!context) {
+		VOS_TRACE(VOS_MODULE_ID_VOSS, VOS_TRACE_LEVEL_FATAL,
+			"%s: Global VOS context is Null", __func__);
+		return;
+	}
+
+	vos_flush_work(&context->wdthread_work);
+}
+
+/**
+ * __vos_process_wd_timer() -  Handle wathdog thread timer work
+ *
+ * Process watchdog thread timer work.
+ * return - void
+ */
+static void __vos_process_wd_timer(void)
+{
+	v_CONTEXT_t vos_context = NULL;
+	pVosContextType vos_global_context;
+	struct vos_wdthread_timer_work *wdthread_timer_work;
+	struct list_head *pos, *next;
+
+	vos_context = vos_get_global_context(VOS_MODULE_ID_SYS, NULL);
+
+	if (!vos_context) {
+		VOS_TRACE(VOS_MODULE_ID_VOSS, VOS_TRACE_LEVEL_FATAL,
+			"%s: Global VOS context is Null", __func__);
+		return;
+	}
+
+	vos_global_context = (pVosContextType)vos_context;
+
+	spin_lock(&vos_global_context->wdthread_work_lock);
+	list_for_each_safe(pos, next,
+			&vos_global_context->wdthread_timer_work_list) {
+		wdthread_timer_work = list_entry(pos,
+						struct vos_wdthread_timer_work,
+						node);
+		list_del(pos);
+		spin_unlock(&vos_global_context->wdthread_work_lock);
+		if ((NULL != wdthread_timer_work->callback) &&
+		    (NULL != wdthread_timer_work->userdata)) {
+			wdthread_timer_work->callback(
+				wdthread_timer_work->userdata);
+		}
+		vos_mem_free(wdthread_timer_work);
+		spin_lock(&vos_global_context->wdthread_work_lock);
+	}
+	spin_unlock(&vos_global_context->wdthread_work_lock);
+
+	return;
+}
+
+/**
+ * vos_process_wd_timer() -  Wrapper function to handle timer work
+ *
+ * Wrapper function to process timer work.
+ * return - void
+ */
+void vos_process_wd_timer(void)
+{
+	vos_ssr_protect(__func__);
+	__vos_process_wd_timer();
+	vos_ssr_unprotect(__func__);
 }

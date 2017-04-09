@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -38,6 +38,7 @@
 #define BSS_OPERATIONAL_MODE_AP     0
 #define BSS_OPERATIONAL_MODE_STA    1
 #define BSS_OPERATIONAL_MODE_IBSS   2
+#define BSS_OPERATIONAL_MODE_NDI    3
 
 /* STA entry type in add sta message */
 #define STA_ENTRY_SELF              0
@@ -48,6 +49,7 @@
 #ifdef FEATURE_WLAN_TDLS
 #define STA_ENTRY_TDLS_PEER         4
 #endif /* FEATURE_WLAN_TDLS */
+#define STA_ENTRY_NDI_PEER          5
 
 #define STA_ENTRY_TRANSMITTER       STA_ENTRY_SELF
 #define STA_ENTRY_RECEIVER          STA_ENTRY_OTHER
@@ -540,6 +542,9 @@ typedef struct
     uint8_t wps_state;
     uint8_t nss_2g;
     uint8_t nss_5g;
+    uint32_t tx_aggregation_size;
+    uint32_t rx_aggregation_size;
+    uint16_t beacon_tx_rate;
 } tAddBssParams, * tpAddBssParams;
 
 typedef struct
@@ -738,24 +743,19 @@ typedef struct {
 
 #ifdef FEATURE_OEM_DATA_SUPPORT
 
-#ifndef OEM_DATA_REQ_SIZE
-#define OEM_DATA_REQ_SIZE 280
-#endif
-#ifndef OEM_DATA_RSP_SIZE
-#define OEM_DATA_RSP_SIZE 1724
-#endif
-
 typedef struct
 {
     tSirMacAddr          selfMacAddr;
     eHalStatus           status;
-    uint8_t              data_len;
+    uint32_t             data_len;
     uint8_t              *data;
 } tStartOemDataReq, *tpStartOemDataReq;
 
 typedef struct
 {
-    tANI_U8             oemDataRsp[OEM_DATA_RSP_SIZE];
+    bool                target_rsp;
+    uint32_t            rsp_len;
+    uint8_t             *oem_data_rsp;
 } tStartOemDataRsp, *tpStartOemDataRsp;
 #endif
 
@@ -1044,6 +1044,7 @@ typedef struct CSAOffloadParams {
    tANI_U8 switchmode;
    tANI_U8 sec_chan_offset;
    tANI_U8 new_ch_width;       /* New channel width */
+   tANI_U8 new_op_class;       /* New operating class */
    tANI_U8 new_ch_freq_seg1;   /* Channel Center frequency 1 */
    tANI_U8 new_ch_freq_seg2;   /* Channel Center frequency 2 */
    tANI_U32 ies_present_flag;   /* WMI_CSA_EVENT_IES_PRESENT_FLAG */
@@ -1434,6 +1435,8 @@ typedef struct sAddStaSelfParams
    tANI_U16        pkt_err_disconn_th;
    uint8_t         nss_2g;
    uint8_t         nss_5g;
+   uint32_t        tx_aggregation_size;
+   uint32_t        rx_aggregation_size;
 }tAddStaSelfParams, *tpAddStaSelfParams;
 
 /**

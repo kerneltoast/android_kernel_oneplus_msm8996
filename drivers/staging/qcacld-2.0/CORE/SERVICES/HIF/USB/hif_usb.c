@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -53,7 +53,7 @@
 
 #define USB_HIF_USE_SINGLE_PIPE_FOR_DATA
 #define USB_HIF_TARGET_CREDIT_SIZE  1664
-#ifdef DEBUG
+#ifdef WLAN_DEBUG
 static ATH_DEBUG_MASK_DESCRIPTION g_HIFDebugDescription[] = {
 	{USB_HIF_DEBUG_CTRL_TRANS, "Control Transfers"},
 	{USB_HIF_DEBUG_BULK_IN, "BULK In Transfers"},
@@ -471,6 +471,7 @@ static HIF_DEVICE_USB *usb_hif_create(struct usb_interface *interface)
 		spin_lock_init(&(device->cs_lock));
 		spin_lock_init(&(device->rx_lock));
 		spin_lock_init(&(device->tx_lock));
+		spin_lock_init(&(device->rx_prestart_lock));
 		device->udev = dev;
 		device->interface = interface;
 
@@ -1046,4 +1047,18 @@ void HIFSetBundleMode(HIF_DEVICE *hif_device, bool enabled, int rx_bundle_cnt)
 			("athusb bundle %s cnt %d\n",
 			 enabled ? "enabled" : "disabled",
 			 rx_bundle_cnt));
+}
+
+/**
+ * hif_is_80211_fw_wow_required() - API to check if target suspend is needed
+ *
+ * API determines if fw can be suspended and returns true/false to the caller.
+ * Caller will call WMA WoW API's to suspend.
+ * This API returns true only for SDIO bus types, for others it's a false.
+ *
+ * Return: bool
+ */
+bool hif_is_80211_fw_wow_required(void)
+{
+	return false;
 }

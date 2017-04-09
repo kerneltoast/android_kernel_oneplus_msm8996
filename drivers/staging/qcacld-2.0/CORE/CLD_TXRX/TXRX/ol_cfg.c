@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2014 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2014,2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -31,7 +31,29 @@
 unsigned int vow_config = 0;
 module_param(vow_config, uint, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 MODULE_PARM_DESC(vow_config, "Do VoW Configuration");
-EXPORT_SYMBOL(vow_config);
+
+#ifdef QCA_SUPPORT_TXRX_HL_BUNDLE
+/**
+ * ol_cfg_update_bundle_params() - update tx bundle params
+ * @cfg_ctx: cfg context
+ * @cfg_param: parameters
+ *
+ * Return: none
+ */
+void ol_cfg_update_bundle_params(struct txrx_pdev_cfg_t *cfg_ctx,
+				struct txrx_pdev_cfg_param_t cfg_param)
+{
+	cfg_ctx->pkt_bundle_timer_value = cfg_param.pkt_bundle_timer_value;
+	cfg_ctx->pkt_bundle_size = cfg_param.pkt_bundle_size;
+}
+#else
+void ol_cfg_update_bundle_params(struct txrx_pdev_cfg_t *cfg_ctx,
+				struct txrx_pdev_cfg_param_t cfg_param)
+{
+	return;
+}
+#endif
+
 
 /* FIX THIS -
  * For now, all these configuration parameters are hardcoded.
@@ -42,6 +64,7 @@ ol_pdev_handle ol_pdev_cfg_attach(adf_os_device_t osdev,
                                    struct txrx_pdev_cfg_param_t cfg_param)
 {
 	struct txrx_pdev_cfg_t *cfg_ctx;
+	int i;
 
 	cfg_ctx = adf_os_mem_alloc(osdev, sizeof(*cfg_ctx));
 	if (!cfg_ctx) {
@@ -77,6 +100,10 @@ ol_pdev_handle ol_pdev_cfg_attach(adf_os_device_t osdev,
 	cfg_ctx->vow_config = vow_config;
 	cfg_ctx->target_tx_credit = CFG_TGT_NUM_MSDU_DESC;
 	cfg_ctx->throttle_period_ms = 40;
+	cfg_ctx->dutycycle_level[0] = THROTTLE_DUTY_CYCLE_LEVEL0;
+	cfg_ctx->dutycycle_level[1] = THROTTLE_DUTY_CYCLE_LEVEL1;
+	cfg_ctx->dutycycle_level[2] = THROTTLE_DUTY_CYCLE_LEVEL2;
+	cfg_ctx->dutycycle_level[3] = THROTTLE_DUTY_CYCLE_LEVEL3;
 	cfg_ctx->rx_fwd_disabled = 0;
 	cfg_ctx->is_packet_log_enabled = 0;
 	cfg_ctx->is_full_reorder_offload = cfg_param.is_full_reorder_offload;
@@ -87,8 +114,50 @@ ol_pdev_handle ol_pdev_cfg_attach(adf_os_device_t osdev,
 	cfg_ctx->ipa_uc_rsc.rx_ind_ring_size = cfg_param.uc_rx_indication_ring_count;
 	cfg_ctx->ipa_uc_rsc.tx_partition_base = cfg_param.uc_tx_partition_base;
 #endif /* IPA_UC_OFFLOAD */
+
+	ol_cfg_update_bundle_params(cfg_ctx, cfg_param);
+
+	for (i = 0; i < OL_TX_NUM_WMM_AC; i++) {
+		cfg_ctx->ac_specs[i].wrr_skip_weight =
+			cfg_param.ac_specs[i].wrr_skip_weight;
+		cfg_ctx->ac_specs[i].credit_threshold =
+			cfg_param.ac_specs[i].credit_threshold;
+		cfg_ctx->ac_specs[i].send_limit =
+			cfg_param.ac_specs[i].send_limit;
+		cfg_ctx->ac_specs[i].credit_reserve =
+			cfg_param.ac_specs[i].credit_reserve;
+		cfg_ctx->ac_specs[i].discard_weight =
+			cfg_param.ac_specs[i].discard_weight;
+	}
+
 	return (ol_pdev_handle) cfg_ctx;
 }
+
+#ifdef QCA_SUPPORT_TXRX_HL_BUNDLE
+/**
+ * ol_cfg_get_bundle_timer_value() - get bundle timer value
+ * @pdev: pdev handle
+ *
+ * Return: bundle timer value
+ */
+int ol_cfg_get_bundle_timer_value(ol_pdev_handle pdev)
+{
+	struct txrx_pdev_cfg_t *cfg = (struct txrx_pdev_cfg_t *)pdev;
+	return cfg->pkt_bundle_timer_value;
+}
+
+/**
+ * ol_cfg_get_bundle_size() - get bundle size value
+ * @pdev: pdev handle
+ *
+ * Return: bundle size value
+ */
+int ol_cfg_get_bundle_size(ol_pdev_handle pdev)
+{
+	struct txrx_pdev_cfg_t *cfg = (struct txrx_pdev_cfg_t *)pdev;
+	return cfg->pkt_bundle_size;
+}
+#endif
 
 int ol_cfg_is_high_latency(ol_pdev_handle pdev)
 {
@@ -220,6 +289,13 @@ int ol_cfg_throttle_period_ms(ol_pdev_handle pdev)
 	return cfg->throttle_period_ms;
 }
 
+int ol_cfg_throttle_duty_cycle_level(ol_pdev_handle pdev, int level)
+{
+	struct txrx_pdev_cfg_t *cfg = (struct txrx_pdev_cfg_t *)pdev;
+	return cfg->dutycycle_level[level];
+}
+
+
 int ol_cfg_is_full_reorder_offload(ol_pdev_handle pdev)
 {
 	struct txrx_pdev_cfg_t *cfg = (struct txrx_pdev_cfg_t *)pdev;
@@ -257,4 +333,91 @@ unsigned int ol_cfg_ipa_uc_tx_partition_base(ol_pdev_handle pdev)
 	return cfg->ipa_uc_rsc.tx_partition_base;
 }
 #endif /* IPA_UC_OFFLOAD */
+
+/**
+ * ol_cfg_get_wrr_skip_weight() - brief Query for the param of wrr_skip_weight
+ * @pdev: handle to the physical device.
+ * @ac: access control, it will be BE, BK, VI, VO
+ *
+ * Return: wrr_skip_weight for specified ac.
+ */
+int ol_cfg_get_wrr_skip_weight(ol_pdev_handle pdev, int ac)
+{
+	struct txrx_pdev_cfg_t *cfg = (struct txrx_pdev_cfg_t *)pdev;
+
+	if (ac >= OL_TX_WMM_AC_BE && ac <= OL_TX_WMM_AC_VO)
+		return cfg->ac_specs[ac].wrr_skip_weight;
+	else
+		return 0;
+}
+
+/**
+ * ol_cfg_get_credit_threshold() - Query for the param of credit_threshold
+ * @pdev: handle to the physical device.
+ * @ac: access control, it will be BE, BK, VI, VO
+ *
+ * Return: credit_threshold for specified ac.
+ */
+uint32_t ol_cfg_get_credit_threshold(ol_pdev_handle pdev, int ac)
+{
+	struct txrx_pdev_cfg_t *cfg = (struct txrx_pdev_cfg_t *)pdev;
+
+	if (ac >= OL_TX_WMM_AC_BE && ac <= OL_TX_WMM_AC_VO)
+		return cfg->ac_specs[ac].credit_threshold;
+	else
+		return 0;
+}
+
+
+/**
+ * ol_cfg_get_send_limit() - Query for the param of send_limit
+ * @pdev: handle to the physical device.
+ * @ac: access control, it will be BE, BK, VI, VO
+ *
+ * Return: send_limit for specified ac.
+ */
+uint16_t ol_cfg_get_send_limit(ol_pdev_handle pdev, int ac)
+{
+	struct txrx_pdev_cfg_t *cfg = (struct txrx_pdev_cfg_t *)pdev;
+
+	if (ac >= OL_TX_WMM_AC_BE && ac <= OL_TX_WMM_AC_VO)
+		return cfg->ac_specs[ac].send_limit;
+	else
+		return 0;
+}
+
+
+/**
+ * ol_cfg_get_credit_reserve() - Query for the param of credit_reserve
+ * @pdev: handle to the physical device.
+ * @ac: access control, it will be BE, BK, VI, VO
+ *
+ * Return: credit_reserve for specified ac.
+ */
+int ol_cfg_get_credit_reserve(ol_pdev_handle pdev, int ac)
+{
+	struct txrx_pdev_cfg_t *cfg = (struct txrx_pdev_cfg_t *)pdev;
+
+	if (ac >= OL_TX_WMM_AC_BE && ac <= OL_TX_WMM_AC_VO)
+		return cfg->ac_specs[ac].credit_reserve;
+	else
+		return 0;
+}
+
+/**
+ * ol_cfg_get_discard_weight() - Query for the param of discard_weight
+ * @pdev: handle to the physical device.
+ * @ac: access control, it will be BE, BK, VI, VO
+ *
+ * Return: discard_weight for specified ac.
+ */
+int ol_cfg_get_discard_weight(ol_pdev_handle pdev, int ac)
+{
+	struct txrx_pdev_cfg_t *cfg = (struct txrx_pdev_cfg_t *)pdev;
+
+	if (ac >= OL_TX_WMM_AC_BE && ac <= OL_TX_WMM_AC_VO)
+		return cfg->ac_specs[ac].discard_weight;
+	else
+		return 0;
+}
 

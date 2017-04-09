@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -143,9 +143,18 @@ void pe_reset_protection_callback(void *ptr)
 
     vos_mem_zero(&pe_session_entry->gLimOlbcParams,
                  sizeof(pe_session_entry->gLimOlbcParams));
-
-    vos_mem_zero(&pe_session_entry->beaconParams,
-                 sizeof(pe_session_entry->beaconParams));
+    /*
+     * Do not reset fShortPreamble and beaconInterval, as they
+     * are not updated.
+     */
+    pe_session_entry->beaconParams.llaCoexist = 0;
+    pe_session_entry->beaconParams.llbCoexist = 0;
+    pe_session_entry->beaconParams.llgCoexist = 0;
+    pe_session_entry->beaconParams.ht20Coexist = 0;
+    pe_session_entry->beaconParams.llnNonGFCoexist = 0;
+    pe_session_entry->beaconParams.fRIFSMode = 0;
+    pe_session_entry->beaconParams.fLsigTXOPProtectionFullSupport = 0;
+    pe_session_entry->beaconParams.gHTObssMode = 0;
 
     vos_mem_zero(&mac_ctx->lim.gLimOverlap11gParams,
                  sizeof(mac_ctx->lim.gLimOverlap11gParams));
@@ -203,6 +212,7 @@ void pe_reset_protection_callback(void *ptr)
                     pe_session_entry->beaconParams.fRIFSMode;
         beacon_params.smeSessionId =
                     pe_session_entry->smeSessionId;
+        beacon_params.paramChangeBitmap |= PARAM_llBCOEXIST_CHANGED;
         bcn_prms_changed = true;
     }
 
@@ -295,6 +305,8 @@ tpPESession peCreateSession(tpAniSirGlobal pMac,
 
             /* Copy the BSSID to the session table */
             sirCopyMacAddr(pMac->lim.gpSession[i].bssId, bssid);
+            if (bssType == eSIR_MONITOR_MODE)
+                sirCopyMacAddr(pMac->lim.gpSession[i].selfMacAddr, bssid);
             pMac->lim.gpSession[i].valid = TRUE;
 
             /* Initialize the SME and MLM states to IDLE */
@@ -387,6 +399,8 @@ tpPESession peCreateSession(tpAniSirGlobal pMac,
                limFTOpen(pMac, &pMac->lim.gpSession[i]);
             }
 #endif
+            if (eSIR_MONITOR_MODE == bssType)
+               limFTOpen(pMac, &pMac->lim.gpSession[i]);
 
             if (eSIR_INFRA_AP_MODE == bssType) {
                 pMac->lim.gpSession[i].old_protection_state = 0;
@@ -502,6 +516,34 @@ tpPESession pe_find_session_by_sme_session_id(tpAniSirGlobal mac_ctx,
 	return NULL;
 }
 
+/**
+ * pe_count_session_with_sme_session_id() - count PE sessions for given sme
+ * session id
+ * @mac_ctx:          pointer to global adapter context
+ * @sme_session_id:   sme session id
+ *
+ * count PE sessions for given sme session id
+ *
+ * Return: number of pe session entry for given sme session
+ */
+uint8_t pe_count_session_with_sme_session_id(tpAniSirGlobal mac_ctx,
+					uint8_t sme_session_id)
+{
+	uint8_t i, count = 0;
+	for (i = 0; i < mac_ctx->lim.maxBssId; i++) {
+		if ((mac_ctx->lim.gpSession[i].valid) &&
+		    (mac_ctx->lim.gpSession[i].smeSessionId ==
+			sme_session_id)) {
+			count++;
+		}
+	}
+	limLog(mac_ctx, LOG4,
+	       FL("%d sessions found for smeSessionID: %d"),
+	       count, sme_session_id);
+	return count;
+}
+
+
 /*--------------------------------------------------------------------------
   \brief peFindSessionBySessionId() - looks up the PE session given the session ID.
 
@@ -586,6 +628,12 @@ void peDeleteSession(tpAniSirGlobal pMac, tpPESession psessionEntry)
     tANI_U16 i = 0;
     tANI_U16 n;
     TX_TIMER *timer_ptr;
+
+    if (!psessionEntry->valid) {
+        limLog(pMac, LOG1, FL("peSession %d already deleted"),
+                   psessionEntry->peSessionId);
+        return;
+    }
 
     VOS_TRACE(VOS_MODULE_ID_PE, VOS_TRACE_LEVEL_DEBUG,
           "Trying to delete PE session %d Opmode %d BssIdx %d"
@@ -782,6 +830,11 @@ void peDeleteSession(tpAniSirGlobal pMac, tpPESession psessionEntry)
         vos_timer_destroy(&psessionEntry->pmfComebackTimer);
     }
 #endif
+
+    if (psessionEntry->access_policy_vendor_ie)
+        vos_mem_free(psessionEntry->access_policy_vendor_ie);
+
+    psessionEntry->access_policy_vendor_ie = NULL;
 
     psessionEntry->valid = FALSE;
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2011-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -43,6 +43,7 @@
 #include <ol_rx_reorder.h>     /* ol_rx_reorder_store, etc. */
 #include <ol_rx_reorder_timeout.h> /* OL_RX_REORDER_TIMEOUT_UPDATE */
 #include <ol_rx_defrag.h>      /* ol_rx_defrag_waitlist_flush */
+#include <ol_rx_fwd.h>             /* ol_rx_fwd_check, etc. */
 #include <ol_txrx_internal.h>
 #include <wdi_event.h>
 #ifdef QCA_SUPPORT_SW_TXRX_ENCAP
@@ -58,11 +59,11 @@
 #include <ipv6_defs.h>    /* IPv6 header defs */
 #include <ol_vowext_dbg_defs.h>
 #include <wma.h>
+#include "pktlog_ac_fmt.h"
+#include "adf_trace.h"
 
 #ifdef HTT_RX_RESTORE
-#if  defined(CONFIG_CNSS)
-#include <net/cnss.h>
-#endif
+#include "vos_cnss.h"
 #endif
 
 #ifdef OSIF_NEED_RX_PEER_ID
@@ -77,9 +78,17 @@
 
 static void ol_rx_restore_handler(struct work_struct *htt_rx)
 {
+    adf_os_device_t adf_ctx;
+    VosContextType *pvoscontext = NULL;
+
     VOS_TRACE(VOS_MODULE_ID_TXRX, VOS_TRACE_LEVEL_INFO,
         "Enter: %s", __func__);
-    cnss_device_self_recovery();
+
+    pvoscontext = vos_get_global_context(VOS_MODULE_ID_SYS, NULL);
+    adf_ctx = vos_get_context(VOS_MODULE_ID_ADF, pvoscontext);
+    if (adf_ctx)
+       vos_device_self_recovery(adf_ctx->dev);
+
     VOS_TRACE(VOS_MODULE_ID_TXRX, VOS_TRACE_LEVEL_INFO,
         "Exit: %s", __func__);
 }
@@ -106,6 +115,22 @@ void ol_rx_trigger_restore(htt_pdev_handle htt_pdev, adf_nbuf_t head_msdu,
     }
 }
 #endif
+
+void ol_rx_reset_pn_replay_counters(struct ol_txrx_pdev_t *pdev)
+{
+    adf_os_mem_zero(pdev->pn_replays,
+                    OL_RX_NUM_PN_REPLAY_TYPES * sizeof(uint32_t));
+}
+
+uint32_t ol_rx_get_tkip_replay_counter(struct ol_txrx_pdev_t *pdev)
+{
+    return pdev->pn_replays[OL_RX_TKIP_REPLAYS];
+}
+
+uint32_t ol_rx_get_ccmp_replay_counter(struct ol_txrx_pdev_t *pdev)
+{
+    return pdev->pn_replays[OL_RX_CCMP_REPLAYS];
+}
 
 static void ol_rx_process_inv_peer(
     ol_txrx_pdev_handle pdev,
@@ -269,6 +294,8 @@ ol_rx_indication_handler(
             ol_rx_reorder_flush(
                 vdev, peer, tid, seq_num_start,
                 seq_num_end, htt_rx_flush_release);
+            ol_rx_reorder_update_history(peer, reorder_flush, tid,
+                 seq_num_start, seq_num_end, 0);
         }
     }
 
@@ -435,6 +462,8 @@ ol_rx_indication_handler(
                     } else {
                         ol_rx_reorder_store(
                             pdev, peer, tid, reorder_idx, head_msdu, tail_msdu);
+                        ol_rx_reorder_update_history(peer, reorder_store, tid,
+                            0, 0, reorder_idx);
                         if (peer->tids_rx_reorder[tid].win_sz_mask == 0) {
                             peer->tids_last_seq[tid] =
                                          htt_rx_mpdu_desc_seq_num(htt_pdev,
@@ -517,6 +546,8 @@ ol_rx_indication_handler(
 
     if ((A_TRUE == rx_ind_release) && peer && vdev) {
         ol_rx_reorder_release(vdev, peer, tid, seq_num_start, seq_num_end);
+        ol_rx_reorder_update_history(peer, reorder_release, tid, seq_num_start,
+                   seq_num_end, 0);
     }
     OL_RX_REORDER_TIMEOUT_UPDATE(peer, tid);
     OL_RX_REORDER_TIMEOUT_MUTEX_UNLOCK(pdev);
@@ -717,24 +748,27 @@ ol_rx_offload_deliver_ind_handler(
     htt_pdev_handle htt_pdev = pdev->htt_pdev;
 
     while (msdu_cnt) {
-        htt_rx_offload_msdu_pop(
+        if (!htt_rx_offload_msdu_pop(
             htt_pdev, msg, &vdev_id, &peer_id,
-            &tid, &fw_desc, &head_buf, &tail_buf);
-
-        peer = ol_txrx_peer_find_by_id(pdev, peer_id);
-        if (peer && peer->vdev) {
-            vdev = peer->vdev;
-	    OL_RX_OSIF_DELIVER(vdev, peer, head_buf);
-        } else {
-            buf = head_buf;
-            while (1) {
-                adf_nbuf_t next;
-                next = adf_nbuf_next(buf);
-                htt_rx_desc_frame_free(htt_pdev, buf);
-                if (buf == tail_buf) {
-                    break;
+            &tid, &fw_desc, &head_buf, &tail_buf)) {
+            peer = ol_txrx_peer_find_by_id(pdev, peer_id);
+            if (peer && peer->vdev) {
+                vdev = peer->vdev;
+                if (pdev->cfg.is_high_latency)
+                    ol_rx_fwd_check(vdev, peer, tid, head_buf);
+                else
+                    OL_RX_OSIF_DELIVER(vdev, peer, head_buf);
+            } else {
+                buf = head_buf;
+                while (1) {
+                    adf_nbuf_t next;
+                    next = adf_nbuf_next(buf);
+                    htt_rx_desc_frame_free(htt_pdev, buf);
+                    if (buf == tail_buf) {
+                        break;
+                    }
+                    buf = next;
                 }
-                buf = next;
             }
         }
         msdu_cnt--;
@@ -1111,6 +1145,10 @@ ol_rx_peer_init(struct ol_txrx_pdev_t *pdev, struct ol_txrx_peer_t *peer)
     peer->security[txrx_sec_ucast].sec_type =
         peer->security[txrx_sec_mcast].sec_type = htt_sec_type_none;
     peer->keyinstalled = 0;
+    peer->last_assoc_rcvd = 0;
+    peer->last_disassoc_rcvd = 0;
+    peer->last_deauth_rcvd = 0;
+
     adf_os_atomic_init(&peer->fw_pn_check);
 }
 
@@ -1118,7 +1156,12 @@ void
 ol_rx_peer_cleanup(struct ol_txrx_vdev_t *vdev, struct ol_txrx_peer_t *peer)
 {
     peer->keyinstalled = 0;
+    peer->last_assoc_rcvd = 0;
+    peer->last_disassoc_rcvd = 0;
+    peer->last_deauth_rcvd = 0;
     ol_rx_reorder_peer_cleanup(vdev, peer);
+    adf_os_mem_free(peer->reorder_history);
+    peer->reorder_history = NULL;
 }
 
 /*
@@ -1154,6 +1197,8 @@ ol_rx_in_order_indication_handler(
 
     if (pdev) {
         peer = ol_txrx_peer_find_by_id(pdev, peer_id);
+        if (VOS_MONITOR_MODE == vos_get_conparam())
+            peer = pdev->self_peer;
         htt_pdev = pdev->htt_pdev;
     } else {
         TXRX_PRINT(TXRX_PRINT_LEVEL_ERR,
@@ -1207,6 +1252,45 @@ ol_rx_in_order_indication_handler(
     peer->rx_opt_proc(vdev, peer, tid, head_msdu);
 }
 
+/**
+ * ol_rx_pkt_dump_call() - updates status and
+ * calls packetdump callback to log rx packet
+ *
+ * @msdu: rx packet
+ * @peer_id: peer id
+ * @status: status of rx packet
+ *
+ * This function is used to update the status of rx packet
+ * and then calls packetdump callback to log that packet.
+ *
+ * Return: None
+ *
+ */
+void ol_rx_pkt_dump_call(
+	adf_nbuf_t msdu,
+	struct ol_txrx_peer_t *peer,
+	uint8_t status)
+{
+	v_CONTEXT_t vos_context;
+	ol_txrx_pdev_handle pdev;
+
+	vos_context = vos_get_global_context(VOS_MODULE_ID_TXRX, NULL);
+	pdev = vos_get_context(VOS_MODULE_ID_TXRX, vos_context);
+
+	if (!pdev) {
+		TXRX_PRINT(TXRX_PRINT_LEVEL_ERR,
+			"%s: pdev is NULL", __func__);
+		return;
+	}
+
+	if (pdev->ol_rx_packetdump_cb) {
+		if (!peer)
+			return;
+		pdev->ol_rx_packetdump_cb(msdu, status, peer->vdev->vdev_id,
+						RX_DATA_PKT);
+	}
+}
+
 /* the msdu_list passed here must be NULL terminated */
 void
 ol_rx_in_order_deliver(
@@ -1228,6 +1312,11 @@ ol_rx_in_order_deliver(
     while (msdu) {
         adf_nbuf_t next = adf_nbuf_next(msdu);
 
+        DPTRACE(adf_dp_trace(msdu,
+                ADF_DP_TRACE_RX_TXRX_PACKET_PTR_RECORD,
+                adf_nbuf_data_addr(msdu),
+                sizeof(adf_nbuf_data(msdu)), ADF_RX));
+
         OL_RX_PEER_STATS_UPDATE(peer, msdu);
         OL_RX_ERR_STATISTICS_1(vdev->pdev, vdev, peer, rx_desc, OL_RX_ERR_NONE);
         TXRX_STATS_MSDU_INCR(vdev->pdev, rx.delivered, msdu);
@@ -1242,6 +1331,24 @@ ol_rx_in_order_deliver(
         0 /* don't print contents */);
 
     OL_RX_OSIF_DELIVER(vdev, peer, msdu_list);
+}
+
+/**
+ * ol_rx_log_packet() - log rx packet
+ * @htt_pdev: htt pdev
+ * @peer_id: peer_id
+ * @msdu: skb
+ *
+ * Return: none
+ */
+void ol_rx_log_packet(htt_pdev_handle htt_pdev,
+                      uint8_t peer_id, adf_nbuf_t msdu)
+{
+    struct ol_txrx_peer_t *peer;
+
+    peer = ol_txrx_peer_find_by_id(htt_pdev->txrx_pdev, peer_id);
+    if (peer)
+        adf_dp_trace_log_pkt(peer->vdev->vdev_id, msdu, ADF_RX);
 }
 
 void
@@ -1264,6 +1371,14 @@ ol_rx_offload_paddr_deliver_ind_handler(
 
         peer = ol_txrx_peer_find_by_id(htt_pdev->txrx_pdev, peer_id);
         if (peer && peer->vdev) {
+            adf_dp_trace_set_track(head_buf, ADF_RX);
+            NBUF_SET_PACKET_TRACK(head_buf, NBUF_TX_PKT_DATA_TRACK);
+            adf_dp_trace_log_pkt(peer->vdev->vdev_id,
+                                 head_buf, ADF_RX);
+            DPTRACE(adf_dp_trace(head_buf,
+                    ADF_DP_TRACE_RX_OFFLOAD_HTT_PACKET_PTR_RECORD,
+                    adf_nbuf_data_addr(head_buf),
+                    sizeof(adf_nbuf_data(head_buf)), ADF_RX));
             vdev = peer->vdev;
             OL_RX_OSIF_DELIVER(vdev, peer, head_buf);
         } else {

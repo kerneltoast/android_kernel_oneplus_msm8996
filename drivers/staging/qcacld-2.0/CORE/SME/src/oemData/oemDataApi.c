@@ -208,7 +208,6 @@ eHalStatus oemData_SendMBOemDataReq(tpAniSirGlobal pMac, tOemDataReq *pOemDataRe
 {
     eHalStatus status = eHAL_STATUS_SUCCESS;
     tSirOemDataReq* pMsg;
-    tANI_U16 msgLen;
     tCsrRoamSession *pSession;
 
     smsLog(pMac, LOGW, "OEM_DATA: entering Function %s", __func__);
@@ -225,9 +224,8 @@ eHalStatus oemData_SendMBOemDataReq(tpAniSirGlobal pMac, tOemDataReq *pOemDataRe
         return eHAL_STATUS_FAILURE;
     }
 
-    msgLen = (uint16_t) (sizeof(*pMsg) + pOemDataReq->data_len);
     pMsg->messageType = pal_cpu_to_be16((tANI_U16)eWNI_SME_OEM_DATA_REQ);
-    pMsg->messageLen = pal_cpu_to_be16(msgLen);
+    pMsg->messageLen = pal_cpu_to_be16((uint16_t) sizeof(*pMsg));
     vos_mem_copy(pMsg->selfMacAddr, pSession->selfMacAddr, sizeof(tSirMacAddr) );
     pMsg->data_len = pOemDataReq->data_len;
     /* Incoming buffer ptr saved, set to null to avoid free by caller */
@@ -294,8 +292,7 @@ eHalStatus sme_HandleOemDataRsp(tHalHandle hHal, tANI_U8* pMsg)
     tListElem                          *pEntry = NULL;
     tSmeCmd                            *pCommand = NULL;
     tSirOemDataRsp*                    pOemDataRsp = NULL;
-    tOemDataReq                        *req;
-    tANI_U32                           *msgSubType;
+    tOemDataReq *req;
 
     pMac = PMAC_STRUCT(hHal);
 
@@ -325,10 +322,10 @@ eHalStatus sme_HandleOemDataRsp(tHalHandle hHal, tANI_U8* pMsg)
                 if (csrLLRemoveEntry(&pMac->sme.smeCmdActiveList,
                                      &pCommand->Link, LL_ACCESS_LOCK))
                 {
-                    vos_mem_set(&(pCommand->u.oemDataCmd),
-                                sizeof(tOemDataCmd), 0);
                     req = &(pCommand->u.oemDataCmd.oemDataReq);
                     vos_mem_free(req->data);
+                    vos_mem_set(&(pCommand->u.oemDataCmd),
+                                sizeof(tOemDataCmd), 0);
                     smeReleaseCommand(pMac, pCommand);
                 }
             }
@@ -336,20 +333,17 @@ eHalStatus sme_HandleOemDataRsp(tHalHandle hHal, tANI_U8* pMsg)
 
         pOemDataRsp = (tSirOemDataRsp *)pMsg;
 
-        /* check if message is to be forwarded to oem application or not */
-        msgSubType = (tANI_U32 *) (&pOemDataRsp->oemDataRsp[0]);
-        if (*msgSubType != OEM_MESSAGE_SUBTYPE_INTERNAL)
-        {
-            VOS_TRACE(VOS_MODULE_ID_SME, VOS_TRACE_LEVEL_INFO,
-                      "%s: calling send_oem_data_rsp_msg, msgSubType(0x%x)",
-                      __func__, *msgSubType);
-            send_oem_data_rsp_msg(sizeof(tOemDataRsp),
-                                  &pOemDataRsp->oemDataRsp[0]);
+        /* Send to upper layer only if rsp is from target */
+        if (pOemDataRsp->target_rsp) {
+            smsLog(pMac, LOG1, FL("received target oem data resp"));
+            send_oem_data_rsp_msg(pOemDataRsp->rsp_len,
+                                  pOemDataRsp->oem_data_rsp);
+            /* free this memory only if rsp is from target */
+            vos_mem_free(pOemDataRsp->oem_data_rsp);
+            pOemDataRsp->oem_data_rsp = NULL;
+        } else {
+            smsLog(pMac, LOG1, FL("received internal oem data resp"));
         }
-        else
-            VOS_TRACE(VOS_MODULE_ID_SME, VOS_TRACE_LEVEL_INFO,
-                      "%s: received internal oem data resp, msgSubType (0x%x)",
-                      __func__, *msgSubType);
     } while(0);
 
     return status;

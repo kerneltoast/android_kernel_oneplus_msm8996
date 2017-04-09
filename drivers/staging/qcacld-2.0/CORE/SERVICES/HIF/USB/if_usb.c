@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -285,9 +285,6 @@ static void hif_usb_remove(struct usb_interface *interface)
 	/* do cold reset */
 	HIFDiagWriteCOLDRESET(sc->hif_device);
 
-	if (usb_sc->suspend_state) {
-		hif_usb_resume(usb_sc->interface);
-	}
 	unregister_reboot_notifier(&sc->reboot_notifier);
 	usb_put_dev(interface_to_usbdev(interface));
 	if (atomic_read(&hif_usb_unload_state) ==
@@ -423,6 +420,7 @@ static int hif_usb_reset_resume(struct usb_interface *intf)
 
 static struct usb_device_id hif_usb_id_table[] = {
 	{USB_DEVICE_AND_INTERFACE_INFO(VENDOR_ATHR, 0x9378, 0xFF, 0xFF, 0xFF)},
+	{USB_DEVICE_AND_INTERFACE_INFO(VENDOR_ATHR, 0x9379, 0xFF, 0xFF, 0xFF)},
 	{}			/* Terminating entry */
 };
 
@@ -637,6 +635,7 @@ void hif_get_hw_info(void *ol_sc, u32 *version, u32 *revision)
 					case AR6320_REV3_VERSION:
 					case AR6320_REV3_2_VERSION:
 					case QCA9377_REV1_1_VERSION:
+					case QCA9379_REV1_VERSION:
 						hif_type = HIF_TYPE_AR6320V2;
 						target_type = TARGET_TYPE_AR6320V2;
 						break;

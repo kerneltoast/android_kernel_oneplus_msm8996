@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2016 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -88,6 +88,24 @@ static const hdd_tmLevelAction_t thermalMigrationAction[WLAN_HDD_TM_LEVEL_MAX] =
 static bool suspend_notify_sent;
 #endif
 
+#ifdef FEATURE_WLAN_DIAG_SUPPORT
+/**
+ * hdd_wlan_suspend_resume_event()- send suspend/resume state
+ * @state: suspend/resume state
+ *
+ * This Function send send suspend resume state diag event
+ *
+ * Return: void.
+ */
+void hdd_wlan_suspend_resume_event(uint8_t state)
+{
+	WLAN_VOS_DIAG_EVENT_DEF(suspend_state, struct vos_event_suspend);
+	vos_mem_zero(&suspend_state, sizeof(suspend_state));
+
+	suspend_state.state = state;
+	WLAN_VOS_DIAG_EVENT_REPORT(&suspend_state, EVENT_WLAN_SUSPEND_RESUME);
+}
+#endif
 
 /*----------------------------------------------------------------------------
 
@@ -134,7 +152,9 @@ void hddDevTmTxBlockTimeoutHandler(void *usrData)
    /* Resume TX flow */
 
    hddLog(LOG1, FL("Enabling queues"));
-   netif_tx_wake_all_queues(staAdapater->dev);
+   wlan_hdd_netif_queue_control(staAdapater,
+        WLAN_WAKE_ALL_NETIF_QUEUE,
+        WLAN_CONTROL_PATH);
    pHddCtx->tmInfo.qBlocked = VOS_FALSE;
    mutex_unlock(&pHddCtx->tmInfo.tmOperationLock);
 
