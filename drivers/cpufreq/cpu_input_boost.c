@@ -231,9 +231,11 @@ static int do_cpu_boost(struct notifier_block *nb,
 {
 	struct cpufreq_policy *policy = data;
 	struct boost_policy *b = boost_policy_g;
-	struct ib_config *ib = &b->ib;
 	uint32_t boost_freq, state;
 	bool ret;
+
+	if (unlikely(!b))
+		return NOTIFY_OK;
 
 	if (action != CPUFREQ_ADJUST)
 		return NOTIFY_OK;
@@ -258,7 +260,7 @@ static int do_cpu_boost(struct notifier_block *nb,
 	 * Boost to policy->max if the boost frequency is higher than it. When
 	 * unboosting, set policy->min to the absolute min freq for the CPU.
 	 */
-	if (ib->cpus_to_boost & CPU_MASK(policy->cpu)) {
+	if (b->ib.cpus_to_boost & CPU_MASK(policy->cpu)) {
 		boost_freq = get_boost_freq(b, policy->cpu);
 		/*
 		 * Boost frequency must always be valid. If it's invalid
@@ -284,10 +286,12 @@ static int fb_notifier_callback(struct notifier_block *nb,
 		unsigned long action, void *data)
 {
 	struct boost_policy *b = boost_policy_g;
-	struct fb_policy *fb = &b->fb;
 	struct fb_event *evdata = data;
 	int *blank = evdata->data;
 	uint32_t state;
+
+	if (unlikely(!b))
+		return NOTIFY_OK;
 
 	/* Parse framebuffer events as soon as they occur */
 	if (action != FB_EARLY_EVENT_BLANK)
@@ -317,7 +321,7 @@ static int fb_notifier_callback(struct notifier_block *nb,
 	if (state & WAKE_BOOST)
 		return NOTIFY_OK;
 
-	queue_work(b->wq, &fb->boost_work);
+	queue_work(b->wq, &b->fb.boost_work);
 
 	return NOTIFY_OK;
 }
@@ -331,8 +335,10 @@ static void cpu_ib_input_event(struct input_handle *handle, unsigned int type,
 		unsigned int code, int value)
 {
 	struct boost_policy *b = boost_policy_g;
-	struct ib_config *ib = &b->ib;
 	uint32_t state;
+
+	if (unlikely(!b))
+		return;
 
 	state = get_boost_state(b);
 
@@ -345,12 +351,12 @@ static void cpu_ib_input_event(struct input_handle *handle, unsigned int type,
 	/* Continuous boosting (from constant user input) */
 	if (state & INPUT_BOOST) {
 		set_boost_bit(b, INPUT_REBOOST);
-		queue_work(b->wq, &ib->reboost_work);
+		queue_work(b->wq, &b->ib.reboost_work);
 		return;
 	}
 
 	set_boost_bit(b, INPUT_BOOST);
-	queue_work(b->wq, &ib->boost_work);
+	queue_work(b->wq, &b->ib.boost_work);
 }
 
 static int cpu_ib_input_connect(struct input_handler *handler,
@@ -568,10 +574,11 @@ static ssize_t enabled_write(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
 	struct boost_policy *b = boost_policy_g;
-	struct ib_config *ib = &b->ib;
-	struct fb_policy *fb = &b->fb;
 	uint32_t data;
 	int ret;
+
+	if (unlikely(!b))
+		return -EINVAL;
 
 	ret = kstrtou32(buf, 10, &data);
 	if (ret)
@@ -582,8 +589,8 @@ static ssize_t enabled_write(struct device *dev,
 	} else {
 		clear_boost_bit(b, DRIVER_ENABLED);
 		/* Stop everything */
-		cancel_work_sync(&fb->boost_work);
-		cancel_work_sync(&ib->boost_work);
+		cancel_work_sync(&b->fb.boost_work);
+		cancel_work_sync(&b->ib.boost_work);
 		unboost_all_cpus(b);
 	}
 
@@ -594,9 +601,11 @@ static ssize_t ib_freqs_write(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
 	struct boost_policy *b = boost_policy_g;
-	struct ib_config *ib = &b->ib;
 	uint32_t freq[2];
 	int ret;
+
+	if (unlikely(!b))
+		return -EINVAL;
 
 	ret = sscanf(buf, "%u %u", &freq[0], &freq[1]);
 	if (ret != 2)
@@ -607,8 +616,8 @@ static ssize_t ib_freqs_write(struct device *dev,
 
 	/* freq[0] is assigned to LITTLE cluster, freq[1] to big cluster */
 	spin_lock(&b->lock);
-	ib->freq[0] = freq[0];
-	ib->freq[1] = freq[1];
+	b->ib.freq[0] = freq[0];
+	b->ib.freq[1] = freq[1];
 	spin_unlock(&b->lock);
 
 	return size;
@@ -618,9 +627,11 @@ static ssize_t ib_duration_ms_write(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
 	struct boost_policy *b = boost_policy_g;
-	struct ib_config *ib = &b->ib;
 	uint32_t data;
 	int ret;
+
+	if (unlikely(!b))
+		return -EINVAL;
 
 	ret = kstrtou32(buf, 10, &data);
 	if (ret)
@@ -629,7 +640,7 @@ static ssize_t ib_duration_ms_write(struct device *dev,
 	if (!data)
 		return -EINVAL;
 
-	ib->duration_ms = data;
+	b->ib.duration_ms = data;
 
 	return size;
 }
@@ -639,6 +650,9 @@ static ssize_t enabled_read(struct device *dev,
 {
 	struct boost_policy *b = boost_policy_g;
 
+	if (unlikely(!b))
+		return snprintf(buf, PAGE_SIZE, "%u\n", 0);
+
 	return snprintf(buf, PAGE_SIZE, "%u\n",
 				get_boost_state(b) & DRIVER_ENABLED);
 }
@@ -647,12 +661,14 @@ static ssize_t ib_freqs_read(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	struct boost_policy *b = boost_policy_g;
-	struct ib_config *ib = &b->ib;
 	uint32_t freq[2];
 
+	if (unlikely(!b))
+		return snprintf(buf, PAGE_SIZE, "%u %u\n", 0, 0);
+
 	spin_lock(&b->lock);
-	freq[0] = ib->freq[0];
-	freq[1] = ib->freq[1];
+	freq[0] = b->ib.freq[0];
+	freq[1] = b->ib.freq[1];
 	spin_unlock(&b->lock);
 
 	return snprintf(buf, PAGE_SIZE, "%u %u\n", freq[0], freq[1]);
@@ -662,9 +678,11 @@ static ssize_t ib_duration_ms_read(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	struct boost_policy *b = boost_policy_g;
-	struct ib_config *ib = &b->ib;
 
-	return snprintf(buf, PAGE_SIZE, "%u\n", ib->duration_ms);
+	if (unlikely(!b))
+		return snprintf(buf, PAGE_SIZE, "%u\n", 0);
+
+	return snprintf(buf, PAGE_SIZE, "%u\n", b->ib.duration_ms);
 }
 
 static DEVICE_ATTR(enabled, 0644,
@@ -710,7 +728,7 @@ static struct boost_policy *alloc_boost_policy(void)
 	struct boost_policy *b;
 
 	b = kzalloc(sizeof(*b), GFP_KERNEL);
-	if (!b)
+	if (unlikely(!b))
 		return NULL;
 
 	b->wq = alloc_workqueue("cpu_ib_wq", WQ_HIGHPRI, 0);
@@ -741,7 +759,7 @@ static int __init cpu_ib_init(void)
 	int ret;
 
 	b = alloc_boost_policy();
-	if (!b) {
+	if (unlikely(!b)) {
 		pr_err("Failed to allocate boost policy\n");
 		return -ENOMEM;
 	}
