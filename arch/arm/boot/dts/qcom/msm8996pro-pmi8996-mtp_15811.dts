@@ -15,6 +15,7 @@
 
 #include "msm8996pro.dtsi"
 #include "msm-pmi8996.dtsi"
+#include "msm8996-camera-sensor-mtp-15811.dtsi"
 #include "msm8996-mtp.dtsi"
 
 / {
@@ -33,4 +34,8 @@
 
 &pil_gpu {
 	qcom,firmware-name = "a530_zap-pro";
+};
+
+&pm8994_l27 {
+	qcom,init-voltage = <1030000>;
 };
