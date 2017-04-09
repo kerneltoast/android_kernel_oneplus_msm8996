@@ -2880,7 +2880,6 @@ static int mass_storage_function_bind_config(struct android_usb_function *f,
 {
 	struct mass_storage_function_config *config = f->config;
 	int ret = 0;
-	int i;
 	struct fsg_opts *fsg_opts;
 
 	config->f_ms = usb_get_function(config->f_ms_inst);
@@ -2891,7 +2890,7 @@ static int mass_storage_function_bind_config(struct android_usb_function *f,
 
 	ret = usb_add_function(c, config->f_ms);
 	if (ret) {
-		pr_err("Could not bind ms%u config\n", i);
+		pr_err("Could not bind ms config\n");
 		goto err_usb_add_function;
 	}
 

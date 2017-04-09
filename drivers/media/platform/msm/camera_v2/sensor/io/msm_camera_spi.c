@@ -331,7 +331,7 @@ static int32_t msm_camera_spi_device_busy(struct msm_camera_i2c_client *client,
 static int32_t msm_camera_spi_wait(struct msm_camera_i2c_client *client,
 	struct msm_camera_spi_inst *inst)
 {
-	uint8_t busy;
+	uint8_t busy = 0;
 	int i, rc;
 	SPIDBG("%s: op 0x%x wait start\n", __func__, inst->opcode);
 	for (i = 0; i < inst->delay_count; i++) {

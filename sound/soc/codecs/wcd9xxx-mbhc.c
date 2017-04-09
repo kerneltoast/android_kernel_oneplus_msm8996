@@ -4598,8 +4598,7 @@ int wcd9xxx_mbhc_set_keycode(struct wcd9xxx_mbhc *mbhc)
 				break;
 			default:
 				WARN_ONCE(1, "Wrong button number:%d\n", i);
-				result = -1;
-				break;
+				return -EPERM;
 			}
 			ret = snd_jack_set_key(mbhc->button_jack.jack,
 					       type,

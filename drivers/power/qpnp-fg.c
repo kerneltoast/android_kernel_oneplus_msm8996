@@ -3182,9 +3182,7 @@ static int estimate_battery_age(struct fg_chip *chip, int *actual_capacity)
 	}
 
 	battery_soc = get_battery_soc_raw(chip) * 100 / FULL_PERCENT_3B;
-	if (rc) {
-		goto error_done;
-	} else if (battery_soc < 25 || battery_soc > 75) {
+	if (battery_soc < 25 || battery_soc > 75) {
 		if (fg_debug_mask & FG_AGING)
 			pr_info("Battery SoC (%d) out of range, aborting\n",
 					(int)battery_soc);
@@ -8487,7 +8485,8 @@ static int fg_setup_memif_offset(struct fg_chip *chip)
 		return rc;
 	}
 
-	switch (chip->revision[DIG_MAJOR]) {
+	dig_major = chip->revision[DIG_MAJOR];
+	switch (dig_major) {
 	case DIG_REV_1:
 	case DIG_REV_2:
 		chip->offset = offset[0].address;

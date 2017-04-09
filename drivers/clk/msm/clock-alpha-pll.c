@@ -598,6 +598,7 @@ static int alpha_pll_set_rate(struct clk *c, unsigned long rate)
 	u32 regval, l_val;
 	int vco_val;
 	u64 a_val;
+	bool no_irq_dis;
 
 	freq_hz = round_rate_up(pll, rate, &l_val, &a_val);
 	if (freq_hz != rate) {
@@ -611,7 +612,8 @@ static int alpha_pll_set_rate(struct clk *c, unsigned long rate)
 		return -EINVAL;
 	}
 
-	if (pll->no_irq_dis)
+	no_irq_dis = pll->no_irq_dis;
+	if (no_irq_dis)
 		spin_lock(&c->lock);
 	else
 		spin_lock_irqsave(&c->lock, flags);
@@ -647,7 +649,7 @@ static int alpha_pll_set_rate(struct clk *c, unsigned long rate)
 	if (c->count && !pll->dynamic_update)
 		c->ops->enable(c);
 
-	if (pll->no_irq_dis)
+	if (no_irq_dis)
 		spin_unlock(&c->lock);
 	else
 		spin_unlock_irqrestore(&c->lock, flags);

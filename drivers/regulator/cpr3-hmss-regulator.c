@@ -1505,7 +1505,7 @@ static int cpr3_hmss_init_regulator(struct cpr3_regulator *vreg)
 static int cpr3_hmss_init_aging(struct cpr3_controller *ctrl)
 {
 	struct cpr3_msm8996_hmss_fuses *fuse = NULL;
-	struct cpr3_regulator *vreg;
+	struct cpr3_regulator *vreg = NULL;
 	u32 aging_ro_scale;
 	int i, j, rc;
 
@@ -1522,6 +1522,11 @@ static int cpr3_hmss_init_aging(struct cpr3_controller *ctrl)
 
 	if (!ctrl->aging_required || !fuse)
 		return 0;
+
+	if (!vreg) {
+		cpr3_err(ctrl, "CPR3 regulator not found!\n");
+		return -EINVAL;
+	}
 
 	rc = cpr3_parse_array_property(vreg, "qcom,cpr-aging-ro-scaling-factor",
 					1, &aging_ro_scale);
