@@ -890,6 +890,7 @@ static int tfa98xx_i2c_probe(struct i2c_client *i2c,
     pr_err("%s\n",__func__);
 
 
+    if(np!=NULL)
         tfa_codec_np =np;
 
 	if (!i2c_check_functionality(i2c->adapter, I2C_FUNC_I2C)) {

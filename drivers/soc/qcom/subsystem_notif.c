@@ -150,6 +150,7 @@ int subsys_notif_queue_notification(void *subsys_handle,
 					enum subsys_notif_type notif_type,
 					void *data)
 {
+	int ret = 0;
 	struct subsys_notif_info *subsys =
 		(struct subsys_notif_info *) subsys_handle;
 
@@ -159,9 +160,10 @@ int subsys_notif_queue_notification(void *subsys_handle,
 	if (notif_type < 0 || notif_type >= SUBSYS_NOTIF_TYPE_COUNT)
 		return -EINVAL;
 
-	return srcu_notifier_call_chain(
+		ret = srcu_notifier_call_chain(
 			&subsys->subsys_notif_rcvr_list, notif_type,
 			data);
+	return ret;
 }
 EXPORT_SYMBOL(subsys_notif_queue_notification);
 

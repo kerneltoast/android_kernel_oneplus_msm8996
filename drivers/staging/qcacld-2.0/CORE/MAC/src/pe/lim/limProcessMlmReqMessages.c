@@ -3730,7 +3730,8 @@ tLimMlmRemoveKeyCnf  mlmRemoveKeyCnf;
 
 
       goto end;
-  } else {
+  }
+  else
     staIdx = pStaDs->staIndex;
 
 
@@ -3741,7 +3742,6 @@ tLimMlmRemoveKeyCnf  mlmRemoveKeyCnf;
     // Package WDA_REMOVE_STAKEY_REQ message parameters
     limSendRemoveStaKeyReq( pMac,pMlmRemoveKeyReq,staIdx,psessionEntry);
     return;
-  }
 
 end:
     limPostSmeRemoveKeyCnf( pMac,

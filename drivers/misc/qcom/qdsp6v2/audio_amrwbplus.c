@@ -54,7 +54,7 @@ static long audio_ioctl_shared(struct file *file, unsigned int cmd,
 	int rc = 0;
 
 	switch (cmd) {
-	case AUDIO_START:
+	case AUDIO_START: {
 		pr_err("%s[%p]: AUDIO_START session_id[%d]\n", __func__,
 			audio, audio->ac->session);
 		if (audio->feedback == NON_TUNNEL_MODE) {
@@ -104,8 +104,10 @@ static long audio_ioctl_shared(struct file *file, unsigned int cmd,
 		pr_debug("%s:AUDIO_START sessionid[%d]enable[%d]\n", __func__,
 			audio->ac->session,
 			audio->enabled);
-		audio->stopped = 0;
-		break;
+		if (audio->stopped == 1)
+			audio->stopped = 0;
+			break;
+		}
 	default:
 		pr_err("%s: Unknown ioctl cmd = %d", __func__, cmd);
 		rc = -EINVAL;
