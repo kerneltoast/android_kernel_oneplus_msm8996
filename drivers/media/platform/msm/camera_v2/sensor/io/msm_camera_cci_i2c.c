@@ -403,7 +403,7 @@ int32_t msm_camera_cci_i2c_poll(struct msm_camera_i2c_client *client,
 	S_I2C_DBG("%s: addr: 0x%x data: 0x%x dt: %d\n",
 		__func__, addr, data, data_type);
 
-	if (!delay_ms || delay_ms > MAX_POLL_DELAY_MS) {
+	if (delay_ms > MAX_POLL_DELAY_MS) {
 		pr_err("%s:%d invalid delay = %d max_delay = %d\n",
 			__func__, __LINE__, delay_ms, MAX_POLL_DELAY_MS);
 		return -EINVAL;

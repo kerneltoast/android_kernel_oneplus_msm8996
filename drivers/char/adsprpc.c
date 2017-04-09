@@ -411,7 +411,7 @@ static int fastrpc_mmap_remove(struct fastrpc_file *fl, uintptr_t va,
 static void fastrpc_mmap_free(struct fastrpc_mmap *map)
 {
 	struct fastrpc_apps *me = &gfa;
-	struct fastrpc_file *fl = NULL;
+	struct fastrpc_file *fl;
 	int vmid;
 
 	if (!map)

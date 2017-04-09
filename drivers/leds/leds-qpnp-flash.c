@@ -2656,17 +2656,18 @@ static int qpnp_flash_led_probe(struct spmi_device *spmi)
 #ifdef CONFIG_DEBUG_FS
 error_led_debugfs:
 	i = led->num_leds - 1;
+	j = ARRAY_SIZE(qpnp_flash_led_attrs) - 1;
 #endif
 error_led_register:
 	for (; i >= 0; i--) {
-		for (j = ARRAY_SIZE(qpnp_flash_led_attrs) - 1; j >= 0; j--)
+		for (; j >= 0; j--)
 			sysfs_remove_file(&led->flash_node[i].cdev.dev->kobj,
 						&qpnp_flash_led_attrs[j].attr);
+		j = ARRAY_SIZE(qpnp_flash_led_attrs) - 1;
 		led_classdev_unregister(&led->flash_node[i].cdev);
 	}
 #ifdef CONFIG_DEBUG_FS
-	if (!IS_ERR_OR_NULL(root))
-		debugfs_remove_recursive(root);
+	debugfs_remove_recursive(root);
 #endif
 	mutex_destroy(&led->flash_led_lock);
 	destroy_workqueue(led->ordered_workq);

@@ -971,7 +971,6 @@ static int msm_fd_hw_attach_iommu(struct msm_fd_device *fd)
 
 	if (fd->iommu_attached_cnt == UINT_MAX) {
 		dev_err(fd->dev, "Max count reached! can not attach iommu\n");
-		ret = -EPERM;
 		goto error;
 	}
 

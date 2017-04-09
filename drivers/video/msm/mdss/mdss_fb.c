@@ -3235,7 +3235,7 @@ int mdss_fb_atomic_commit(struct fb_info *info,
 	struct mdss_panel_info *pinfo;
 	bool wait_for_finish, wb_change = false;
 	int ret = -EPERM;
-	u32 old_xres = 0, old_yres = 0, old_format = 0;
+	u32 old_xres, old_yres, old_format;
 
 	if (!mfd || (!mfd->op_enable)) {
 		pr_err("mfd is NULL or operation not permitted\n");
@@ -3246,26 +3246,26 @@ int mdss_fb_atomic_commit(struct fb_info *info,
 		!((mfd->dcm_state == DCM_ENTER) &&
 		(mfd->panel.type == MIPI_CMD_PANEL))) {
 		pr_err("commit is not supported when interface is in off state\n");
-		return ret;
+		goto end;
 	}
 	pinfo = mfd->panel_info;
 
 	/* only supports version 1.0 */
 	if (commit->version != MDP_COMMIT_VERSION_1_0) {
 		pr_err("commit version is not supported\n");
-		return ret;
+		goto end;
 	}
 
 	if (!mfd->mdp.pre_commit || !mfd->mdp.atomic_validate) {
 		pr_err("commit callback is not registered\n");
-		return ret;
+		goto end;
 	}
 
 	commit_v1 = &commit->commit_v1;
 	if (commit_v1->flags & MDP_VALIDATE_LAYER) {
 		ret = mdss_fb_wait_for_kickoff(mfd);
 		if (ret) {
-			pr_err("wait for kickoff failed, ret: %d\n", ret);
+			pr_err("wait for kickoff failed\n");
 		} else {
 			__ioctl_transition_dyn_mode_state(mfd,
 				MSMFB_ATOMIC_COMMIT, true, false);
@@ -3286,16 +3286,13 @@ int mdss_fb_atomic_commit(struct fb_info *info,
 			ret = mfd->mdp.atomic_validate(mfd, file, commit_v1);
 			if (!ret)
 				mfd->validate_pending = true;
-			if (ret && wb_change)
-				mdss_fb_update_resolution(mfd, old_xres,
-							old_yres, old_format);
 		}
-		return ret;
+		goto end;
 	} else {
 		ret = mdss_fb_pan_idle(mfd);
 		if (ret) {
-			pr_err("pan display idle call failed, ret: %d\n", ret);
-			return ret;
+			pr_err("pan display idle call failed\n");
+			goto end;
 		}
 		__ioctl_transition_dyn_mode_state(mfd,
 			MSMFB_ATOMIC_COMMIT, false,
@@ -3303,8 +3300,8 @@ int mdss_fb_atomic_commit(struct fb_info *info,
 
 		ret = mfd->mdp.pre_commit(mfd, file, commit_v1);
 		if (ret) {
-			pr_err("atomic pre commit failed, ret: %d\n", ret);
-			return ret;
+			pr_err("atomic pre commit failed\n");
+			goto end;
 		}
 	}
 
@@ -3323,6 +3320,9 @@ int mdss_fb_atomic_commit(struct fb_info *info,
 	if (wait_for_finish)
 		ret = mdss_fb_pan_idle(mfd);
 
+end:
+	if (ret && (mfd->panel.type == WRITEBACK_PANEL) && wb_change)
+		mdss_fb_update_resolution(mfd, old_xres, old_yres, old_format);
 	return ret;
 }
 

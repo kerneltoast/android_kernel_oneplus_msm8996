@@ -2188,7 +2188,7 @@ tSirRetStatus sirvalidateandrectifyies(tpAniSirGlobal pMac,
                                     tANI_U32 *nMissingRsnBytes)
 {
     tANI_U32 length = SIZE_OF_FIXED_PARAM;
-    tANI_U8 *refFrame = NULL;
+    tANI_U8 *refFrame;
 
     /* Frame contains atleast one IE */
     if (nFrameBytes > (SIZE_OF_FIXED_PARAM + 2)) {
@@ -2198,8 +2198,6 @@ tSirRetStatus sirvalidateandrectifyies(tpAniSirGlobal pMac,
             length += (tANI_U32)(SIZE_OF_TAG_PARAM_NUM + SIZE_OF_TAG_PARAM_LEN
                                  + (*(refFrame + SIZE_OF_TAG_PARAM_NUM)));
         }
-	if (!refFrame)
-		return eSIR_FAILURE;
         if (length != nFrameBytes) {
             /*
              * Workaround : Some APs may not include RSN Capability but

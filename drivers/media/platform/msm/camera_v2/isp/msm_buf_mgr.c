@@ -1315,7 +1315,7 @@ static int msm_isp_buf_mgr_debug(struct msm_isp_buf_mgr *buf_mgr,
 	uint32_t debug_start_addr = 0;
 	uint32_t debug_end_addr = 0;
 	uint32_t debug_frame_id = 0;
-	enum msm_isp_buffer_state debug_state = MSM_ISP_BUFFER_STATE_UNUSED;
+	enum msm_isp_buffer_state debug_state;
 	unsigned long flags;
 	struct msm_isp_bufq *bufq = NULL;
 

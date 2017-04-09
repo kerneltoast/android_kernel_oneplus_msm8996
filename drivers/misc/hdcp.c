@@ -1199,7 +1199,7 @@ static void hdcp_lib_msg_recvd(struct hdcp_lib_handle *handle)
 	struct hdcp_rcvd_msg_req *req_buf;
 	struct hdcp_rcvd_msg_rsp *rsp_buf;
 	uint32_t msglen;
-	char *msg = NULL;
+	char *msg;
 
 	if (!handle || !handle->qseecom_handle ||
 		!handle->qseecom_handle->sbuf) {
@@ -1322,8 +1322,7 @@ static void hdcp_lib_msg_recvd(struct hdcp_lib_handle *handle)
 	}
 
 exit:
-	if (msg)
-		kzfree(msg);
+	kzfree(msg);
 
 	hdcp_lib_wakeup_client(handle, &cdata);
 

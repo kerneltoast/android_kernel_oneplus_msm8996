@@ -787,7 +787,7 @@ static int adreno_cp_parse_ib2(struct kgsl_device *device,
 			struct adreno_ib_object_list *ib_obj_list,
 			int ib_level)
 {
-	struct adreno_ib_object *ib_obj = NULL;
+	struct adreno_ib_object *ib_obj;
 	int i;
 	/*
 	 * We can only expect an IB2 in IB1, if we are

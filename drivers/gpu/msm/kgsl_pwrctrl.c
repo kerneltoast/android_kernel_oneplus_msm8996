@@ -1596,7 +1596,7 @@ int kgsl_pwrctrl_init(struct kgsl_device *device)
 	struct device_node *ocmem_bus_node;
 	struct msm_bus_scale_pdata *ocmem_scale_table = NULL;
 	struct msm_bus_scale_pdata *bus_scale_table;
-	struct device_node *gpubw_dev_node = NULL;
+	struct device_node *gpubw_dev_node;
 	struct platform_device *p2dev;
 
 	bus_scale_table = msm_bus_cl_get_pdata(device->pdev);
