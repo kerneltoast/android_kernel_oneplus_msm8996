@@ -2525,6 +2525,11 @@ static int dwc3_msm_power_set_property_usb(struct power_supply *psy,
 		case POWER_SUPPLY_TYPE_USB_DCP:
 			mdwc->chg_type = DWC3_DCP_CHARGER;
 			break;
+#ifdef CONFIG_MACH_MSM8996_15801
+		case POWER_SUPPLY_TYPE_DASH:
+			mdwc->chg_type = DWC3_DCP_CHARGER;
+			break;
+#endif
 		case POWER_SUPPLY_TYPE_USB_HVDCP:
 			mdwc->chg_type = DWC3_DCP_CHARGER;
 			dwc3_msm_gadget_vbus_draw(mdwc, hvdcp_max_current);
