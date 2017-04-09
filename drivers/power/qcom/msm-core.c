@@ -508,7 +508,7 @@ static long msm_core_ioctl(struct file *file, unsigned int cmd,
 
 		mutex_lock(&policy_update_mutex);
 		node = &activity[cpu];
-		if (!node->sp->table || !node->sp->voltage) {
+		if (!node->sp->table) {
 			ret = -EINVAL;
 			goto unlock;
 		}
