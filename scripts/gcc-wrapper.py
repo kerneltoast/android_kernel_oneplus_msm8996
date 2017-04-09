@@ -39,6 +39,16 @@ import subprocess
 # Note that gcc uses unicode, which may depend on the locale.  TODO:
 # force LANG to be set to en_US.UTF-8 to get consistent warnings.
 
+allowed_warnings = set([
+    "fdt.c:932",
+    "hid-magicmouse.c:579",
+    "sysrq.c:956",
+    "hci_sock.c:980",
+    "pppopns.c:296",
+    "pppopns.c:305",
+    "pppopns.c:336",
+ ])
+
 # Capture the name of the object file, can find it.
 ofile = None
 
@@ -47,7 +57,7 @@ def interpret_warning(line):
     """Decode the message from gcc.  The messages we care about have a filename, and a warning"""
     line = line.rstrip('\n')
     m = warning_re.match(line)
-    if m and m.group(2):
+    if m and m.group(2) not in allowed_warnings:
         print "error, forbidden warning:", m.group(2)
 
         # If there is a warning, remove any object if it exists.
