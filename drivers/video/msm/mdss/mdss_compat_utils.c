@@ -2960,7 +2960,7 @@ static int mdss_compat_pp_ioctl(struct fb_info *info, unsigned int cmd,
 	uint32_t op;
 	int ret = 0;
 	struct msmfb_mdp_pp32 __user *pp32;
-	struct msmfb_mdp_pp __user *pp;
+	struct msmfb_mdp_pp __user *pp = NULL;
 
 	pp32 = compat_ptr(arg);
 	if (copy_from_user(&op, &pp32->op, sizeof(uint32_t)))

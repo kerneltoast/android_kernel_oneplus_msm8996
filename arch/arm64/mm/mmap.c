@@ -49,7 +49,7 @@ static int mmap_is_legacy(void)
 
 unsigned long arch_mmap_rnd(void)
 {
-	unsigned long rnd;
+	unsigned long rnd = 0;
 
 	if (current->flags & PF_RANDOMIZE) {
 #ifdef CONFIG_COMPAT

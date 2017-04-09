@@ -1936,7 +1936,7 @@ static int __mdss_dsi_dfps_update_clks(struct mdss_panel_data *pdata,
 {
 	struct mdss_dsi_ctrl_pdata *ctrl_pdata = NULL;
 	struct mdss_dsi_ctrl_pdata *sctrl_pdata = NULL;
-	struct mdss_panel_info *pinfo, *spinfo;
+	struct mdss_panel_info *pinfo, *spinfo = NULL;
 	int rc = 0;
 
 	if (pdata == NULL) {
@@ -2085,7 +2085,7 @@ static int __mdss_dsi_dfps_update_clks(struct mdss_panel_data *pdata,
 
 	/* update new fps that at this point is already updated in hw */
 	pinfo->current_fps = new_fps;
-	if (sctrl_pdata) {
+	if (spinfo) {
 		spinfo->current_fps = new_fps;
 	}
 

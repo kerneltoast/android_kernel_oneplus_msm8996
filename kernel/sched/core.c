@@ -3817,6 +3817,8 @@ static void transfer_busy_time(struct rq *rq, struct related_thread_group *grp,
 		dst_nt_curr_runnable_sum = &rq->nt_curr_runnable_sum;
 		src_nt_prev_runnable_sum = &cpu_time->nt_prev_runnable_sum;
 		dst_nt_prev_runnable_sum = &rq->nt_prev_runnable_sum;
+	} else {
+		return;
 	}
 
 	*src_curr_runnable_sum -= p->ravg.curr_window;

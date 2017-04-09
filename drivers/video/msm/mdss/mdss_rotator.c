@@ -392,6 +392,7 @@ static int mdss_rotator_create_fence(struct mdss_rot_entry *entry)
 	sync_pt = sw_sync_pt_create(rot_timeline->timeline, val);
 	if (sync_pt == NULL) {
 		pr_err("cannot create sync point\n");
+		ret = -ENOMEM;
 		goto sync_pt_create_err;
 	}
 
@@ -742,11 +743,11 @@ static struct mdss_rot_hw_resource *mdss_rotator_hw_alloc(
 	hw->ctl->wb_type = MDSS_MDP_WB_CTL_TYPE_BLOCK;
 
 
-	if (hw->ctl->ops.start_fnc)
+	if (hw->ctl->ops.start_fnc) {
 		ret = hw->ctl->ops.start_fnc(hw->ctl);
-
-	if (ret)
-		goto error;
+		if (ret)
+			goto error;
+	}
 
 	if (pipe_id >= mdata->ndma_pipes)
 		goto error;

@@ -152,7 +152,7 @@ static int snd_soc_flat_cache_sync(struct snd_soc_codec *codec)
 	int i;
 	int ret;
 	const struct snd_soc_codec_driver *codec_drv;
-	unsigned int val;
+	unsigned int val = 0;
 
 	codec_drv = codec->driver;
 	for (i = 0; i < codec_drv->reg_cache_size; ++i) {
