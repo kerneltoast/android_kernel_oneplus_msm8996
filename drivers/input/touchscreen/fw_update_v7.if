@@ -1202,7 +1202,6 @@ static int fwu_read_f34_v7_queries(void)
 
 	fwu->partition_table_bytes = fwu->partitions * 8 + 2;
 
-	kfree(fwu->read_config_buf);
 	fwu->read_config_buf = kzalloc(fwu->partition_table_bytes, GFP_KERNEL);
 	if (!fwu->read_config_buf) {
 		TPD_ERR("%s: Failed to alloc mem for fwu->read_config_buf\n",
@@ -1217,11 +1216,13 @@ static int fwu_read_f34_v7_queries(void)
 	if (retval < 0) {
 		TPD_ERR("%s: Failed to read partition table\n",
 				__func__);
-		return retval;
+		goto free;
 	}
 
 	fwu_parse_partition_table(ptable, &fwu->blkcount, &fwu->phyaddr);
 
+free:
+	kfree(fwu->read_config_buf);
 	return 0;
 }
 
@@ -1603,7 +1604,6 @@ static int fwu_write_partition_table(void)
 	block_count = fwu->blkcount.bl_config;
 	fwu->config_area = BL_CONFIG_AREA;
 	fwu->config_size = fwu->block_size * block_count;
-	kfree(fwu->read_config_buf);
 	fwu->read_config_buf = kzalloc(fwu->config_size, GFP_KERNEL);
 	if (!fwu->read_config_buf) {
 		TPD_ERR("%s: Failed to alloc mem for fwu->read_config_buf\n",__func__);
@@ -1614,11 +1614,11 @@ static int fwu_write_partition_table(void)
 
 	retval = fwu_read_f34_blocks(block_count, CMD_READ_CONFIG);
 	if (retval < 0)
-		return retval;
+		goto free;
 
 	retval = fwu_write_flash_configuration();
 	if (retval < 0)
-		return retval;
+		goto free;
 
 	fwu->config_area = BL_CONFIG_AREA;
 	fwu->config_data = fwu->read_config_buf;
@@ -1627,8 +1627,9 @@ static int fwu_write_partition_table(void)
 
 	retval = fwu_write_configuration();
 	if (retval < 0)
-		return retval;
-
+		goto free;
+free:
+	kfree(fwu->read_config_buf);
 	return 0;
 }
 
@@ -1786,7 +1787,7 @@ int fwu_start_reflash_check(const unsigned char *fw_image, struct i2c_client *cl
 
 	retval = scan_pdt();
 	if (retval < 0)
-		return retval;
+		goto free;
 	fwu->image = fw_image;
 
 	memset(&fwu->blkcount, 0x00, sizeof(fwu->blkcount));
@@ -1794,14 +1795,15 @@ int fwu_start_reflash_check(const unsigned char *fw_image, struct i2c_client *cl
 	retval = fwu_read_f34_v7_queries();
 	if (retval < 0) {
 		TPD_ERR("%s: fwu_read_f34_v7_queries\n",__func__);
-		return retval;
+		goto free;
 	}
         TPD_DEBUG("%s: fwu_read_f34_serialization\n",__func__);
 
 	retval = fwu_read_f34_serialization();
+free:
         kfree(fwu);
         return retval;
-	}
+}
 
 int fwu_start_reflash(const unsigned char *fw_image, struct i2c_client *client)
 {
