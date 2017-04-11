@@ -11,6 +11,7 @@
  **
  ** --------------------------- Revision History: --------------------------------
  ** 	<author>	<data>			<desc>
+ **  chenggang.li@BSP.TP modified for oem 2014-07-30 14005 tp_driver
  ************************************************************************************/
 #include <linux/of_gpio.h>
 #include <linux/irq.h>
@@ -139,6 +140,7 @@ struct test_header {
 #define KEY_GESTURE_V           252 // draw v to toggle flashlight
 #define KEY_GESTURE_LEFT_V      253 // draw left arrow for previous track
 #define KEY_GESTURE_RIGHT_V     254 // draw right arrow for next track
+
 #define BIT0 (0x1 << 0)
 #define BIT1 (0x1 << 1)
 #define BIT2 (0x1 << 2)
@@ -163,7 +165,7 @@ int Down2UpSwip_gesture =0;//"down to up |"
 
 int Wgestrue_gesture =0;//"(W)"
 int Mgestrue_gesture =0;//"(M)"
-
+static int gesture_switch = 0;
 #endif
 
 /*********************for Debug LOG switch*******************/
@@ -409,7 +411,6 @@ static int oem_synaptics_ts_probe(struct i2c_client *client, const struct i2c_de
 
 	return probe_ret;
 }
-
 static struct i2c_driver tpd_i2c_driver = {
 	.probe		= oem_synaptics_ts_probe,
 	.remove		= synaptics_ts_remove,
@@ -731,6 +732,7 @@ static int synaptics_enable_interrupt_for_gesture(struct synaptics_ts_data *ts, 
 {
 	int ret;
 	unsigned char reportbuf[4];
+	//chenggang.li@BSP.TP modified for gesture
 	TPD_DEBUG("%s is called\n", __func__);
 	ret = synaptics_rmi4_i2c_write_byte(ts->client, 0xff, 0x0);
 	if( ret < 0 ) {
@@ -1071,6 +1073,7 @@ static int synaptics_rmi4_i2c_write_word(struct i2c_client* client,
 	return retval;
 }
 
+//chenggang.li@BSP.TP modified for oem 2014-08-05 gesture_judge
 /***************start****************/
 #ifdef SUPPORT_GESTURE
 static void synaptics_get_coordinate_point(struct synaptics_ts_data *ts)
@@ -1365,16 +1368,13 @@ void int_touch(void)
 
 	for ( i = 0; i < ts->max_num; i++ )
 	{
-		if(0/*(check_key > 1) && (i == 0 )*/){ 
-			TPD_ERR("useless solt filter report this one\n");
-		}else{
-			finger_status = (finger_info>>(ts->max_num-i-1)) & 1 ;
-			if(!finger_status)
-			{
-				input_mt_slot(ts->input_dev, i);
-				input_mt_report_slot_state(ts->input_dev, MT_TOOL_FINGER, finger_status);
-			}
+		finger_status = (finger_info>>(ts->max_num-i-1)) & 1 ;
+		if(!finger_status)
+		{
+			input_mt_slot(ts->input_dev, i);
+			input_mt_report_slot_state(ts->input_dev, MT_TOOL_FINGER, finger_status);
 		}
+
 	}
 
 	last_status = current_status & 0x02;
@@ -1592,7 +1592,7 @@ static ssize_t tp_gesture_write_func(struct file *file, const char __user *buffe
 	struct synaptics_ts_data *ts = ts_g;
 	if(!ts)
 		return count;
-	if( count > 2 || ts->is_suspended )
+	if( count > 2 || ts->is_suspended)
 		return count;
 	if( copy_from_user(buf, buffer, count) ){
 		TPD_ERR(KERN_INFO "%s: read proc input error.\n", __func__);
@@ -1606,6 +1606,7 @@ static ssize_t tp_gesture_write_func(struct file *file, const char __user *buffe
     RightVee_gesture = (buf[0] & BIT4)?1:0;//"<"
     Circle_gesture = (buf[0] & BIT6)?1:0; //"O"
     DouTap_gesture = (buf[0] & BIT7)?1:0; //double tap
+
 	if(DouTap_gesture||Circle_gesture||UpVee_gesture||LeftVee_gesture\
         ||RightVee_gesture||DouSwip_gesture)
 	{
@@ -1630,6 +1631,54 @@ static ssize_t coordinate_proc_read_func(struct file *file, char __user *user_bu
 
 	ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page));
 	return ret;
+}
+
+static ssize_t gesture_switch_read_func(struct file *file, char __user *user_buf, size_t count, loff_t *ppos)
+{
+	int ret = 0;
+	char page[PAGESIZE];
+	struct synaptics_ts_data *ts = ts_g;
+	if(!ts)
+		return ret;
+	ret = sprintf(page, "gesture_switch:%d\n", gesture_switch);
+	ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page));
+	return ret;
+}
+
+static ssize_t gesture_switch_write_func(struct file *file, const char __user *page, size_t count, loff_t *ppos)
+{
+	int ret,write_flag=0;
+	char buf[10]={0};
+	struct synaptics_ts_data *ts = ts_g;
+
+	if(ts->loading_fw) {
+		TPD_ERR("%s FW is updating break!!\n",__func__);
+		return count;
+	}
+	if( copy_from_user(buf, page, count) ){
+		TPD_ERR("%s: read proc input error.\n", __func__);
+		return count;
+	}
+	ret = sscanf(buf,"%d",&write_flag);
+	gesture_switch = write_flag;
+	TPD_ERR("gesture_switch:%d,suspend:%d,gesture:%d\n",gesture_switch,ts->is_suspended,ts->gesture_enable);
+	if (1 == gesture_switch){
+		if ((ts->is_suspended == 1) && (ts->gesture_enable == 1)){
+			i2c_smbus_write_byte_data(ts->client, 0xff, 0x0);
+			synaptics_mode_change(0x80);
+			//touch_enable(ts);
+			synaptics_enable_interrupt_for_gesture(ts, 1);
+		}
+	}else if(2 == gesture_switch){
+		if ((ts->is_suspended == 1) && (ts->gesture_enable == 1)){
+			i2c_smbus_write_byte_data(ts->client, 0xff, 0x0);
+			synaptics_mode_change(0x81);
+			//touch_disable(ts);
+			synaptics_enable_interrupt_for_gesture(ts, 0);
+		}
+	}
+
+	return count;
 }
 
 static void gesture_enable(struct synaptics_ts_data *ts)
@@ -1735,12 +1784,18 @@ static ssize_t flashlight_enable_write_func(struct file *file, const char __user
 
 	return count;
 }
-
 // chenggang.li@BSP.TP modified for oem 2014-08-08 create node
 /******************************start****************************/
 static const struct file_operations tp_gesture_proc_fops = {
 	.write = tp_gesture_write_func,
 	.read =  tp_gesture_read_func,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+};
+
+static const struct file_operations gesture_switch_proc_fops = {
+	.write = gesture_switch_write_func,
+	.read =  gesture_switch_read_func,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 };
@@ -2854,6 +2909,7 @@ static ssize_t tp_reset_write_func (struct file *file, const char *buffer, size_
 	return count;
 }
 
+//chenggang.li@bsp add for 14045
 static const struct file_operations base_register_address= {
 	.write = synap_write_address,
 	.read =  synap_read_address,
@@ -2862,17 +2918,20 @@ static const struct file_operations base_register_address= {
 };
 
 
+//wangwenxue@BSP add for change baseline_test to "proc\touchpanel\baseline_test"  begin
 static const struct file_operations i2c_device_test_fops = {
 	.read =  i2c_device_test_read_func,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 };
 
+//wangwenxue@BSP add for change baseline_test to "proc\touchpanel\baseline_test"  begin
 static const struct file_operations tp_baseline_test_proc_fops = {
 	.read =  tp_baseline_test_read_func,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 };
+//wangwenxue@BSP add for change baseline_test to "proc\touchpanel\baseline_test"  end
 
 #ifdef SUPPORT_GLOVES_MODE
 static const struct file_operations glove_mode_enable_proc_fops = {
@@ -3160,7 +3219,11 @@ static int init_synaptics_proc(void)
 		ret = -ENOMEM;
 		TPD_ERR("Couldn't create gesture_enable\n");
 	}
-
+	prEntry_tmp = proc_create( "gesture_switch", 0666, prEntry_tp, &gesture_switch_proc_fops);
+	if(prEntry_tmp == NULL){
+		ret = -ENOMEM;
+		TPD_ERR("Couldn't create gesture_enable\n");
+	}
 	prEntry_tmp = proc_create("coordinate", 0444, prEntry_tp, &coordinate_proc_fops);
 	if(prEntry_tmp == NULL){
 		ret = -ENOMEM;
@@ -3223,11 +3286,14 @@ static int init_synaptics_proc(void)
 	}
 #endif
 
+	//wangwenxue@BSP add for change baseline_test to "proc\touchpanel\baseline_test"  begin
 	prEntry_tmp = proc_create( "baseline_test", 0666, prEntry_tp, &tp_baseline_test_proc_fops);
 	if(prEntry_tmp == NULL){
 		ret = -ENOMEM;
 		TPD_ERR("Couldn't create baseline_test\n");
 	}
+	//wangwenxue@BSP add for change baseline_test to "proc\touchpanel\baseline_test"  end
+	//wangwenxue@BSP add for change baseline_test to "proc\touchpanel\i2c_device_test"  begin
 	prEntry_tmp = proc_create( "i2c_device_test", 0666, prEntry_tp, &i2c_device_test_fops);
 	if(prEntry_tmp == NULL){
 		ret = -ENOMEM;
@@ -4094,8 +4160,6 @@ static int synaptics_ts_probe(struct i2c_client *client, const struct i2c_device
 
 	strcpy(ts->test_limit_name,"tp/14049/14049_Limit_jdi.img");
 	TPD_DEBUG("0synatpitcs_fw: fw_name = %s,ts->manu_name:%s \n",ts->fw_name,ts->manu_name);
-
-	//push_component_info(TP, ts->fw_id, ts->manu_name);
 
 	synaptics_wq = create_singlethread_workqueue("synaptics_wq");
 	if( !synaptics_wq ){
