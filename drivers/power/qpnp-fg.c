@@ -669,7 +669,6 @@ static const mode_t DFS_MODE = S_IRUSR | S_IWUSR;
 static const char *default_batt_type	= "Unknown Battery";
 static const char *loading_batt_type	= "Loading Battery Data";
 static const char *missing_batt_type	= "Disconnected Battery";
-static const char *four_p_four_v_batt_type	= "itech_3400mAH";
 
 /* Log buffer */
 struct fg_log_buffer {
@@ -3267,6 +3266,9 @@ static void battery_age_work(struct work_struct *work)
 	estimate_battery_age(chip, &chip->actual_cap_uah);
 }
 
+#define OP_4P4V_BAT_ID  10000
+#define OP_4P35V_BAT_ID 100000
+
 static int correction_times[] = {
 	1470,
 	2940,
@@ -4470,6 +4472,7 @@ static enum power_supply_property fg_power_props[] = {
 	POWER_SUPPLY_PROP_ENABLE_JEITA_DETECTION,
 	POWER_SUPPLY_PROP_BATTERY_INFO,
 	POWER_SUPPLY_PROP_BATTERY_INFO_ID,
+	POWER_SUPPLY_PROP_BATTERY_4P4V_PRESENT,
 };
 
 static int fg_power_get_property(struct power_supply *psy,
@@ -4485,8 +4488,6 @@ static int fg_power_get_property(struct power_supply *psy,
 			val->strval = missing_batt_type;
 		else if (chip->fg_restarting)
 			val->strval = loading_batt_type;
-		else if (chip->battery_4p4v_present)
-			val->strval = four_p_four_v_batt_type;
 		else
 			val->strval = chip->batt_type;
 		break;
@@ -4545,7 +4546,16 @@ static int fg_power_get_property(struct power_supply *psy,
 		val->intval = chip->cyc_ctr.id;
 		break;
 	case POWER_SUPPLY_PROP_RESISTANCE_ID:
+#ifdef CONFIG_MACH_MSM8996_15801
+		if (chip->battery_4p4v_present)
+			val->intval = OP_4P4V_BAT_ID;
+		else
+			val->intval = OP_4P35V_BAT_ID;
+#else
 		val->intval = get_sram_prop_now(chip, FG_DATA_BATT_ID);
+#endif
+	case POWER_SUPPLY_PROP_BATTERY_4P4V_PRESENT:
+		val->intval = chip->battery_4p4v_present;
 		break;
 	case POWER_SUPPLY_PROP_UPDATE_NOW:
 		val->intval = 0;
@@ -6009,6 +6019,41 @@ static void discharge_gain_work(struct work_struct *work)
 
 	fg_relax(&chip->dischg_gain_wakeup_source);
 }
+static int get_property_from_smb(struct fg_chip *chip,
+		enum power_supply_property prop, int *val)
+{
+	int rc;
+	union power_supply_propval ret = {0, };
+
+	if (!chip->batt_psy && chip->batt_psy_name)
+		chip->batt_psy =
+			power_supply_get_by_name((char *)chip->batt_psy_name);
+	if (!chip->batt_psy) {
+		pr_info("no battery psy found\n");
+		return -EINVAL;
+	}
+
+	rc = chip->batt_psy->get_property(chip->batt_psy, prop, &ret);
+	if (rc) {
+		pr_info("bms psy doesn't support reading prop %d rc = %d\n",
+			prop, rc);
+		return rc;
+	}
+
+	*val = ret.intval;
+	return rc;
+}
+
+static int get_prop_batt_protect_status(struct fg_chip *chip)
+{
+	int status = 0, rc;
+
+	rc = get_property_from_smb(chip, POWER_SUPPLY_PROP_CHG_PROTECT_STATUS, &status);
+	if (rc)
+		pr_info("Couldn't get bat protect status rc = %d\n", rc);
+
+	return status;
+}
 
 #define LOW_LATENCY			BIT(6)
 #define BATT_PROFILE_OFFSET		0x4C0
@@ -6239,13 +6284,17 @@ try_again:
 
 	/* Enable charging now as the first estimate is done now */
 	if (chip->charging_disabled) {
-		rc = set_prop_enable_charging(chip, true);
-		if (rc)
-			pr_err("Failed to enable charging, rc=%d\n", rc);
-		else
+		rc = get_prop_batt_protect_status(chip);
+		if (!rc){
+			rc = set_prop_enable_charging(chip, true);
+			if (rc)
+				pr_err("Failed to enable charging, rc=%d\n", rc);
+			else
+				chip->charging_disabled = false;
+		} else{
 			chip->charging_disabled = false;
+		}
 	}
-
 	chip->fg_restarting = false;
 
 	if (fg_debug_mask & FG_STATUS)
