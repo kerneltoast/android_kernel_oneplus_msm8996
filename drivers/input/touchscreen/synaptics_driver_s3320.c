@@ -1590,7 +1590,7 @@ static ssize_t i2c_device_test_read_func(struct file *file, char __user *user_bu
 	if(!ts_g)
 		return ret;
 	TPD_DEBUG("gesture enable is: %d\n", ts->gesture_enable);
-	ret = sprintf(page, "%d\n", ts->i2c_device_test);
+	ret = snprintf(page, sizeof(page), "%d\n", ts->i2c_device_test);
 	ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page));
 	return ret;
 }
@@ -1604,7 +1604,7 @@ static ssize_t tp_gesture_read_func(struct file *file, char __user *user_buf, si
 	if(!ts)
 		return ret;
 	TPD_DEBUG("gesture enable is: %d\n", ts->gesture_enable);
-	ret = sprintf(page, "%d\n", ts->gesture_enable);
+	ret = snprintf(page, sizeof(page), "%d\n", ts->gesture_enable);
 	ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page));
 	return ret;
 }
@@ -1647,7 +1647,7 @@ static ssize_t coordinate_proc_read_func(struct file *file, char __user *user_bu
 	int ret = 0;
 	char page[PAGESIZE];
 	TPD_ERR("%s:gesture_upload = %d \n",__func__,gesture_upload);
-	ret = sprintf(page, "%d,%d:%d,%d:%d,%d:%d,%d:%d,%d:%d,%d:%d,%d\n", gesture_upload,
+	ret = snprintf(page, sizeof(page), "%d,%d:%d,%d:%d,%d:%d,%d:%d,%d:%d,%d:%d,%d\n", gesture_upload,
 			Point_start.x, Point_start.y, Point_end.x, Point_end.y,
 			Point_1st.x, Point_1st.y, Point_2nd.x, Point_2nd.y,
 			Point_3rd.x, Point_3rd.y, Point_4th.x, Point_4th.y,
@@ -1664,7 +1664,7 @@ static ssize_t gesture_switch_read_func(struct file *file, char __user *user_buf
 	struct synaptics_ts_data *ts = ts_g;
 	if(!ts)
 		return ret;
-	ret = sprintf(page, "gesture_switch:%d\n", gesture_switch);
+	ret = snprintf(page, sizeof(page), "gesture_switch:%d\n", gesture_switch);
 	ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page));
 	return ret;
 }
@@ -1737,18 +1737,19 @@ static const struct file_operations coordinate_proc_fops = {
 #define TS_ENABLE_FOPS(type) \
 static ssize_t type##_read_func(struct file *file, char __user *user_buf, size_t count, loff_t *ppos) \
 { \
-	int ret = 0; \
-	char page[PAGESIZE]; \
-	ret = sprintf(page, "%d\n", type##_enable); \
-	ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page)); \
-	return ret; \
+	char enable[3]; \
+	snprintf(enable, sizeof(enable), "%d\n", type##_enable); \
+	return simple_read_from_buffer(user_buf, sizeof(enable), 0, &enable, count); \
 } \
-static ssize_t type##_write_func(struct file *file, const char __user *buf, size_t count, loff_t *ppos) \
+static ssize_t type##_write_func(struct file *file, const char __user *user_buf, size_t count, loff_t *ppos) \
 { \
-	int ret = 0; \
+	int ret; \
+	char enable; \
 	struct synaptics_ts_data *ts = ts_g; \
-	sscanf(buf, "%d", &ret); \
-	type##_enable = ret; \
+	ret = copy_from_user(&enable, user_buf, sizeof(enable)); \
+	if (ret) \
+		return ret; \
+	type##_enable = enable - '0'; \
 	gesture_enable(ts); \
 	return count; \
 } \
@@ -1842,7 +1843,7 @@ static ssize_t tp_glove_read_func(struct file *file, char __user *user_buf, size
 	if(!ts)
 		return ret;
 	TPD_DEBUG("glove mode enable is: %d\n", ts->glove_enable);
-	ret = sprintf(page, "%d\n", ts->glove_enable);
+	ret = snprintf(page, sizeof(page), "%d\n", ts->glove_enable);
 	ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page));
 	return ret;
 }
@@ -1889,7 +1890,7 @@ static ssize_t tp_sleep_read_func(struct file *file, char __user *user_buf, size
 	int ret = 0;
 	char page[PAGESIZE];
 	TPD_DEBUG("sleep mode enable is: %d\n", sleep_enable);
-	ret = sprintf(page, "%d\n", sleep_enable);
+	ret = snprintf(page, sizeof(page), "%d\n", sleep_enable);
 	ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page));
 	return ret;
 }
@@ -1963,7 +1964,7 @@ static ssize_t vendor_id_read_func(struct file *file, char __user *user_buf, siz
 {
 	int ret = 0;
 	char page[4];
-	ret = sprintf(page, "%d\n",7);
+	ret = snprintf(page, sizeof(page), "%d\n",7);
 	ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page));
 	return ret;
 }
@@ -2921,7 +2922,7 @@ static ssize_t changer_read_func(struct file *file, char __user *user_buf, size_
 	struct synaptics_ts_data *ts = ts_g;
 	if(!ts)
 		return ret;
-	ret = sprintf(page, "the changer is %s!\n", ts->changer_connet?("conneted"):("disconneted"));
+	ret = snprintf(page, sizeof(page), "the changer is %s!\n", ts->changer_connet?("conneted"):("disconneted"));
 	ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page));
 	return ret;
 }
@@ -3080,7 +3081,7 @@ static ssize_t limit_enable_read(struct file *file, char __user *user_buf, size_
 	char page[PAGESIZE];
 
 	TPD_DEBUG("the limit_enable is: %d\n", limit_enable);
-	ret = sprintf(page, "%d\n", limit_enable);
+	ret = snprintf(page, sizeof(page), "%d\n", limit_enable);
 	ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page));
 	return ret;
 }
