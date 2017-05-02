@@ -953,7 +953,8 @@ static int synaptics_s1302_fw_show(struct seq_file *seq, void *offset)
 }
 static ssize_t synaptics_s1302_fw_write(struct file *file, const char __user *page, size_t t, loff_t *lo)
 {
-	int val = 0;
+	char val;
+	int ret;
 
     if (NULL == tc_g)
         return -EINVAL;
@@ -961,8 +962,11 @@ static ssize_t synaptics_s1302_fw_write(struct file *file, const char __user *pa
 	if (t > 2)
 		return -EINVAL;
 
-	sscanf(page, "%d", &val);
+	ret = copy_from_user(&val, page, sizeof(val));
+	if (ret)
+		return ret;
 
+	val -= '0';
 	if(!val)
 		val = force_update;
 
