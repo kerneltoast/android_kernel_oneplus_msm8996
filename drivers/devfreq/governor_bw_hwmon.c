@@ -29,6 +29,7 @@
 #include <linux/platform_device.h>
 #include <linux/of.h>
 #include <linux/devfreq.h>
+#include <linux/fb.h>
 #include <trace/events/power.h>
 #include "governor.h"
 #include "governor_bw_hwmon.h"
@@ -80,6 +81,11 @@ struct hwmon_node {
 	struct bw_hwmon *hw;
 	struct devfreq_governor *gov;
 	struct attribute_group *attr_grp;
+	bool do_wake_boost;
+	unsigned long old_min_freq;
+	struct mutex df_lock;
+	spinlock_t boost_lock;
+	struct devfreq *df;
 };
 
 #define UP_WAKE 1
@@ -91,6 +97,11 @@ static DEFINE_MUTEX(list_lock);
 
 static int use_cnt;
 static DEFINE_MUTEX(state_lock);
+
+#define WAKE_BOOST_DURATION_MS (10000)
+static struct delayed_work wake_unboost_work;
+static struct work_struct wake_boost_work;
+static void set_wake_boost(bool enable);
 
 #define show_attr(name) \
 static ssize_t show_##name(struct device *dev,				\
@@ -555,6 +566,10 @@ static int gov_start(struct devfreq *df)
 	}
 	hw = node->hw;
 
+	mutex_lock(&node->df_lock);
+	node->df = df;
+	mutex_unlock(&node->df_lock);
+
 	stat.private_data = NULL;
 	if (df->profile->get_dev_status)
 		ret = df->profile->get_dev_status(df->dev.parent, &stat);
@@ -590,6 +605,14 @@ static void gov_stop(struct devfreq *df)
 {
 	struct hwmon_node *node = df->data;
 	struct bw_hwmon *hw = node->hw;
+
+	cancel_work_sync(&wake_boost_work);
+	if (cancel_delayed_work_sync(&wake_unboost_work))
+		set_wake_boost(false);
+
+	mutex_lock(&node->df_lock);
+	node->df = NULL;
+	mutex_unlock(&node->df_lock);
 
 	sysfs_remove_group(&df->dev.kobj, node->attr_grp);
 	stop_monitor(df, true);
@@ -660,6 +683,18 @@ static int devfreq_bw_hwmon_get_freq(struct devfreq *df,
 					u32 *flag)
 {
 	struct hwmon_node *node = df->data;
+	unsigned long flags;
+	bool do_boost;
+
+	spin_lock_irqsave(&node->boost_lock, flags);
+	do_boost = node->do_wake_boost;
+	spin_unlock_irqrestore(&node->boost_lock, flags);
+
+	if (do_boost) {
+		/* Use the maximum b/w for boosting */
+		*freq = df->profile->freq_table[df->profile->max_state - 1];
+		return 0;
+	}
 
 	/* Suspend/resume sequence */
 	if (!node->mon_started) {
@@ -844,6 +879,101 @@ static struct devfreq_governor devfreq_gov_bw_hwmon = {
 	.event_handler = devfreq_bw_hwmon_ev_handler,
 };
 
+static void set_boost_minfreq(struct hwmon_node *node, bool enable)
+{
+	struct devfreq *df = node->df;
+	unsigned long max_freq;
+
+	if (!df)
+		return;
+
+	mutex_lock(&df->lock);
+	max_freq = df->profile->freq_table[df->profile->max_state - 1];
+	if (enable) {
+		node->old_min_freq = df->min_freq;
+		df->min_freq = max_freq;
+	} else if (df->min_freq == max_freq) {
+		df->min_freq = node->old_min_freq;
+	}
+	update_devfreq(df);
+	mutex_unlock(&df->lock);
+}
+
+static void set_wake_boost(bool enable)
+{
+	struct hwmon_node *node;
+	unsigned long flags;
+
+	list_for_each_entry(node, &hwmon_list, list) {
+		/*
+		 * Have devfreq_bw_hwmon_get_freq just vote for the max b/w
+		 * and skip unneeded calculations while the boost is active.
+		 */
+		spin_lock_irqsave(&node->boost_lock, flags);
+		node->do_wake_boost = enable;
+		spin_unlock_irqrestore(&node->boost_lock, flags);
+
+		/*
+		 * Immediately boost in case there is a lot of time until the
+		 * next polling interval (i.e. until devfreq_bw_hwmon_get_freq
+		 * is called again).
+		 */
+		mutex_lock(&node->df_lock);
+		set_boost_minfreq(node, enable);
+		mutex_unlock(&node->df_lock);
+	}
+}
+
+static void wake_boost_fn(struct work_struct *work)
+{
+	set_wake_boost(true);
+	schedule_delayed_work(&wake_unboost_work,
+			msecs_to_jiffies(WAKE_BOOST_DURATION_MS));
+}
+
+static void wake_unboost_fn(struct work_struct *work)
+{
+	set_wake_boost(false);
+}
+
+static int fb_notifier_callback(struct notifier_block *nb,
+		unsigned long action, void *data)
+{
+	struct fb_event *evdata = data;
+	int *blank = evdata->data;
+
+	/* Parse framebuffer events as soon as they occur */
+	if (action != FB_EARLY_EVENT_BLANK)
+		return NOTIFY_OK;
+
+	switch (*blank) {
+	case FB_BLANK_UNBLANK:
+		schedule_work(&wake_boost_work);
+		break;
+	default:
+		cancel_work_sync(&wake_boost_work);
+		if (cancel_delayed_work_sync(&wake_unboost_work))
+			set_wake_boost(false);
+	}
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block fb_notifier_callback_nb = {
+	.notifier_call = fb_notifier_callback,
+	.priority = INT_MAX,
+};
+
+static int wake_boost_init(void)
+{
+	INIT_WORK(&wake_boost_work, wake_boost_fn);
+	INIT_DELAYED_WORK(&wake_unboost_work, wake_unboost_fn);
+	fb_register_client(&fb_notifier_callback_nb);
+
+	return 0;
+}
+late_initcall(wake_boost_init);
+
 int register_bw_hwmon(struct device *dev, struct bw_hwmon *hwmon)
 {
 	int ret = 0;
@@ -894,6 +1024,9 @@ int register_bw_hwmon(struct device *dev, struct bw_hwmon *hwmon)
 	node->idle_mbps = 400;
 	node->mbps_zones[0] = 0;
 	node->hw = hwmon;
+
+	mutex_init(&node->df_lock);
+	spin_lock_init(&node->boost_lock);
 
 	mutex_lock(&list_lock);
 	list_add_tail(&node->list, &hwmon_list);
