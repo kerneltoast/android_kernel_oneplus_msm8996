@@ -1738,8 +1738,8 @@ static const struct file_operations coordinate_proc_fops = {
 static ssize_t type##_read_func(struct file *file, char __user *user_buf, size_t count, loff_t *ppos) \
 { \
 	char enable[3]; \
-	snprintf(enable, sizeof(enable), "%d\n", type##_enable); \
-	return simple_read_from_buffer(user_buf, sizeof(enable), 0, &enable, count); \
+	sprintf(enable, "%d\n", !!type##_enable); \
+	return simple_read_from_buffer(user_buf, sizeof(enable), ppos, enable - *ppos, sizeof(enable)); \
 } \
 static ssize_t type##_write_func(struct file *file, const char __user *user_buf, size_t count, loff_t *ppos) \
 { \
