@@ -69,8 +69,6 @@ void notify_dash_unplug_register(struct  notify_dash_event *event);
 void notify_dash_unplug_unregister(struct  notify_dash_event *event);
 void fastcharge_information_unregister(struct external_battery_gauge *fast_chg);
 void fastcharge_information_register(struct external_battery_gauge *fast_chg);
-void external_battery_gauge_register(struct external_battery_gauge *batt_gauge);
-void external_battery_gauge_unregister(struct external_battery_gauge *batt_gauge);
 void bq27541_information_register(struct external_battery_gauge *fast_chg);
 void bq27541_information_unregister(struct external_battery_gauge *fast_chg);
 bool get_extern_fg_regist_done(void );
