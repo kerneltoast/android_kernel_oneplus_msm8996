@@ -713,7 +713,6 @@
 			qcom,vph-pwr-droop-debounce-time = <10>;
 			qcom,headroom-sense-ch0-enabled;
 			qcom,headroom-sense-ch1-enabled;
-			qcom,power-detect-enabled;
 			qcom,pmic-revid = <&pmi8994_revid>;
 
 			pmi8994_flash0: qcom,flash_0 {
