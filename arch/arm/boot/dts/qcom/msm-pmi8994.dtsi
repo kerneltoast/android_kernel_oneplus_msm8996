@@ -365,18 +365,17 @@
 			compatible = "qcom,qpnp-fg";
 			#address-cells = <1>;
 			#size-cells = <1>;
-			qcom,resume-soc = <99>;
+			qcom,resume-soc = <95>;
 			status = "okay";
 			qcom,bcl-lm-threshold-ma = <127>;
 			qcom,bcl-mh-threshold-ma = <405>;
-			qcom,fg-iterm-ma = <200>;
-			qcom,fg-chg-iterm-ma = <165>;
+			qcom,fg-iterm-ma = <125>;
+			qcom,fg-chg-iterm-ma = <100>;
 			qcom,cycle-counter-en;
 			qcom,capacity-learning-on;
-			qcom,fg-cc-cv-threshold-mv = <4310>;
+			qcom,fg-cc-cv-threshold-mv = <4340>;
 			qcom,pmic-revid = <&pmi8994_revid>;
 			qcom,capacity-learning-feedback;
-			qcom,fg-cutoff-voltage-mv = <3200>;
 
 			qcom,fg-soc@4000 {
 				status = "okay";
