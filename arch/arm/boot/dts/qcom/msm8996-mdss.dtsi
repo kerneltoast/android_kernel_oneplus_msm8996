@@ -447,6 +447,7 @@
 						00 00 10 8f];
 		};
 
+#if 0
 		mdss_dsi1: qcom,mdss_dsi_ctrl1@996000 {
 			compatible = "qcom,mdss-dsi-ctrl";
 			label = "MDSS DSI CTRL->1";
@@ -498,6 +499,7 @@
 						00 00 10 0f
 						00 00 10 8f];
 		};
+#endif
 	};
 
 	qcom,mdss_wb_panel {

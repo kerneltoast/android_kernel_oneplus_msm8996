@@ -2093,7 +2093,7 @@
 		qcom,tune2-efuse-bit-pos = <21>;
 		qcom,tune2-efuse-num-bits = <4>;
 		qcom,enable-dpdm-pulsing;
-		qcom,qusb-phy-init-seq = <0x38 0x80
+		qcom,qusb-phy-init-seq = <0x0 0x80
 					0x03 0x84
 					0x83 0x88
 					0xC7 0x8C
@@ -2115,6 +2115,7 @@
 
 	qusb_phy1: qusb@7412000 {
 		compatible = "qcom,qusb2phy";
+		status = "disabled";
 		reg = <0x07412000 0x180>,
 			<0x076f8800 0x400>,
 			<0x0007024c 0x4>,
@@ -2137,7 +2138,6 @@
 					0x79 0x0C
 					0x21 0x10
 					0x14 0x9C
-					0x80 0x04
 					0x9F 0x1C
 					0x00 0x18>;
 		phy_type = "utmi";
@@ -2270,7 +2270,6 @@
 		vdd-wlan-io-supply = <&pm8994_s4>;
 		vdd-wlan-xtal-supply = <&pm8994_l30>;
 		vdd-wlan-core-supply = <&pm8994_s3>;
-		wlan-ant-switch-supply = <&pm8994_l18_pin_ctrl>;
 		qcom,wlan-en-vreg-support;
 		qcom,enable-bootstrap-gpio;
 		qcom,notify-modem-status;
