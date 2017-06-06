@@ -39,3 +39,8 @@
 &pm8994_l27 {
 	qcom,init-voltage = <1030000>;
 };
+
+&mtp_batterydata {
+	qcom,max-voltage-uv = <4370000>;
+	qcom,v-cutoff-uv = <3300000>;
+};
