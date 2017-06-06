@@ -338,6 +338,9 @@
 };
 
 #include "msm8996-mdss-panels.dtsi"
+#include "dsi-panel-samsung_s6e3fa3_1080p_cmd.dtsi"
+#include "dsi-panel-samsung_s6e3fa5_1080p_cmd.dtsi"
+#include "dsi-panel-samsung_s6e3fa5r9s_1080p_cmd.dtsi"
 
 &mdss_mdp {
 	qcom,mdss-pref-prim-intf = "dsi";
@@ -356,6 +359,7 @@
 	qcom,platform-reset-gpio = <&tlmm 8 0>;
 };
 
+#if 0
 &mdss_dsi1 {
 	qcom,dsi-pref-prim-pan = <&dsi_dual_sharp_video>;
 	pinctrl-names = "mdss_default", "mdss_sleep";
@@ -365,12 +369,14 @@
 	qcom,platform-reset-gpio = <&tlmm 8 0>;
 	qcom,platform-bklight-en-gpio = <&pm8994_gpios 14 0>;
 };
+#endif
 
 &labibb {
 	status = "ok";
 	qpnp,qpnp-labibb-mode = "lcd";
 };
 
+#if 0
 &dsi_dual_sharp_video {
 	qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_wled";
 	qcom,mdss-dsi-bl-min-level = <1>;
@@ -484,6 +490,7 @@
 	qcom,mdss-dsi-bl-max-level = <4095>;
 	qcom,panel-supply-entries = <&dsi_panel_pwr_supply>;
 };
+#endif
 
 /{
 	mtp_batterydata: qcom,battery-data {

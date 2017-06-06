@@ -10,9 +10,7 @@
  * GNU General Public License for more details.
  */
 
-#include "dsi-panel-samsung_s6e3fa3_1080p_cmd.dtsi"
-#include "dsi-panel-samsung_s6e3fa5_1080p_cmd.dtsi"
-#include "dsi-panel-samsung_s6e3fa5r9s_1080p_cmd.dtsi"
+#if 0
 #include "dsi-panel-sharp-dualmipi-wqxga-video.dtsi"
 #include "dsi-panel-nt35597-dualmipi-wqxga-video.dtsi"
 #include "dsi-panel-nt35597-dualmipi-wqxga-cmd.dtsi"
@@ -34,6 +32,7 @@
 #include "dsi-panel-sharp-1080p-cmd.dtsi"
 #include "dsi-panel-sharp-dsc-4k-video.dtsi"
 #include "dsi-panel-sharp-dsc-4k-cmd.dtsi"
+#endif
 
 &soc {
 	dsi_panel_pwr_supply: dsi_panel_pwr_supply {
@@ -133,6 +132,7 @@
 	};
 };
 
+#if 0
 &dsi_nt35950_4k_dsc_cmd {
 	qcom,mdss-dsi-panel-timings-phy-v2 = [21 1e 06 08 04 03 04 a0
 		21 1e 06 08 04 03 04 a0
@@ -262,3 +262,4 @@
 		23 1f 07 09 05 03 04 a0
 		23 19 08 08 05 03 04 a0];
 };
+#endif
