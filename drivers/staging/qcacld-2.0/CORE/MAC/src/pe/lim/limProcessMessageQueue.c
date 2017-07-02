@@ -124,7 +124,6 @@ defMsgDecision(tpAniSirGlobal pMac, tpSirMsgQ  limMsg)
         (limMsg->type != WDA_REMOVE_BSSKEY_RSP) &&
         (limMsg->type != WDA_REMOVE_STAKEY_RSP) &&
         (limMsg->type != WDA_SET_MIMOPS_RSP)&&
-        (limMsg->type != WDA_ADDBA_RSP) &&
         (limMsg->type != WDA_ENTER_BMPS_RSP) &&
         (limMsg->type != WDA_EXIT_BMPS_RSP) &&
         (limMsg->type != WDA_ENTER_IMPS_RSP) &&
@@ -1400,7 +1399,6 @@ limProcessMessages(tpAniSirGlobal pMac, tpSirMsgQ  limMsg)
         case eWNI_SME_REASSOC_CNF:
         case eWNI_SME_ADDTS_REQ:
         case eWNI_SME_DELTS_REQ:
-        case eWNI_SME_DEL_BA_PEER_IND:
         case eWNI_SME_SET_TX_POWER_REQ:
         case eWNI_SME_GET_TX_POWER_REQ:
         case eWNI_SME_GET_NOISE_REQ:
@@ -1694,16 +1692,6 @@ limProcessMessages(tpAniSirGlobal pMac, tpSirMsgQ  limMsg)
         case SIR_LIM_DEL_TS_IND:
           limProcessDelTsInd(pMac, limMsg);
             break;
-        case SIR_LIM_ADD_BA_IND:
-            limProcessAddBaInd(pMac, limMsg);
-            break;
-        case SIR_LIM_DEL_BA_ALL_IND:
-            limDelAllBASessions(pMac);
-            break;
-        case SIR_LIM_DEL_BA_IND:
-            limProcessMlmHalBADeleteInd( pMac, limMsg );
-            break;
-
          case SIR_LIM_BEACON_GEN_IND: {
 
                 if( pMac->lim.gLimSystemRole != eLIM_AP_ROLE )
@@ -1953,9 +1941,6 @@ limProcessMessages(tpAniSirGlobal pMac, tpSirMsgQ  limMsg)
         case WDA_REMOVE_BSSKEY_RSP:
         case WDA_REMOVE_STAKEY_RSP:
             limProcessMlmRemoveKeyRsp( pMac, limMsg );
-            break;
-        case WDA_ADDBA_RSP:
-            limProcessMlmHalAddBARsp( pMac, limMsg );
             break;
 
         case WDA_STA_STAT_RSP:
