@@ -225,27 +225,28 @@
 			qcom,fastchg-current-ma = <2000>;
 			qcom,float-voltage-mv = <4320>;
 			qcom,resume-delta-mv = <200>;
+			qcom,override-usb-current;
 			/* ibatmax setting for different temp regions */
 			qcom,ibatmax-little-cold-ma = <300>;
 			qcom,ibatmax-cool-ma = <400>;
 			qcom,ibatmax-little-cool-ma = <700>;
-			qcom,ibatmax-pre-normal-ma = <1500>;
+			qcom,ibatmax-pre-normal-ma = <1200>;
 			qcom,ibatmax-normal-ma = <1910>;
-			qcom,ibatmax-warm-ma = <800>;
+			qcom,ibatmax-warm-ma = <700>;
 			/* vbatmax setting for different temp regions */
 			qcom,vbatmax-little-cold-mv = <3980>;
-			qcom,vbatmax-cool-mv = <4370>;
-			qcom,vbatmax-little-cool-mv = <4370>;
-			qcom,vbatmax-pre-normal-mv = <4370>;
-			qcom,vbatmax-normal-mv = <4370>;
+			qcom,vbatmax-cool-mv = <4320>;
+			qcom,vbatmax-little-cool-mv = <4320>;
+			qcom,vbatmax-pre-normal-mv = <4320>;
+			qcom,vbatmax-normal-mv = <4320>;
 			qcom,vbatmax-warm-mv = <4080>;
 			/* vbatdet setting for different temp regions */
 			qcom,vbatdet-little-cold-mv = <3700>;
-			qcom,vbatdet-cool-mv = <4150>;
-			qcom,vbatdet-little-cool-mv = <4270>;
-			qcom,vbatdet-pre-normal-mv = <4270>;
-			qcom,vbatdet-normal-mv = <4270>;
-			qcom,vbatdet-warm-mv = <3980>;
+			qcom,vbatdet-cool-mv = <4100>;
+			qcom,vbatdet-little-cool-mv = <4220>;
+			qcom,vbatdet-pre-normal-mv = <4220>;
+			qcom,vbatdet-normal-mv = <4220>;
+			qcom,vbatdet-warm-mv = <4000>;
 			/* vbatdet setting for different temp regions */
 			qcom,cold-bat-decidegc = <30>;
 			qcom,little-cold-bat-decidegc = <0>;
@@ -365,17 +366,18 @@
 			compatible = "qcom,qpnp-fg";
 			#address-cells = <1>;
 			#size-cells = <1>;
-			qcom,resume-soc = <95>;
+			qcom,resume-soc = <99>;
 			status = "okay";
 			qcom,bcl-lm-threshold-ma = <127>;
 			qcom,bcl-mh-threshold-ma = <405>;
-			qcom,fg-iterm-ma = <125>;
-			qcom,fg-chg-iterm-ma = <100>;
+			qcom,fg-iterm-ma = <200>;
+			qcom,fg-chg-iterm-ma = <165>;
 			qcom,cycle-counter-en;
 			qcom,capacity-learning-on;
-			qcom,fg-cc-cv-threshold-mv = <4340>;
+			qcom,fg-cc-cv-threshold-mv = <4310>;
 			qcom,pmic-revid = <&pmi8994_revid>;
 			qcom,capacity-learning-feedback;
+			qcom,fg-cutoff-voltage-mv = <3200>;
 
 			qcom,fg-soc@4000 {
 				status = "okay";
