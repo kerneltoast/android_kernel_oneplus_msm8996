@@ -814,7 +814,7 @@ static int msm_cpu_pm_probe(struct platform_device *pdev)
 		dent = debugfs_create_file("pc_debug_counter", S_IRUGO, NULL,
 				msm_pc_debug_counters,
 				&msm_pc_debug_counters_fops);
-		if (!dent)
+		if (IS_ERR_OR_NULL(dent))
 			pr_err("%s: ERROR debugfs_create_file failed\n",
 					__func__);
 		res = platform_get_resource(pdev, IORESOURCE_MEM, 0);

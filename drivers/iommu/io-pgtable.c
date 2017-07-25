@@ -128,11 +128,11 @@ static int io_pgtable_init(void)
 {
 	io_pgtable_top = debugfs_create_dir("io-pgtable", iommu_debugfs_top);
 
-	if (!io_pgtable_top)
+	if (IS_ERR_OR_NULL(io_pgtable_top))
 		return -ENODEV;
 
-	if (!debugfs_create_atomic_t("pages", 0600,
-				     io_pgtable_top, &pages_allocated)) {
+	if (IS_ERR_OR_NULL(debugfs_create_atomic_t("pages", 0600,
+				     io_pgtable_top, &pages_allocated))) {
 		debugfs_remove_recursive(io_pgtable_top);
 		return -ENODEV;
 	}

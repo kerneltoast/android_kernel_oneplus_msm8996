@@ -283,18 +283,18 @@ static int msm_isp_enable_debugfs(struct vfe_device *vfe_dev,
 
 	snprintf(dirname, sizeof(dirname), "msm_isp%d", vfe_dev->pdev->id);
 	debugfs_base = debugfs_create_dir(dirname, NULL);
-	if (!debugfs_base)
+	if (IS_ERR_OR_NULL(debugfs_base))
 		return -ENOMEM;
-	if (!debugfs_create_file("stats", S_IRUGO | S_IWUSR, debugfs_base,
-		vfe_dev, &vfe_debugfs_error))
-		return -ENOMEM;
-
-	if (!debugfs_create_file("bw_req_history", S_IRUGO | S_IWUSR,
-		debugfs_base, isp_req_hist, &bw_history_ops))
+	if (IS_ERR_OR_NULL(debugfs_create_file("stats", S_IRUGO | S_IWUSR, debugfs_base,
+		vfe_dev, &vfe_debugfs_error)))
 		return -ENOMEM;
 
-	if (!debugfs_create_file("ub_info", S_IRUGO | S_IWUSR,
-		debugfs_base, vfe_dev, &ub_info_ops))
+	if (IS_ERR_OR_NULL(debugfs_create_file("bw_req_history", S_IRUGO | S_IWUSR,
+		debugfs_base, isp_req_hist, &bw_history_ops)))
+		return -ENOMEM;
+
+	if (IS_ERR_OR_NULL(debugfs_create_file("ub_info", S_IRUGO | S_IWUSR,
+		debugfs_base, vfe_dev, &ub_info_ops)))
 		return -ENOMEM;
 
 	return 0;

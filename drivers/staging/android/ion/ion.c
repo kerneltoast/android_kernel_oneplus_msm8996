@@ -993,7 +993,8 @@ struct ion_client *ion_client_create(struct ion_device *dev,
 	client->debug_root = debugfs_create_file(client->display_name, 0664,
 						dev->clients_debug_root,
 						client, &debug_client_fops);
-	if (!client->debug_root) {
+	if (IS_ERR_OR_NULL(client->debug_root) &&
+		!IS_ERR_OR_NULL(dev->clients_debug_root)) {
 		char buf[256], *path;
 
 		path = dentry_path(dev->clients_debug_root, buf, 256);
@@ -1987,7 +1988,8 @@ void ion_device_add_heap(struct ion_device *dev, struct ion_heap *heap)
 					dev->heaps_debug_root, heap,
 					&debug_heap_fops);
 
-	if (!debug_file) {
+	if (IS_ERR_OR_NULL(debug_file) &&
+		!IS_ERR_OR_NULL(dev->heaps_debug_root)) {
 		char buf[256], *path;
 
 		path = dentry_path(dev->heaps_debug_root, buf, 256);
@@ -2003,7 +2005,8 @@ void ion_device_add_heap(struct ion_device *dev, struct ion_heap *heap)
 		debug_file = debugfs_create_file(
 			debug_name, 0644, dev->heaps_debug_root, heap,
 			&debug_shrink_fops);
-		if (!debug_file) {
+		if (IS_ERR_OR_NULL(debug_file) &&
+			!IS_ERR_OR_NULL(dev->heaps_debug_root)) {
 			char buf[256], *path;
 
 			path = dentry_path(dev->heaps_debug_root, buf, 256);
@@ -2062,18 +2065,18 @@ struct ion_device *ion_device_create(long (*custom_ioctl)
 	}
 
 	idev->debug_root = debugfs_create_dir("ion", NULL);
-	if (!idev->debug_root) {
+	if (IS_ERR_OR_NULL(idev->debug_root)) {
 		pr_err("ion: failed to create debugfs root directory.\n");
 		goto debugfs_done;
 	}
 	idev->heaps_debug_root = debugfs_create_dir("heaps", idev->debug_root);
-	if (!idev->heaps_debug_root) {
+	if (IS_ERR_OR_NULL(idev->heaps_debug_root)) {
 		pr_err("ion: failed to create debugfs heaps directory.\n");
 		goto debugfs_done;
 	}
 	idev->clients_debug_root = debugfs_create_dir("clients",
 						idev->debug_root);
-	if (!idev->clients_debug_root)
+	if (IS_ERR_OR_NULL(idev->clients_debug_root))
 		pr_err("ion: failed to create debugfs clients directory.\n");
 
 debugfs_done:

@@ -1684,24 +1684,24 @@ static int wcd_cpe_debugfs_init(struct wcd_cpe_core *core)
 		goto err_create_dir;
 	}
 
-	if (!debugfs_create_u32("ramdump_enable", S_IRUGO | S_IWUSR,
-				dir, &ramdump_enable)) {
+	if (IS_ERR_OR_NULL(debugfs_create_u32("ramdump_enable", S_IRUGO | S_IWUSR,
+				dir, &ramdump_enable))) {
 		dev_err(core->dev, "%s: Failed to create debugfs node %s\n",
 			__func__, "ramdump_enable");
 		rc = -ENODEV;
 		goto err_create_entry;
 	}
 
-	if (!debugfs_create_file("cpe_ftm_test_trigger", S_IWUSR,
-				dir, core, &cpe_ftm_test_trigger_fops)) {
+	if (IS_ERR_OR_NULL(debugfs_create_file("cpe_ftm_test_trigger", S_IWUSR,
+				dir, core, &cpe_ftm_test_trigger_fops))) {
 		dev_err(core->dev, "%s: Failed to create debugfs node %s\n",
 			__func__, "cpe_ftm_test_trigger");
 		rc = -ENODEV;
 		goto err_create_entry;
 	}
 
-	if (!debugfs_create_u32("cpe_ftm_test_status", S_IRUGO,
-				dir, &cpe_ftm_test_status)) {
+	if (IS_ERR_OR_NULL(debugfs_create_u32("cpe_ftm_test_status", S_IRUGO,
+				dir, &cpe_ftm_test_status))) {
 		dev_err(core->dev, "%s: Failed to create debugfs node %s\n",
 			__func__, "cpe_ftm_test_status");
 		rc = -ENODEV;

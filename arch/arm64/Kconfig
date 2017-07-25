@@ -757,7 +757,7 @@ config PERF_EVENTS_USERMODE
 
 config PERF_EVENTS_RESET_PMU_DEBUGFS
 	bool "Reset PMU via debugfs node"
-	depends on PERF_EVENTS
+	depends on PERF_EVENTS && DEBUGFS
 	help
 		Enable the debugfs node that can be used to reset PMUs and all
 		state variables associated with PMUs. If enabled, PMU and internal

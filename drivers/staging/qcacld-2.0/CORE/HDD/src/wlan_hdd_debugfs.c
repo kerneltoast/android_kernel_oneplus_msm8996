@@ -613,19 +613,19 @@ VOS_STATUS hdd_debugfs_init(hdd_adapter_t *pAdapter)
     hdd_context_t *pHddCtx = WLAN_HDD_GET_CTX(pAdapter);
     pHddCtx->debugfs_phy = debugfs_create_dir("wlan_wcnss", 0);
 
-    if (NULL == pHddCtx->debugfs_phy)
+    if (IS_ERR_OR_NULL(pHddCtx->debugfs_phy))
         return VOS_STATUS_E_FAILURE;
 
-    if (NULL == debugfs_create_file("wow_enable", S_IRUSR | S_IWUSR,
-        pHddCtx->debugfs_phy, pAdapter, &fops_wowenable))
+    if (IS_ERR_OR_NULL(debugfs_create_file("wow_enable", S_IRUSR | S_IWUSR,
+        pHddCtx->debugfs_phy, pAdapter, &fops_wowenable)))
         return VOS_STATUS_E_FAILURE;
 
-    if (NULL == debugfs_create_file("wow_pattern", S_IRUSR | S_IWUSR,
-        pHddCtx->debugfs_phy, pAdapter, &fops_wowpattern))
+    if (IS_ERR_OR_NULL(debugfs_create_file("wow_pattern", S_IRUSR | S_IWUSR,
+        pHddCtx->debugfs_phy, pAdapter, &fops_wowpattern)))
         return VOS_STATUS_E_FAILURE;
 
-    if (NULL == debugfs_create_file("pattern_gen", S_IRUSR | S_IWUSR,
-        pHddCtx->debugfs_phy, pAdapter, &fops_patterngen))
+    if (IS_ERR_OR_NULL(debugfs_create_file("pattern_gen", S_IRUSR | S_IWUSR,
+        pHddCtx->debugfs_phy, pAdapter, &fops_patterngen)))
         return VOS_STATUS_E_FAILURE;
 
     return VOS_STATUS_SUCCESS;

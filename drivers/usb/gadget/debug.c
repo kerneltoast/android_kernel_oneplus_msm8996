@@ -103,7 +103,7 @@ int debug_debugfs_init(void)
 	int			ret;
 
 	root = debugfs_create_dir("debug", NULL);
-	if (!root) {
+	if (IS_ERR_OR_NULL(root)) {
 		ret = -ENOMEM;
 		goto err0;
 	}
@@ -112,7 +112,7 @@ int debug_debugfs_init(void)
 
 	file = debugfs_create_file("read_buf", S_IRUGO, root,
 			NULL, &dbg_read_buf_fops);
-	if (!file) {
+	if (IS_ERR_OR_NULL(file)) {
 		ret = -ENOMEM;
 		goto err1;
 	}

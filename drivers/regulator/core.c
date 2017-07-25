@@ -1230,7 +1230,7 @@ static struct regulator *create_regulator(struct regulator_dev *rdev,
 
 	regulator->debugfs = debugfs_create_dir(regulator->supply_name,
 						rdev->debugfs);
-	if (!regulator->debugfs) {
+	if (IS_ERR_OR_NULL(regulator->debugfs)) {
 		rdev_warn(rdev, "Failed to create debugfs directory\n");
 	} else {
 		debugfs_create_u32("uA_load", 0444, regulator->debugfs,
@@ -4511,7 +4511,7 @@ static int __init regulator_init(void)
 	ret = class_register(&regulator_class);
 
 	debugfs_root = debugfs_create_dir("regulator", NULL);
-	if (!debugfs_root)
+	if (IS_ERR_OR_NULL(debugfs_root))
 		pr_warn("regulator: Failed to create debugfs directory\n");
 
 	debugfs_create_file("supply_map", 0444, debugfs_root, NULL,

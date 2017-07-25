@@ -182,7 +182,7 @@ static struct glink_dbgfs_data *glink_dfs_create_file(const char *name,
 		dfs_d->b_priv_free_req = b_free_req;
 	}
 	file = debugfs_create_file(name, 0400, parent, dfs_d, &debug_ops);
-	if (!file)
+	if (IS_ERR_OR_NULL(file))
 		GLINK_DBG("%s: unable to create file '%s'\n", __func__,
 				name);
 	dfs_d->dent = file;
@@ -690,7 +690,7 @@ struct dentry *glink_debugfs_create(const char *name,
 	if (parent != NULL) {
 		if (dir->b_dir_create) {
 			dent = debugfs_create_dir(name, parent);
-			if (dent != NULL)
+			if (!IS_ERR_OR_NULL(dent))
 				glink_dfs_update_list(dent, parent,
 							c_dir_name, p_dir_name);
 		} else {

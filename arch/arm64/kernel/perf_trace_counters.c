@@ -157,11 +157,11 @@ int __init init_tracecounters(void)
 	int cpu;
 
 	dir = debugfs_create_dir("perf_debug_tp", NULL);
-	if (!dir)
+	if (IS_ERR_OR_NULL(dir))
 		return -ENOMEM;
 	file = debugfs_create_file("enabled", 0660, dir,
 		&value, &fops_perftp);
-	if (!file) {
+	if (IS_ERR_OR_NULL(file)) {
 		debugfs_remove(dir);
 		return -ENOMEM;
 	}

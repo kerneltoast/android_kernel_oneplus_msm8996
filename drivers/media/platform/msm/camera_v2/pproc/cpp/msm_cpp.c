@@ -4342,11 +4342,11 @@ static int msm_cpp_enable_debugfs(struct cpp_device *cpp_dev)
 {
 	struct dentry *debugfs_base;
 	debugfs_base = debugfs_create_dir("msm_cpp", NULL);
-	if (!debugfs_base)
+	if (IS_ERR_OR_NULL(debugfs_base))
 		return -ENOMEM;
 
-	if (!debugfs_create_file("error", S_IRUGO | S_IWUSR, debugfs_base,
-		(void *)cpp_dev, &cpp_debugfs_error))
+	if (IS_ERR_OR_NULL(debugfs_create_file("error", S_IRUGO | S_IWUSR, debugfs_base,
+		(void *)cpp_dev, &cpp_debugfs_error)))
 		return -ENOMEM;
 
 	return 0;

@@ -680,7 +680,7 @@ int mon_text_add(struct mon_bus *mbus, const struct usb_bus *ubus)
 			goto err_print_t;
 		d = debugfs_create_file(name, 0600, mon_dir, mbus,
 							     &mon_fops_text_t);
-		if (d == NULL)
+		if (IS_ERR_OR_NULL(d))
 			goto err_create_t;
 		mbus->dent_t = d;
 	}
@@ -689,7 +689,7 @@ int mon_text_add(struct mon_bus *mbus, const struct usb_bus *ubus)
 	if (rc <= 0 || rc >= NAMESZ)
 		goto err_print_u;
 	d = debugfs_create_file(name, 0600, mon_dir, mbus, &mon_fops_text_u);
-	if (d == NULL)
+	if (IS_ERR_OR_NULL(d))
 		goto err_create_u;
 	mbus->dent_u = d;
 
@@ -697,7 +697,7 @@ int mon_text_add(struct mon_bus *mbus, const struct usb_bus *ubus)
 	if (rc <= 0 || rc >= NAMESZ)
 		goto err_print_s;
 	d = debugfs_create_file(name, 0600, mon_dir, mbus, &mon_fops_stat);
-	if (d == NULL)
+	if (IS_ERR_OR_NULL(d))
 		goto err_create_s;
 	mbus->dent_s = d;
 

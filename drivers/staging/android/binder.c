@@ -3687,11 +3687,11 @@ static int __init binder_init(void)
 		return -ENOMEM;
 
 	binder_debugfs_dir_entry_root = debugfs_create_dir("binder", NULL);
-	if (binder_debugfs_dir_entry_root)
+	if (!IS_ERR_OR_NULL(binder_debugfs_dir_entry_root))
 		binder_debugfs_dir_entry_proc = debugfs_create_dir("proc",
 						 binder_debugfs_dir_entry_root);
 	ret = misc_register(&binder_miscdev);
-	if (binder_debugfs_dir_entry_root) {
+	if (!IS_ERR_OR_NULL(binder_debugfs_dir_entry_root)) {
 		debugfs_create_file("state",
 				    S_IRUGO,
 				    binder_debugfs_dir_entry_root,

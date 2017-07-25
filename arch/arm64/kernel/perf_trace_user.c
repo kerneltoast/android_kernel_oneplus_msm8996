@@ -83,11 +83,11 @@ static int __init init_perf_trace(void)
 	unsigned int value = 1;
 
 	dir = perf_create_debug_dir();
-	if (!dir)
+	if (IS_ERR_OR_NULL(dir))
 		return -ENOMEM;
 	file = debugfs_create_file("trace_marker", S_IWUSR | S_IWGRP, dir,
 		&value, &perf_trace_fops);
-	if (!file)
+	if (IS_ERR_OR_NULL(file))
 		return -ENOMEM;
 
 	return 0;

@@ -460,12 +460,9 @@ static int config_level(const char *name, const char **levels,
 	}
 
 	stats->directory = debugfs_create_dir(dirname, directory);
-	if (!stats->directory) {
+	if (IS_ERR_OR_NULL(stats->directory))
 		pr_err("%s: Unable to create %s debugfs directory\n",
 			__func__, dirname);
-		kfree(stats->time_stats);
-		return -EPERM;
-	}
 
 	for (i = 0; i < num_levels; i++) {
 		stats->time_stats[i].name = levels[i];
@@ -474,24 +471,20 @@ static int config_level(const char *name, const char **levels,
 			CONFIG_MSM_IDLE_STATS_FIRST_BUCKET;
 		stats->time_stats[i].enter_time = 0;
 
-		if (!debugfs_create_file(stats->time_stats[i].name, S_IRUGO,
+		if (!IS_ERR_OR_NULL(stats->directory) &&
+			IS_ERR_OR_NULL(debugfs_create_file(stats->time_stats[i].name, S_IRUGO,
 			stats->directory, (void *)&stats->time_stats[i],
-			&level_stats_fops)) {
+			&level_stats_fops)))
 			pr_err("%s: Unable to create %s %s level-stats file\n",
 				__func__, stats->name,
 				stats->time_stats[i].name);
-			kfree(stats->time_stats);
-			return -EPERM;
-		}
 	}
 
-	if (!debugfs_create_file("stats", S_IRUGO, stats->directory,
-		(void *)stats, &lpm_stats_fops)) {
+	if (!IS_ERR_OR_NULL(stats->directory) &&
+		IS_ERR_OR_NULL(debugfs_create_file("stats", S_IRUGO, stats->directory,
+		(void *)stats, &lpm_stats_fops)))
 		pr_err("%s: Unable to create %s's overall 'stats' file\n",
 			__func__, stats->name);
-		kfree(stats->time_stats);
-		return -EPERM;
-	}
 
 	return 0;
 }
@@ -634,9 +627,10 @@ static void config_suspend_level(struct lpm_stats *stats)
 	suspend_time_stats.success_count = 0;
 	suspend_time_stats.failed_count = 0;
 
-	if (!debugfs_create_file(suspend_time_stats.name, S_IRUGO,
+	if (!IS_ERR_OR_NULL(stats->directory) &&
+		IS_ERR_OR_NULL(debugfs_create_file(suspend_time_stats.name, S_IRUGO,
 		stats->directory, (void *)&suspend_time_stats,
-		&level_stats_fops))
+		&level_stats_fops)))
 		pr_err("%s: Unable to create %s Suspend stats file\n",
 			__func__, stats->name);
 }
@@ -664,13 +658,11 @@ static struct lpm_stats *config_cluster_level(const char *name,
 		return ERR_PTR(ret);
 	}
 
-	if (!debugfs_create_file("lifo", S_IRUGO, stats->directory,
-		(void *)stats, &lifo_stats_fops)) {
+	if (!IS_ERR_OR_NULL(stats->directory) &&
+		IS_ERR_OR_NULL(debugfs_create_file("lifo", S_IRUGO, stats->directory,
+		(void *)stats, &lifo_stats_fops)))
 		pr_err("%s: Unable to create %s lifo stats file\n",
 			__func__, stats->name);
-		kfree(stats);
-		return ERR_PTR(-EPERM);
-	}
 
 	if (!parent)
 		config_suspend_level(stats);

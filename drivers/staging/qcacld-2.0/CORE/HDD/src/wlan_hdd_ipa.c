@@ -5007,7 +5007,7 @@ static int hdd_ipa_debugfs_init(struct hdd_ipa_priv *hdd_ipa)
 #ifdef WLAN_OPEN_SOURCE
 	hdd_ipa->debugfs_dir = debugfs_create_dir("cld" SUFFIX,
 					hdd_ipa->hdd_ctx->wiphy->debugfsdir);
-	if (!hdd_ipa->debugfs_dir)
+	if (IS_ERR_OR_NULL(hdd_ipa->debugfs_dir))
 		return -ENOMEM;
 
 	debugfs_create_file("ipa-stats", S_IRUSR, hdd_ipa->debugfs_dir,
@@ -5149,7 +5149,8 @@ VOS_STATUS hdd_ipa_init(hdd_context_t *hdd_ctx)
 
 	ret = hdd_ipa_debugfs_init(hdd_ipa);
 	if (ret)
-		goto fail_alloc_rx_pipe_desc;
+		HDD_IPA_LOG(VOS_TRACE_LEVEL_ERROR,
+			"hdd_ipa_debugfs_init failed");
 
 	if (!hdd_ipa_uc_is_enabled(hdd_ipa)) {
 		hdd_ipa->ipv4_notifier.notifier_call = hdd_ipa_ipv4_changed;

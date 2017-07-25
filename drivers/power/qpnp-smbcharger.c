@@ -8604,7 +8604,7 @@ static int create_debugfs_entries(struct smbchg_chip *chip)
 	struct dentry *ent;
 
 	chip->debug_root = debugfs_create_dir("qpnp-smbcharger", NULL);
-	if (!chip->debug_root) {
+	if (IS_ERR_OR_NULL(chip->debug_root)) {
 		dev_err(chip->dev, "Couldn't create debug dir\n");
 		return -EINVAL;
 	}
@@ -8613,7 +8613,7 @@ static int create_debugfs_entries(struct smbchg_chip *chip)
 				  S_IFREG | S_IWUSR | S_IRUGO,
 				  chip->debug_root, chip,
 				  &force_dcin_icl_ops);
-	if (!ent) {
+	if (IS_ERR_OR_NULL(ent)) {
 		dev_err(chip->dev,
 			"Couldn't create force dcin icl check file\n");
 		return -EINVAL;
