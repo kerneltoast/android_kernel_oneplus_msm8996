@@ -752,6 +752,10 @@ static long  dash_dev_ioctl(struct file *filp, unsigned int cmd,
 			}
 			break;
 		case DASH_NOTIFY_BTB_TEMP_OVER:
+			mod_timer(&di->watchdog,
+					jiffies + msecs_to_jiffies(15000));
+			dash_write(di,ALLOW_DATA);
+			break;
 		case DASH_NOTIFY_BAD_CONNECTED:
 		case DASH_NOTIFY_NORMAL_TEMP_FULL:
 			if (arg == DASH_NOTIFY_NORMAL_TEMP_FULL + 1) {
