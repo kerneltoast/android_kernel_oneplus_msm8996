@@ -434,7 +434,7 @@ struct synaptics_ts_data {
 	struct mutex mutexreport;
 	int irq;
 	int irq_gpio;
-	atomic_t irq_enable;
+	bool irq_disabled;
 	int id1_gpio;
 	int id2_gpio;
 	int id3_gpio;
@@ -466,7 +466,6 @@ struct synaptics_ts_data {
 	int glove_enable;
     int changer_connet;
 	int is_suspended;
-    atomic_t is_stop;
     spinlock_t lock;
 
 	/********test*******/
@@ -508,30 +507,24 @@ static struct device_attribute attrs_oem[] = {
 	__ATTR(vendor_id, 0664, synaptics_rmi4_vendor_id_show, NULL),
 };
 
-static void touch_enable (struct synaptics_ts_data *ts)
+static void touch_enable(struct synaptics_ts_data *ts)
 {
-    spin_lock(&ts->lock);
-    if(0 == atomic_read(&ts->irq_enable))
-    {
-        if(ts->irq)
-            enable_irq(ts->irq);
-        atomic_set(&ts->irq_enable,1);
-        //TPD_ERR("test %%%% enable irq\n");
-    }
-    spin_unlock(&ts->lock);
+	spin_lock(&ts->lock);
+	if (ts->irq_disabled) {
+		enable_irq(ts->irq);
+		ts->irq_disabled = false;
+	}
+	spin_unlock(&ts->lock);
 }
 
 static void touch_disable(struct synaptics_ts_data *ts)
 {
-    spin_lock(&ts->lock);
-    if(1 == atomic_read(&ts->irq_enable))
-    {
-        if(ts->irq)
-            disable_irq_nosync(ts->irq);
-        atomic_set(&ts->irq_enable,0);
-        //TPD_ERR("test ****************** disable irq\n");
-    }
-    spin_unlock(&ts->lock);
+	spin_lock(&ts->lock);
+	if (!ts->irq_disabled) {
+		disable_irq(ts->irq);
+		ts->irq_disabled = true;
+	}
+	spin_unlock(&ts->lock);
 }
 
 static int tpd_hw_pwron(struct synaptics_ts_data *ts)
@@ -1490,23 +1483,14 @@ static enum hrtimer_restart synaptics_ts_timer_func(struct hrtimer *timer)
 #else
 static irqreturn_t synaptics_irq_thread_fn(int irq, void *dev_id)
 {
-	struct synaptics_ts_data *ts = (struct synaptics_ts_data *)dev_id;
-	int ret,status_check;
-	uint8_t status = 0;
-	uint8_t inte = 0;
-	unsigned long flags;
-	bool i2c_active;
-
-	if (atomic_read(&ts->is_stop) == 1)
-	{
-		return IRQ_HANDLED;
-	}
-
-	if( ts->enable_remote) {
-		return IRQ_HANDLED;
-	}
+	struct synaptics_ts_data *ts = dev_id;
+	uint32_t status;
+	int ret;
 
 	if (ts->is_suspended) {
+		unsigned long flags;
+		bool i2c_active;
+
 		spin_lock_irqsave(&ts->isr_lock, flags);
 		i2c_active = ts->i2c_awake;
 		spin_unlock_irqrestore(&ts->isr_lock, flags);
@@ -1523,35 +1507,27 @@ static irqreturn_t synaptics_irq_thread_fn(int irq, void *dev_id)
 
 	ts->timestamp = ktime_get();
 
-	ret = synaptics_rmi4_i2c_write_byte(ts->client, 0xff, 0x00 );
+	synaptics_rmi4_i2c_write_byte(ts->client, 0xff, 0x00);
 	ret = synaptics_rmi4_i2c_read_word(ts->client, F01_RMI_DATA_BASE);
-
-	if( ret < 0 ) {
+	if (ret < 0) {
 		TPDTM_DMESG("Synaptic:ret = %d\n", ret);
-        synaptics_hard_reset(ts);
+		synaptics_hard_reset(ts);
 		goto exit;
 	}
-	status = ret & 0xff;
-	inte = (ret & 0x7f00)>>8;
-	//TPD_ERR("%s status[0x%x],inte[0x%x]\n",__func__,status,inte);
-        if(status & 0x80){
+
+	status = ret;
+
+	if (status & 0x80) {
 		TPD_DEBUG("enter reset tp status,and ts->in_gesture_mode is:%d\n",ts->in_gesture_mode);
-		status_check = synaptics_init_panel(ts);
-		if (status_check < 0) {
+		ret = synaptics_init_panel(ts);
+		if (ret < 0)
 			TPD_ERR("synaptics_init_panel failed\n");
-		}
-		if ((ts->is_suspended == 1) && (ts->gesture_enable == 1)){
+
+		if (ts->is_suspended && ts->gesture_enable)
 			synaptics_enable_interrupt_for_gesture(ts, 1);
-		}
 	}
-/*
-	if(0 != status && 1 != status) {//0:no error;1: after hard reset;the two state don't need soft reset
-        TPD_ERR("%s status[0x%x],inte[0x%x]\n",__func__,status,inte);
-		int_state(ts);
-		goto END;
-	}
-*/
-	if (inte & 0x04) {
+
+	if (status & 0x400) {
 		uint8_t finger_num = int_touch();
 
 		/* All fingers up; do get base once */
@@ -2961,7 +2937,6 @@ static int tp_baseline_get(struct synaptics_ts_data *ts, bool flag)
 	if(!ts)
 		return -1;
 
-	atomic_set(&ts->is_stop,1);
 	touch_disable(ts);
 	TPD_DEBUG("%s start!\n",__func__);
 	value = kzalloc(TX_NUM*RX_NUM*2, GFP_KERNEL);
@@ -2995,7 +2970,6 @@ static int tp_baseline_get(struct synaptics_ts_data *ts, bool flag)
 	ret = synaptics_rmi4_i2c_write_byte(ts->client, 0xff, 0x0);
 	ret = i2c_smbus_write_byte_data(ts->client, F01_RMI_CMD_BASE, 0x01);//soft reset
 	mutex_unlock(&ts->mutex);
-	atomic_set(&ts->is_stop,0);
 	msleep(2);
 	touch_enable(ts);
 #ifdef ENABLE_TPEDGE_LIMIT
@@ -3995,14 +3969,12 @@ static void synaptics_suspend_resume(struct work_struct *work)
 		container_of(work, typeof(*ts), pm_work);
 
 	if (ts->is_suspended) {
-		atomic_set(&ts->is_stop, 1);
 		if (!ts->gesture_enable)
 			touch_disable(ts);
 		synaptics_ts_suspend(&ts->client->dev);
 	} else {
 		if (ts->gesture_enable)
 			synaptics_enable_interrupt_for_gesture(ts, false);
-		atomic_set(&ts->is_stop, 0);
 		touch_enable(ts);
 		synaptics_ts_resume(&ts->client->dev);
 	}
@@ -4104,10 +4076,8 @@ static int synaptics_ts_probe(struct i2c_client *client, const struct i2c_device
     msleep(100);//after power on tp need sometime from bootloader to ui mode
 	mutex_init(&ts->mutex);
 	mutex_init(&ts->mutexreport);
-    atomic_set(&ts->irq_enable,0);
 
 	ts->is_suspended = 0;
-	atomic_set(&ts->is_stop,0);
     spin_lock_init(&ts->lock);
 	/*****power_end*********/
 	if( !i2c_check_functionality(client->adapter, I2C_FUNC_I2C) ){
@@ -4365,7 +4335,6 @@ static int synaptics_ts_suspend(struct device *dev)
 
 #ifdef SUPPORT_GESTURE
 	if( ts->gesture_enable ){
-		atomic_set(&ts->is_stop,0);
 		if (mutex_trylock(&ts->mutex)){
 			touch_enable(ts);
 			synaptics_enable_interrupt_for_gesture(ts, 1);
