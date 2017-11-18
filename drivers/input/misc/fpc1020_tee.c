@@ -295,7 +295,6 @@ static DEVICE_ATTR(irq, S_IRUSR | S_IWUSR, irq_get, irq_ack);
 extern void int_touch(void);
 extern struct completion key_cm;
 extern bool virtual_key_enable;
-extern bool s1302_is_keypad_stopped(void);
 extern void s3320_disable_gestures(bool disable);
 
 bool key_home_pressed = false;
@@ -331,7 +330,7 @@ static ssize_t report_home_set(struct device *dev,
 	{
         if(virtual_key_enable){
                 key_home_pressed = true;
-        }else if (!s1302_is_keypad_stopped()) {
+        }else{
             input_report_key(fpc1020->input_dev,
                             KEY_HOME, 1);
             input_sync(fpc1020->input_dev);
