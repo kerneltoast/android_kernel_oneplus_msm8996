@@ -2728,6 +2728,7 @@ static void rcu_spawn_one_nocb_kthread(struct rcu_state *rsp, int cpu)
 	struct rcu_data *rdp_old_leader;
 	struct rcu_data *rdp_spawn = per_cpu_ptr(rsp->rda, cpu);
 	struct task_struct *t;
+	const unsigned long allowed_cpus = 0x3;
 
 	/*
 	 * If this isn't a no-CBs CPU or if it already has an rcuo kthread,
@@ -2753,9 +2754,12 @@ static void rcu_spawn_one_nocb_kthread(struct rcu_state *rsp, int cpu)
 	}
 
 	/* Spawn the kthread for this CPU and RCU flavor. */
-	t = kthread_run(rcu_nocb_kthread, rdp_spawn,
+	t = kthread_create(rcu_nocb_kthread, rdp_spawn,
 			"rcuo%c/%d", rsp->abbr, cpu);
 	BUG_ON(IS_ERR(t));
+	do_set_cpus_allowed(t, to_cpumask(&allowed_cpus));
+	t->flags |= PF_NO_SETAFFINITY;
+	wake_up_process(t);
 	ACCESS_ONCE(rdp_spawn->nocb_kthread) = t;
 }
 
