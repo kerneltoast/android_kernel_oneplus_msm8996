@@ -3983,12 +3983,12 @@ static void synaptics_suspend_resume(struct work_struct *work)
 		if (ts->gesture_enable) {
 			synaptics_enable_interrupt_for_gesture(ts, false);
 		} else {
-			touch_enable(ts);
 			if (ts->support_hw_poweroff) {
 				pinctrl_select_state(ts->pinctrl,
 					ts->pinctrl_state_active);
 				tpd_power(ts, 1);
 			}
+			touch_enable(ts);
 		}
 	}
 }
