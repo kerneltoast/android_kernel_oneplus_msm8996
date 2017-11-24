@@ -507,22 +507,28 @@ static struct device_attribute attrs_oem[] = {
 
 static void touch_enable(struct synaptics_ts_data *ts)
 {
+	bool irq_disabled;
+
 	spin_lock(&ts->lock);
-	if (ts->irq_disabled) {
-		enable_irq(ts->irq);
-		ts->irq_disabled = false;
-	}
+	irq_disabled = ts->irq_disabled;
+	ts->irq_disabled = false;
 	spin_unlock(&ts->lock);
+
+	if (irq_disabled)
+		enable_irq(ts->irq);
 }
 
 static void touch_disable(struct synaptics_ts_data *ts)
 {
+	bool irq_disabled;
+
 	spin_lock(&ts->lock);
-	if (!ts->irq_disabled) {
-		disable_irq(ts->irq);
-		ts->irq_disabled = true;
-	}
+	irq_disabled = ts->irq_disabled;
+	ts->irq_disabled = true;
 	spin_unlock(&ts->lock);
+
+	if (!irq_disabled)
+		disable_irq(ts->irq);
 }
 
 static int tpd_hw_pwron(struct synaptics_ts_data *ts)
