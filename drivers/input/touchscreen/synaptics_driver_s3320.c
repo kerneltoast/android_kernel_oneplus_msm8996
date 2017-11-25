@@ -192,7 +192,6 @@ static int button_map[3];
 static int tx_rx_num[2];
 static int16_t Rxdata[30][30];
 static int16_t delta_baseline[16][28];
-static int16_t baseline[8][16];
 static int16_t delta[8][16];
 static int TX_NUM;
 static int RX_NUM;
@@ -2929,46 +2928,24 @@ static const struct file_operations changer_ops = {
 #define SUBABS(x,y) ((x)-(y))
 static int tp_baseline_get(struct synaptics_ts_data *ts, bool flag)
 {
-	int ret = 0;
-	int x, y;
-	uint8_t *value;
-	int k = 0;
-
 	if(!ts)
 		return -1;
 
 	touch_disable(ts);
 	TPD_DEBUG("%s start!\n",__func__);
-	value = kzalloc(TX_NUM*RX_NUM*2, GFP_KERNEL);
-	memset(delta_baseline,0,sizeof(delta_baseline));
 
 	mutex_lock(&ts->mutex);
 	if (ts->gesture_enable)
 		synaptics_enable_interrupt_for_gesture(ts,false);
-	ret = synaptics_rmi4_i2c_write_byte(ts->client, 0xff, 0x1);
+	synaptics_rmi4_i2c_write_byte(ts->client, 0xff, 0x1);
 
-	ret = i2c_smbus_write_byte_data(ts->client, F54_ANALOG_DATA_BASE, 0x03);//select report type 0x03
-	ret = i2c_smbus_write_word_data(ts->client, F54_ANALOG_DATA_BASE+1, 0);//set fifo 00
-	ret = i2c_smbus_write_byte_data(ts->client, F54_ANALOG_COMMAND_BASE, 0x01);//get report
+	i2c_smbus_write_byte_data(ts->client, F54_ANALOG_DATA_BASE, 0x03);//select report type 0x03
+	i2c_smbus_write_word_data(ts->client, F54_ANALOG_DATA_BASE+1, 0);//set fifo 00
+	i2c_smbus_write_byte_data(ts->client, F54_ANALOG_COMMAND_BASE, 0x01);//get report
 	checkCMD();
 
-	ret = synaptics_rmi4_i2c_read_block(ts->client,F54_ANALOG_DATA_BASE+3,2*TX_NUM*RX_NUM,value);
-	for( x = 0; x < TX_NUM; x++ ){
-		for( y = 0; y < RX_NUM; y++ ){
-			delta_baseline[x][y] =  (int16_t)(((uint16_t)( value [k])) | ((uint16_t)( value [k+1] << 8)));
-			k = k + 2;
-
-			if (y >= 20){
-				if (flag)
-					delta[y-20][x] = SUBABS(delta_baseline[x][y],baseline[y-20][x]);
-				else
-					baseline[y-20][x] = delta_baseline[x][y];
-			}
-		}
-	}
-        //ret = i2c_smbus_write_byte_data(ts->client, F54_ANALOG_COMMAND_BASE, 0X02);
-	ret = synaptics_rmi4_i2c_write_byte(ts->client, 0xff, 0x0);
-	ret = i2c_smbus_write_byte_data(ts->client, F01_RMI_CMD_BASE, 0x01);//soft reset
+	synaptics_rmi4_i2c_write_byte(ts->client, 0xff, 0x0);
+	i2c_smbus_write_byte_data(ts->client, F01_RMI_CMD_BASE, 0x01);//soft reset
 	mutex_unlock(&ts->mutex);
 	msleep(2);
 	touch_enable(ts);
@@ -2976,7 +2953,6 @@ static int tp_baseline_get(struct synaptics_ts_data *ts, bool flag)
 	synaptics_tpedge_limitfunc();
 #endif
 	TPD_DEBUG("%s end! \n",__func__);
-	kfree(value);
 	return 0;
 }
 static void tp_baseline_get_work(struct work_struct *work)
