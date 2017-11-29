@@ -835,7 +835,7 @@ static int bq27541_set_lcd_off_status(int off)
 			ret = bq27541_read(BQ27541_REG_SOC, &soc, 0, bq27541_di);
 			if (ret) {
 				bq27541_di->lcd_off_delt_soc=0;
-				pr_err("soc error reading ret=%d,soc%d\n", ret, soc);
+				pr_err("soc error reading ret=%d\n", ret);
 			} else {
 				bq27541_di->lcd_off_delt_soc = bq27541_di->soc_pre-soc;
 				pr_debug("lcd_off_delt_soc:%d,soc=%d,soc_pre=%d\n",

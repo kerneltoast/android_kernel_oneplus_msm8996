@@ -228,12 +228,11 @@ static struct tcp_metrics_block *__tcp_get_metrics_req(struct request_sock *req,
 						       struct dst_entry *dst)
 {
 	struct tcp_metrics_block *tm;
-	struct inetpeer_addr saddr, daddr;
+	struct inetpeer_addr saddr = { .family = req->rsk_ops->family };
+	struct inetpeer_addr daddr = { .family = req->rsk_ops->family };
 	unsigned int hash;
 	struct net *net;
 
-	saddr.family = req->rsk_ops->family;
-	daddr.family = req->rsk_ops->family;
 	switch (daddr.family) {
 	case AF_INET:
 		saddr.addr.a4 = inet_rsk(req)->ir_loc_addr;
@@ -968,7 +967,7 @@ static int parse_nl_saddr(struct genl_info *info, struct inetpeer_addr *addr)
 static int tcp_metrics_nl_cmd_get(struct sk_buff *skb, struct genl_info *info)
 {
 	struct tcp_metrics_block *tm;
-	struct inetpeer_addr saddr, daddr;
+	struct inetpeer_addr saddr = {{{0}}}, daddr;
 	unsigned int hash;
 	struct sk_buff *msg;
 	struct net *net = genl_info_net(info);

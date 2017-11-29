@@ -909,7 +909,7 @@ static void vos_set_5g_channel_params(uint16_t oper_ch,
 				      struct ch_params_s *ch_params)
 {
 	eNVChannelEnabledType chan_state = NV_CHANNEL_ENABLE;
-	const struct bonded_chan *bonded_chan_ptr;
+	const struct bonded_chan *bonded_chan_ptr = NULL;
 	uint16_t center_chan;
 
 	if (CH_WIDTH_MAX <= ch_params->ch_width)

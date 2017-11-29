@@ -1017,7 +1017,7 @@ static int fwu_write_f34_v7_partition_id(unsigned char cmd)
 			partition = GUEST_SERIALIZATION_PARTITION;
 		else if (fwu->config_area == BL_CONFIG_AREA)
 			partition = GLOBAL_PARAMETERS_PARTITION;
-		else if (fwu->config_area == FLASH_CONFIG_AREA)
+		else
 			partition = FLASH_CONFIG_PARTITION;
 		break;
 	case CMD_WRITE_GUEST_CODE:
