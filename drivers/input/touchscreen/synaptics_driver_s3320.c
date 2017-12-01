@@ -1489,6 +1489,13 @@ static irqreturn_t synaptics_irq_thread_fn(int irq, void *dev_id)
 		goto exit;
 	}
 
+	if (ret & 0x80) {
+		synaptics_init_panel(ts);
+
+		if (ts->screen_off && ts->gesture_enable)
+			synaptics_enable_interrupt_for_gesture(ts, true);
+	}
+
 	if (ret & 0x400) {
 		uint8_t finger_num = int_touch();
 
