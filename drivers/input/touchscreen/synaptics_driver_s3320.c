@@ -530,95 +530,60 @@ static void touch_disable(struct synaptics_ts_data *ts)
 		disable_irq(ts->irq);
 }
 
-static int tpd_hw_pwron(struct synaptics_ts_data *ts)
+static void tpd_hw_pwron(struct synaptics_ts_data *ts)
 {
-	int rc = 0;
+	int rc;
 
-	/***enable the 2v8 power*****/
-	if (!IS_ERR(ts->vdd_2v8)) {
-		//regulator_set_optimum_mode(ts->vdd_2v8,100000);
-		rc = regulator_enable(ts->vdd_2v8);
-		if(rc){
-			dev_err(&ts->client->dev,
-					"Regulator vdd enable failed rc=%d\n", rc);
-			//return rc;
-		}
-	}
-	if( ts->v1p8_gpio > 0 ) {
-		TPD_DEBUG("synaptics:enable the v1p8_gpio\n");
+	pinctrl_select_state(ts->pinctrl, ts->pinctrl_state_active);
+
+	if (ts->v1p8_gpio > 0)
 		gpio_direction_output(ts->v1p8_gpio, 1);
-	}
-	//msleep(100);
 
-	if( ts->enable2v8_gpio > 0 ) {
-		TPD_DEBUG("synaptics:enable the enable2v8_gpio\n");
+	if (ts->enable2v8_gpio > 0)
 		gpio_direction_output(ts->enable2v8_gpio, 1);
-	}
 
-	if (!IS_ERR(ts->vcc_i2c_1v8)) {
-		//regulator_set_optimum_mode(ts->vcc_i2c_1v8,100000);
-		rc = regulator_enable( ts->vcc_i2c_1v8 );
-		if(rc) {
-			dev_err(&ts->client->dev, "Regulator vcc_i2c enable failed rc=%d\n", rc);
-			//return rc;
-		}
-	}
-	msleep(10);
-	if( ts->reset_gpio > 0 ) {
+	rc = regulator_enable(ts->vdd_2v8);
+	if (rc)
+		dev_err(&ts->client->dev, "vdd_2v8 enable failed rc=%d\n", rc);
+
+	rc = regulator_enable(ts->vcc_i2c_1v8);
+	if (rc)
+		dev_err(&ts->client->dev, "vcc_i2c_1v8 enable failed rc=%d\n", rc);
+
+	if (ts->reset_gpio > 0)
 		gpio_direction_output(ts->reset_gpio, 1);
-		msleep(20);
-        //usleep_range(10*1000, 10*1000);
-		gpio_direction_output(ts->reset_gpio, 0);
-		msleep(20);
-        //usleep_range(5*1000, 5*1000);
-		gpio_direction_output(ts->reset_gpio, 1);
-		TPD_DEBUG("synaptics:enable the reset_gpio\n");
-	}
-	return rc;
 }
 
-static int tpd_hw_pwroff(struct synaptics_ts_data *ts)
+static void tpd_hw_pwroff(struct synaptics_ts_data *ts)
 {
-	int rc = 0;
-	if( ts->reset_gpio > 0 ) {
-		TPD_DEBUG("%s set reset gpio low\n",__func__);
-		gpio_direction_output(ts->reset_gpio, 0);
-	}
+	int rc;
 
-	if (!IS_ERR(ts->vcc_i2c_1v8)) {
-		rc = regulator_disable( ts->vcc_i2c_1v8 );
-		if(rc) {
-			dev_err(&ts->client->dev, "Regulator vcc_i2c enable failed rc=%d\n", rc);
-			return rc;
-		}
-	}
-	if( ts->v1p8_gpio > 0 ) {
-		TPD_DEBUG("synaptics:disable the v1p8_gpio\n");
+	if (ts->v1p8_gpio > 0)
 		gpio_direction_output(ts->v1p8_gpio, 0);
-	}
-	if (!IS_ERR(ts->vdd_2v8)) {
-		rc = regulator_disable(ts->vdd_2v8);
-		if (rc) {
-			dev_err(&ts->client->dev, "Regulator vdd disable failed rc=%d\n", rc);
-			return rc;
-		}
-	}
-	if( ts->enable2v8_gpio > 0 ) {
-		TPD_DEBUG("synaptics:enable the enable2v8_gpio\n");
+
+	if (ts->enable2v8_gpio > 0)
 		gpio_direction_output(ts->enable2v8_gpio, 0);
-	}
-	return rc;
+
+	rc = regulator_disable(ts->vdd_2v8);
+	if (rc)
+		dev_err(&ts->client->dev, "vdd_2v8 disable failed rc=%d\n", rc);
+
+	rc = regulator_disable(ts->vcc_i2c_1v8);
+	if (rc)
+		dev_err(&ts->client->dev, "vcc_i2c_1v8 disable failed rc=%d\n", rc);
+
+	if (ts->reset_gpio > 0)
+		gpio_direction_output(ts->reset_gpio, 0);
+
+	pinctrl_select_state(ts->pinctrl, ts->pinctrl_state_suspend);
 }
 
-static int tpd_power(struct synaptics_ts_data *ts, unsigned int on)
+static void tpd_power(struct synaptics_ts_data *ts, bool on)
 {
-	int ret;
-	if(on)
-		ret = tpd_hw_pwron(ts);
+	if (on)
+		tpd_hw_pwron(ts);
 	else
-		ret = tpd_hw_pwroff(ts);
-
-	return ret;
+		tpd_hw_pwroff(ts);
 }
 
 static int synaptics_read_register_map(struct synaptics_ts_data *ts)
@@ -3949,22 +3914,16 @@ static void synaptics_suspend_resume(struct work_struct *work)
 			synaptics_enable_interrupt_for_gesture(ts, true);
 		} else {
 			touch_disable(ts);
-			if (ts->support_hw_poweroff) {
+			if (ts->support_hw_poweroff)
 				tpd_power(ts, 0);
-				pinctrl_select_state(ts->pinctrl,
-					ts->pinctrl_state_suspend);
-			}
 		}
 		ts->touch_active = false;
 	} else {
 		if (ts->gesture_enable) {
 			synaptics_enable_interrupt_for_gesture(ts, false);
 		} else {
-			if (ts->support_hw_poweroff) {
-				pinctrl_select_state(ts->pinctrl,
-					ts->pinctrl_state_active);
+			if (ts->support_hw_poweroff)
 				tpd_power(ts, 1);
-			}
 			touch_enable(ts);
 		}
 	}
@@ -4039,11 +3998,9 @@ static int synaptics_ts_probe(struct i2c_client *client, const struct i2c_device
 
 	TPD_ERR("%s  is called\n",__func__);
 
-	ts = kzalloc(sizeof(struct synaptics_ts_data), GFP_KERNEL);
-	if( ts == NULL ) {
-		ret = -ENOMEM;
-		goto err_alloc_data_failed;
-	}
+	ts = kzalloc(sizeof(*ts), GFP_KERNEL);
+	if (!ts)
+		return -ENOMEM;
 
 	ts->client = client;
 	i2c_set_clientdata(client, ts);
@@ -4053,17 +4010,17 @@ static int synaptics_ts_probe(struct i2c_client *client, const struct i2c_device
 	ts_g = ts;
 	get_tp_base = 0;
 
-	synaptics_parse_dts(&client->dev, ts);
+	ret = synaptics_parse_dts(&client->dev, ts);
+	if (ret < 0)
+		goto err_alloc_data_failed;
 
 	/***power_init*****/
 	ret = synaptics_dsx_pinctrl_init(ts);
 	if (ret < 0)
 		goto err_alloc_data_failed;
-        else
-		pinctrl_select_state(ts->pinctrl, ts->pinctrl_state_active);
-	ret = tpd_power(ts, 1);
-	if( ret < 0 )
-		TPD_ERR("regulator_enable is called\n");
+
+	tpd_power(ts, 1);
+
     msleep(100);//after power on tp need sometime from bootloader to ui mode
 	mutex_init(&ts->mutex);
 	mutex_init(&ts->mutexreport);
@@ -4264,8 +4221,6 @@ err_check_functionality_failed:
 err_alloc_data_failed:
 	tpd_i2c_driver.driver.pm=NULL;
 	kfree(ts);
-	ts = NULL;
-	ts_g = NULL;
 	TPD_ERR("synaptics_ts_probe: not normal end\n");
 	return ret;
 }
