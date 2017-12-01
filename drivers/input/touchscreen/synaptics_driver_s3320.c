@@ -887,16 +887,6 @@ static int synaptics_enable_interrupt(struct synaptics_ts_data *ts, int enable)
 	return 0;
 }
 
-static void delay_qt_ms(unsigned long  w_ms)
-{
-	unsigned long i;
-	unsigned long j;
-	for(i = 0; i < w_ms; i++) {
-		for (j = 0; j < 1000; j++) {
-			udelay(1);
-		}
-	}
-}
 /*
 static void int_state(struct synaptics_ts_data *ts)
 {
@@ -906,8 +896,8 @@ static void int_state(struct synaptics_ts_data *ts)
 		TPD_ERR("%s:error cannot reset touch panel!\n",__func__);
 		return;
 	}
-	//delay_qt_ms(170);
-	delay_qt_ms(100);
+	//msleep(170);
+	msleep(100);
 #ifdef SUPPORT_GLOVES_MODE
 	synaptics_glove_mode_enable(ts);
 #endif
@@ -1948,7 +1938,7 @@ static void checkCMD(void)
 	int flag_err = 0;
 	struct synaptics_ts_data *ts = ts_g;
 	do {
-		delay_qt_ms(10); //wait 10ms
+		msleep(10); //wait 10ms
 		ret = synaptics_rmi4_i2c_read_byte(ts->client, F54_ANALOG_COMMAND_BASE);
 		flag_err++;
 	}while( (ret > 0x00) && (flag_err < 30) );
@@ -2021,7 +2011,7 @@ static ssize_t tp_baseline_show(struct device_driver *ddri, char *buf)
 	}
 	TPD_DEBUG("\nread all is oK\n");
 	ret = i2c_smbus_write_byte_data(ts->client, F54_ANALOG_COMMAND_BASE, 0X02);
-	delay_qt_ms(60);
+	msleep(60);
 
 #ifdef SUPPORT_GLOVES_MODE
 	synaptics_glove_mode_enable(ts);
@@ -2074,7 +2064,7 @@ static ssize_t tp_rawdata_show(struct device_driver *ddri, char *buf)
 		}
 	}
 	ret = i2c_smbus_write_byte_data(ts->client,F54_ANALOG_COMMAND_BASE,0X02);
-	delay_qt_ms(60);
+	msleep(60);
 	synaptics_enable_interrupt(ts, 1);
 	mutex_unlock(&ts->mutex);
 	touch_enable(ts);
@@ -2306,7 +2296,7 @@ END:
 	}
 	//release_firmware(fw);
 	ret = i2c_smbus_write_byte_data(ts->client, F54_ANALOG_COMMAND_BASE, 0X02);
-	delay_qt_ms(60);
+	msleep(60);
 	ret = i2c_smbus_write_byte_data(ts->client, 0xff, 0x00);
 	ret = i2c_smbus_write_byte_data(ts->client, F01_RMI_CMD00, 0x01);
 	msleep(150);
@@ -2402,7 +2392,7 @@ static ssize_t tp_baseline_show_with_cbc(struct device_driver *ddri, char *buf)
 	}
 
 	ret = synaptics_rmi4_i2c_write_byte(ts->client,F54_ANALOG_COMMAND_BASE,0X02);
-	delay_qt_ms(60);
+	msleep(60);
 	synaptics_enable_interrupt(ts,1);
 	mutex_unlock(&ts->mutex);
 	touch_enable(ts);
@@ -3671,7 +3661,7 @@ static int synapitcs_ts_update(struct i2c_client *client, const uint8_t *data, u
 		synaptics_rmi4_i2c_write_byte(client,SynaF01CommandBase,0x01);
 	}
 	//step2 wait ATTN
-	//delay_qt_ms(1000);
+	//msleep(1000);
 	mdelay(1500);
 	synaptics_read_register_map(ts);
 	//FW flash check!
