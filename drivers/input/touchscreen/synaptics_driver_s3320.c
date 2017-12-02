@@ -455,7 +455,6 @@ struct synaptics_ts_data {
 	struct notifier_block fb_notif;
 #endif
 	/******gesture*******/
-	bool gestures_disabled;
 	int gesture_enable;
 	int in_gesture_mode;
 	int glove_enable;
@@ -1079,14 +1078,6 @@ static void synaptics_get_coordinate_point(struct synaptics_ts_data *ts)
 		(coordinate_buf[24] & 0x20) ? 0 : 2; // 1--clockwise, 0--anticlockwise, not circle, report 2
 }
 
-void s3320_disable_gestures(bool disable)
-{
-	struct synaptics_ts_data *ts = ts_g;
-
-	if (ts)
-		ts->gestures_disabled = disable;
-}
-
 bool s3320_touch_active(void)
 {
 	struct synaptics_ts_data *ts = ts_g;
@@ -1230,7 +1221,7 @@ Left2RightSwip:%d Right2LeftSwip:%d Up2DownSwip:%d Down2UpSwip:%d\n",
 		|| (gesture == Right2LeftSwip && left_swipe_enable) || (gesture == Up2DownSwip && down_swipe_enable)
 		|| (gesture == Down2UpSwip && up_swipe_enable)) {
 		gesture_upload = gesture;
-		if (!ts->gestures_disabled || !q6voice_voice_call_active()) {
+		if (!q6voice_voice_call_active()) {
 			input_report_key(ts->input_dev, keyCode, 1);
 			input_sync(ts->input_dev);
 			input_report_key(ts->input_dev, keyCode, 0);
