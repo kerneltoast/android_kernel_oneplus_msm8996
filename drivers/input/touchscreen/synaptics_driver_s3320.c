@@ -214,8 +214,6 @@ static int sleep_enable;
 #endif
 
 static struct synaptics_ts_data *ts_g = NULL;
-static struct workqueue_struct *synaptics_wq = NULL;
-static struct workqueue_struct *get_base_report = NULL;
 static struct proc_dir_entry *prEntry_tp = NULL;
 
 
@@ -365,42 +363,8 @@ static const struct dev_pm_ops synaptic_pm_ops = {
 #endif
 };
 
-static int probe_ret;
-struct synaptics_optimize_data{
-	struct delayed_work work;
-	struct workqueue_struct *workqueue;
-	struct i2c_client *client;
-	const struct i2c_device_id *dev_id;
-};
-static struct synaptics_optimize_data optimize_data;
-static void synaptics_ts_probe_func(struct work_struct *w)
-{
-	struct i2c_client *client_optimize = optimize_data.client;
-	const struct i2c_device_id *dev_id = optimize_data.dev_id;
-	TPD_ERR("after on cpu [%d]\n",smp_processor_id());
-	probe_ret = synaptics_ts_probe(client_optimize,dev_id);
-}
-
-static int oem_synaptics_ts_probe(struct i2c_client *client, const struct i2c_device_id *id)
-{
-	int i;
-	optimize_data.client = client;
-	optimize_data.dev_id = id;
-	optimize_data.workqueue = create_workqueue("tpd_probe_optimize");
-	INIT_DELAYED_WORK(&(optimize_data.work), synaptics_ts_probe_func);
-	TPD_ERR("before on cpu [%d]\n",smp_processor_id());
-
-	for (i = 0; i < NR_CPUS; i++){
-         TPD_ERR("check CPU[%d] is [%s]\n",i,cpu_is_offline(i)?"offline":"online");
-		 if (cpu_online(i) && (i != smp_processor_id()))
-            break;
-    }
-    queue_delayed_work_on(i != NR_CPUS?i:0,optimize_data.workqueue,&(optimize_data.work),msecs_to_jiffies(300));
-
-	return probe_ret;
-}
 static struct i2c_driver tpd_i2c_driver = {
-	.probe		= oem_synaptics_ts_probe,
+	.probe		= synaptics_ts_probe,
 	.remove		= synaptics_ts_remove,
 	.id_table	= synaptics_ts_id,
 	.driver = {
@@ -2882,9 +2846,9 @@ static ssize_t touch_press_status_write(struct file *file, const char __user *bu
 	}
 	else if(ret == 1) {
 		if (0 == ts->gesture_enable)
-			queue_delayed_work(get_base_report, &ts->base_work,msecs_to_jiffies(120));
+			schedule_delayed_work(&ts->base_work, msecs_to_jiffies(120));
 		else
-			queue_delayed_work(get_base_report, &ts->base_work,msecs_to_jiffies(1));
+			schedule_delayed_work(&ts->base_work, msecs_to_jiffies(1));
 	}
 	return count;
 }
@@ -3968,17 +3932,6 @@ static int synaptics_ts_probe(struct i2c_client *client, const struct i2c_device
 	strcpy(ts->test_limit_name,"tp/14049/14049_Limit_jdi.img");
 	TPD_DEBUG("0synatpitcs_fw: fw_name = %s,ts->manu_name:%s \n",ts->fw_name,ts->manu_name);
 
-	synaptics_wq = create_singlethread_workqueue("synaptics_wq");
-	if( !synaptics_wq ){
-		ret = -ENOMEM;
-		goto exit_createworkqueue_failed;
-	}
-
-	get_base_report = create_singlethread_workqueue("get_base_report");
-	if( !get_base_report ){
-		ret = -ENOMEM;
-		goto exit_createworkqueue_failed;
-	}
 	INIT_DELAYED_WORK(&ts->base_work,tp_baseline_get_work);
 	INIT_WORK(&ts->base_work_intr, tp_baseline_get_in_intr);
 
@@ -4106,12 +4059,6 @@ static int synaptics_ts_probe(struct i2c_client *client, const struct i2c_device
 
 exit_init_failed:
 	free_irq(client->irq,ts);
-exit_createworkqueue_failed:
-	destroy_workqueue(synaptics_wq);
-	synaptics_wq = NULL;
-	destroy_workqueue(get_base_report);
-	get_base_report = NULL;
-
 err_check_functionality_failed:
 	tpd_power(ts, 0);
 err_alloc_data_failed:
@@ -4234,29 +4181,18 @@ static int fb_notifier_callback(struct notifier_block *self, unsigned long event
 }
 #endif
 
+static struct delayed_work init_work;
+
+static void tpd_init_worker(struct work_struct *work)
+{
+	if (i2c_add_driver(&tpd_i2c_driver))
+		TPD_ERR("unable to add i2c driver.\n");
+}
+
 static int __init tpd_driver_init(void)
 {
-	TPD_ERR("%s enter\n", __func__);
-	if( i2c_add_driver(&tpd_i2c_driver)!= 0 ){
-		TPD_ERR("unable to add i2c driver.\n");
-		return -1;
-	}
+	INIT_DELAYED_WORK(&init_work, tpd_init_worker);
+	schedule_delayed_work(&init_work, msecs_to_jiffies(1000));
 	return 0;
 }
-
-/* should never be called */
-static void __exit tpd_driver_exit(void)
-{
-	i2c_del_driver(&tpd_i2c_driver);
-	if(synaptics_wq ){
-		destroy_workqueue(synaptics_wq);
-		synaptics_wq = NULL;
-	}
-	return;
-}
-
-module_init(tpd_driver_init);
-module_exit(tpd_driver_exit);
-
-MODULE_DESCRIPTION("Synaptics S3203 Touchscreen Driver");
-MODULE_LICENSE("GPL");
+device_initcall(tpd_driver_init);
