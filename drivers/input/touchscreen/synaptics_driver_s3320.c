@@ -1253,6 +1253,8 @@ static ssize_t type##_write_func(struct file *file, const char __user *user_buf,
 	int ret; \
 	char enable; \
 	struct synaptics_ts_data *ts = ts_g; \
+	if (ts->screen_off) \
+		return count; \
 	ret = copy_from_user(&enable, user_buf, sizeof(enable)); \
 	if (ret) \
 		return ret; \
@@ -2345,22 +2347,24 @@ static void synaptics_suspend_resume(struct work_struct *work)
 
 	mutex_lock(&ts->mutex);
 	if (ts->screen_off) {
+		touch_disable(ts);
+		ts->touch_active = false;
 		if (ts->gesture_enable) {
 			synaptics_enable_interrupt_for_gesture(ts, true);
+			touch_enable(ts);
 		} else {
-			touch_disable(ts);
 			if (ts->support_hw_poweroff)
 				tpd_power(ts, 0);
 		}
-		ts->touch_active = false;
 	} else {
 		if (ts->gesture_enable) {
+			touch_disable(ts);
 			synaptics_enable_interrupt_for_gesture(ts, false);
 		} else {
 			if (ts->support_hw_poweroff)
 				tpd_power(ts, 1);
-			touch_enable(ts);
 		}
+		touch_enable(ts);
 	}
 	mutex_unlock(&ts->mutex);
 }
