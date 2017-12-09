@@ -2347,8 +2347,17 @@ static void synaptics_suspend_resume(struct work_struct *work)
 
 	mutex_lock(&ts->mutex);
 	if (ts->screen_off) {
+		int i;
+
 		touch_disable(ts);
 		ts->touch_active = false;
+
+		for (i = 0; i < 10; i++) {
+			input_mt_slot(ts->input_dev, i);
+			input_mt_report_slot_state(ts->input_dev, MT_TOOL_FINGER, 0);
+		}
+		input_sync(ts->input_dev);
+
 		if (ts->gesture_enable) {
 			synaptics_enable_interrupt_for_gesture(ts, true);
 			touch_enable(ts);
