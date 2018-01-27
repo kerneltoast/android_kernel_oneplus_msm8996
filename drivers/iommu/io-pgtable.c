@@ -53,7 +53,9 @@ io_pgtable_init_table[IO_PGTABLE_NUM_FMTS] =
 #endif
 };
 
+#ifdef CONFIG_DEBUG_FS
 static struct dentry *io_pgtable_top;
+#endif
 
 struct io_pgtable_ops *alloc_io_pgtable_ops(enum io_pgtable_fmt fmt,
 					    struct io_pgtable_cfg *cfg,
@@ -124,6 +126,7 @@ void io_pgtable_free_pages_exact(struct io_pgtable_cfg *cfg, void *cookie,
 	atomic_sub(1 << get_order(size), &pages_allocated);
 }
 
+#ifdef CONFIG_DEBUG_FS
 static int io_pgtable_init(void)
 {
 	io_pgtable_top = debugfs_create_dir("io-pgtable", iommu_debugfs_top);
@@ -147,3 +150,4 @@ static void io_pgtable_exit(void)
 
 module_init(io_pgtable_init);
 module_exit(io_pgtable_exit);
+#endif
