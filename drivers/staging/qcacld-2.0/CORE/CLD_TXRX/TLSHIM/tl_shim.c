@@ -597,10 +597,10 @@ static int tlshim_mgmt_rx_process(void *context, u_int8_t *data,
 	}
 
 	if (hdr->buf_len < sizeof(struct ieee80211_frame) ||
-		hdr->buf_len > data_len) {
+	   (!saved_beacon && hdr->buf_len > data_len)) {
 		adf_os_spin_unlock_bh(&tl_shim->mgmt_lock);
-		TLSHIM_LOGE("Invalid rx mgmt packet, data_len %u, hdr->buf_len %u",
-				data_len, hdr->buf_len);
+		TLSHIM_LOGE("Invalid rx mgmt packet, saved_beacon %d, data_len %u, hdr->buf_len %u",
+				saved_beacon, data_len, hdr->buf_len);
 		return 0;
 	}
 
@@ -641,6 +641,16 @@ static int tlshim_mgmt_rx_process(void *context, u_int8_t *data,
 	rx_pkt->pkt_meta.mpdu_len = hdr->buf_len;
 	rx_pkt->pkt_meta.mpdu_data_len = hdr->buf_len -
 					 rx_pkt->pkt_meta.mpdu_hdr_len;
+
+	/*
+	 * If the mpdu_data_len is greater than Max (2k), drop the frame
+	 */
+	if (rx_pkt->pkt_meta.mpdu_data_len > WMA_MAX_MGMT_MPDU_LEN) {
+		TLSHIM_LOGE("Data Len %d greater than max, dropping frame",
+			 rx_pkt->pkt_meta.mpdu_data_len);
+		vos_mem_free(rx_pkt);
+		return 0;
+	}
 
     /*
      * saved_beacon means this beacon is a duplicate of one
@@ -2114,7 +2124,7 @@ void *tl_shim_get_vdev_by_addr(void *vos_context, uint8_t *mac_addr)
 	uint8_t peer_id;
 
 	if (vos_context == NULL || mac_addr == NULL) {
-		TLSHIM_LOGE("Invalid argument %p, %p", vos_context, mac_addr);
+		TLSHIM_LOGE("Invalid argument %pK, %pK", vos_context, mac_addr);
 		return NULL;
 	}
 

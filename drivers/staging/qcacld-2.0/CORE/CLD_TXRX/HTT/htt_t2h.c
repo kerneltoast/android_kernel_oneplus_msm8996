@@ -172,7 +172,7 @@ htt_t2h_lp_msg_handler(void *context, adf_nbuf_t htt_t2h_msg )
         {
             u_int16_t peer_id;
             u_int8_t tid;
-            int seq_num_start, seq_num_end;
+            u_int16_t seq_num_start, seq_num_end;
             enum htt_rx_flush_action action;
 
             peer_id = HTT_RX_FLUSH_PEER_ID_GET(*msg_word);
@@ -192,7 +192,7 @@ htt_t2h_lp_msg_handler(void *context, adf_nbuf_t htt_t2h_msg )
         }
     case  HTT_T2H_MSG_TYPE_RX_OFFLOAD_DELIVER_IND:
         {
-            int msdu_cnt;
+            u_int16_t msdu_cnt;
             msdu_cnt = HTT_RX_OFFLOAD_DELIVER_IND_MSDU_CNT_GET(*msg_word);
             ol_rx_offload_deliver_ind_handler(
                 pdev->txrx_pdev,
@@ -297,6 +297,14 @@ htt_t2h_lp_msg_handler(void *context, adf_nbuf_t htt_t2h_msg )
             peer_mac_addr = htt_t2h_mac_addr_deswizzle(
                 (u_int8_t *) (msg_word+1), &mac_addr_deswizzle_buf[0]);
 
+            if (peer_id > ol_cfg_max_peer_id(pdev->ctrl_pdev)) {
+                adf_os_print("%s: HTT_T2H_MSG_TYPE_PEER_MAP,"
+                            "invalid peer_id, %u\n",
+                            __FUNCTION__,
+                            peer_id);
+                break;
+            }
+
             ol_rx_peer_map_handler(
                 pdev->txrx_pdev, peer_id, vdev_id, peer_mac_addr, 1/*can tx*/);
             break;
@@ -305,6 +313,14 @@ htt_t2h_lp_msg_handler(void *context, adf_nbuf_t htt_t2h_msg )
         {
             u_int16_t peer_id;
             peer_id = HTT_RX_PEER_UNMAP_PEER_ID_GET(*msg_word);
+
+            if (peer_id > ol_cfg_max_peer_id(pdev->ctrl_pdev)) {
+                adf_os_print("%s: HTT_T2H_MSG_TYPE_PEER_UNMAP,"
+                            "invalid peer_id, %u\n",
+                            __FUNCTION__,
+                            peer_id);
+                break;
+            }
 
             ol_rx_peer_unmap_handler(pdev->txrx_pdev, peer_id);
             break;
@@ -630,10 +646,26 @@ if (adf_os_unlikely(pdev->rx_ring.rx_reset)) {
         {
             int num_msdus;
             enum htt_tx_status status;
+            int msg_len = adf_nbuf_len(htt_t2h_msg);
 
             /* status - no enum translation needed */
             status = HTT_TX_COMPL_IND_STATUS_GET(*msg_word);
             num_msdus = HTT_TX_COMPL_IND_NUM_GET(*msg_word);
+
+            /*
+             * each desc id will occupy 2 bytes.
+             * the 4 is for htt msg header
+             */
+            if ((num_msdus * HTT_TX_COMPL_BYTES_PER_MSDU_ID +
+                HTT_TX_COMPL_HEAD_SZ) > msg_len) {
+                adf_os_print("%s: num_msdus(%d) is invalid,"
+                            "adf_nbuf_len = %d\n",
+                            __FUNCTION__,
+                            num_msdus,
+                            msg_len);
+                break;
+            }
+
             if (num_msdus & 0x1) {
                 struct htt_tx_compl_ind_base *compl = (void *)msg_word;
 
@@ -675,7 +707,7 @@ if (adf_os_unlikely(pdev->rx_ring.rx_reset)) {
         {
             u_int16_t peer_id;
             u_int8_t tid, pn_ie_cnt, *pn_ie=NULL;
-            int seq_num_start, seq_num_end;
+            u_int16_t seq_num_start, seq_num_end;
 
             /*First dword */
             peer_id = HTT_RX_PN_IND_PEER_ID_GET(*msg_word);
@@ -702,8 +734,23 @@ if (adf_os_unlikely(pdev->rx_ring.rx_reset)) {
     case HTT_T2H_MSG_TYPE_TX_INSPECT_IND:
         {
             int num_msdus;
+            int msg_len = adf_nbuf_len(htt_t2h_msg);
 
             num_msdus = HTT_TX_COMPL_IND_NUM_GET(*msg_word);
+            /*
+             * each desc id will occupy 2 bytes.
+             * the 4 is for htt msg header
+             */
+            if ((num_msdus * HTT_TX_COMPL_BYTES_PER_MSDU_ID +
+                HTT_TX_COMPL_HEAD_SZ) > msg_len) {
+                adf_os_print("%s: num_msdus(%d) is invalid,"
+                            "adf_nbuf_len = %d,inspect\n",
+                            __FUNCTION__,
+                            num_msdus,
+                            msg_len);
+                break;
+            }
+
             if (num_msdus & 0x1) {
                 struct htt_tx_compl_ind_base *compl = (void *)msg_word;
 
@@ -1077,8 +1124,8 @@ void
 htt_rx_frag_ind_flush_seq_num_range(
     htt_pdev_handle pdev,
     adf_nbuf_t rx_frag_ind_msg,
-    int *seq_num_start,
-    int *seq_num_end)
+    u_int16_t *seq_num_start,
+    u_int16_t *seq_num_end)
 {
     u_int32_t *msg_word;
 

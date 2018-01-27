@@ -509,7 +509,7 @@ void wlan_hdd_remain_on_chan_timeout(void *data)
     hdd_cfg80211_state_t *cfgState;
 
     if ((NULL == pAdapter) || (WLAN_HDD_ADAPTER_MAGIC != pAdapter->magic)) {
-        hddLog(LOGE, FL("pAdapter is invalid %p !!!"), pAdapter);
+        hddLog(LOGE, FL("pAdapter is invalid %pK !!!"), pAdapter);
         return;
     }
 
@@ -938,7 +938,7 @@ static int wlan_hdd_request_remain_on_channel( struct wiphy *wiphy,
                 wlan_hdd_roc_request_enqueue(pAdapter, pRemainChanCtx);
                 schedule_delayed_work(&pHddCtx->rocReqWork,
                 msecs_to_jiffies(pHddCtx->cfg_ini->p2p_listen_defer_interval));
-                hddLog(LOG1, "Defer interval is %hu, pAdapter %p",
+                hddLog(LOG1, "Defer interval is %hu, pAdapter %pK",
                        pHddCtx->cfg_ini->p2p_listen_defer_interval, pAdapter);
                 return 0;
             }

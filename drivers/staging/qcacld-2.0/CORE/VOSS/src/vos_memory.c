@@ -626,7 +626,7 @@ v_VOID_t vos_mem_copy( v_VOID_t *pDst, const v_VOID_t *pSrc, v_SIZE_t numBytes )
    if ((pDst == NULL) || (pSrc==NULL))
    {
       VOS_TRACE(VOS_MODULE_ID_VOSS, VOS_TRACE_LEVEL_ERROR,
-                "%s called with NULL parameter, source:%p destination:%p",
+                "%s called with NULL parameter, source:%pK destination:%pK",
                 __func__, pSrc, pDst);
       VOS_ASSERT(0);
       return;
@@ -645,7 +645,7 @@ v_VOID_t vos_mem_move( v_VOID_t *pDst, const v_VOID_t *pSrc, v_SIZE_t numBytes )
    if ((pDst == NULL) || (pSrc==NULL))
    {
       VOS_TRACE(VOS_MODULE_ID_VOSS, VOS_TRACE_LEVEL_ERROR,
-                "%s called with NULL parameter, source:%p destination:%p",
+                "%s called with NULL parameter, source:%pK destination:%pK",
                 __func__, pSrc, pDst);
       VOS_ASSERT(0);
       return;
@@ -664,7 +664,7 @@ v_BOOL_t vos_mem_compare(const v_VOID_t *pMemory1, const v_VOID_t *pMemory2, v_U
    if ((pMemory1 == NULL) || (pMemory2==NULL))
    {
       VOS_TRACE(VOS_MODULE_ID_VOSS, VOS_TRACE_LEVEL_ERROR,
-                "%s called with NULL parameter, p1:%p p2:%p",
+                "%s called with NULL parameter, p1:%pK p2:%pK",
                 __func__, pMemory1, pMemory2);
       VOS_ASSERT(0);
       return VOS_FALSE;

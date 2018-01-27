@@ -1284,6 +1284,13 @@ htt_rx_frag_pop_hl(
 }
 
 int
+htt_rx_offload_msdu_cnt_ll(
+    htt_pdev_handle pdev)
+{
+    return htt_rx_ring_elems(pdev);
+}
+
+int
 htt_rx_offload_msdu_pop_ll(
     htt_pdev_handle pdev,
     adf_nbuf_t offload_deliver_msg,
@@ -1744,6 +1751,14 @@ htt_rx_mon_amsdu_rx_in_order_pop_ll(htt_pdev_handle pdev, adf_nbuf_t rx_ind_msg,
 
 	return 1;
 }
+
+int
+htt_rx_offload_msdu_cnt_hl(
+    htt_pdev_handle pdev)
+{
+    return 1;
+}
+
 /* Return values: 1 - success, 0 - failure */
 int
 htt_rx_offload_msdu_pop_hl(
@@ -2407,6 +2422,10 @@ int (*htt_rx_frag_pop)(
     adf_nbuf_t *tail_msdu);
 
 int
+(*htt_rx_offload_msdu_cnt)(
+    htt_pdev_handle pdev);
+
+int
 (*htt_rx_offload_msdu_pop)(
     htt_pdev_handle pdev,
     adf_nbuf_t offload_deliver_msg,
@@ -2914,7 +2933,7 @@ htt_rx_hash_list_insert(struct htt_pdev_t *pdev, u_int32_t paddr,
     htt_list_add_tail(&pdev->rx_ring.hash_table[i]->listhead,
                        &hash_element->listnode);
 
-    RX_HASH_LOG(adf_os_print("rx hash: %s: paddr 0x%x netbuf %p bucket %d\n",
+    RX_HASH_LOG(adf_os_print("rx hash: %s: paddr 0x%x netbuf %pK bucket %d\n",
                              __FUNCTION__, paddr, netbuf,(int)i));
 
     HTT_RX_HASH_COUNT_INCR(pdev->rx_ring.hash_table[i]);
@@ -2971,7 +2990,7 @@ htt_rx_hash_list_lookup(struct htt_pdev_t *pdev, u_int32_t paddr)
         }
     }
 
-    RX_HASH_LOG(adf_os_print("rx hash: %s: paddr 0x%x, netbuf %p, bucket %d\n",
+    RX_HASH_LOG(adf_os_print("rx hash: %s: paddr 0x%x, netbuf %pK, bucket %d\n",
                               __FUNCTION__, paddr, netbuf,(int)i));
     HTT_RX_HASH_COUNT_PRINT(pdev->rx_ring.hash_table[i]);
 
@@ -3109,7 +3128,7 @@ htt_rx_hash_dump_table(struct htt_pdev_t *pdev)
             hash_entry =
                  (struct htt_rx_hash_entry *)((char *)list_iter -
                                                pdev->rx_ring.listnode_offset);
-            adf_os_print("hash_table[%d]: netbuf %p paddr 0x%x\n",
+            adf_os_print("hash_table[%d]: netbuf %pK paddr 0x%x\n",
                           i, hash_entry->netbuf, hash_entry->paddr);
         }
     }
@@ -3234,6 +3253,7 @@ htt_rx_attach(struct htt_pdev_t *pdev)
         if (VOS_MONITOR_MODE == vos_get_conparam())
             htt_rx_amsdu_pop = htt_rx_mon_amsdu_rx_in_order_pop_ll;
 
+        htt_rx_offload_msdu_cnt = htt_rx_offload_msdu_cnt_ll;
         htt_rx_offload_msdu_pop = htt_rx_offload_msdu_pop_ll;
         htt_rx_mpdu_desc_retry = htt_rx_mpdu_desc_retry_ll;
         htt_rx_mpdu_desc_seq_num = htt_rx_mpdu_desc_seq_num_ll;
@@ -3258,6 +3278,7 @@ htt_rx_attach(struct htt_pdev_t *pdev)
         pdev->rx_ring.base_paddr = 0;
         htt_rx_amsdu_pop = htt_rx_amsdu_pop_hl;
         htt_rx_frag_pop = htt_rx_frag_pop_hl;
+        htt_rx_offload_msdu_cnt = htt_rx_offload_msdu_cnt_hl;
         htt_rx_offload_msdu_pop = htt_rx_offload_msdu_pop_hl;
         htt_rx_mpdu_desc_list_next = htt_rx_mpdu_desc_list_next_hl;
         htt_rx_mpdu_desc_retry = htt_rx_mpdu_desc_retry_hl;

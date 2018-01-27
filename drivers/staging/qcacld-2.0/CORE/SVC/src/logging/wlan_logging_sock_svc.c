@@ -466,7 +466,7 @@ static int pkt_stats_fill_headers(struct sk_buff *skb)
 				vos_pkt_size);
 
 	if (unlikely(skb_headroom(skb) < vos_pkt_size)) {
-		pr_err("VPKT [%d]: Insufficient headroom, head[%p], data[%p], req[%zu]",
+		pr_err("VPKT [%d]: Insufficient headroom, head[%pK], data[%pK], req[%zu]",
 			__LINE__, skb->head, skb->data, sizeof(msg_header));
 		return -EIO;
 	}
@@ -475,7 +475,7 @@ static int pkt_stats_fill_headers(struct sk_buff *skb)
 			&vos_pktlog, vos_pkt_size);
 
 	if (unlikely(skb_headroom(skb) < sizeof(int))) {
-		pr_err("VPKT [%d]: Insufficient headroom, head[%p], data[%p], req[%zu]",
+		pr_err("VPKT [%d]: Insufficient headroom, head[%pK], data[%pK], req[%zu]",
 			__LINE__, skb->head, skb->data, sizeof(int));
 		return -EIO;
 	}
@@ -496,7 +496,7 @@ static int pkt_stats_fill_headers(struct sk_buff *skb)
 	msg_header.wmsg.length = cpu_to_be16(skb->len);
 
 	if (unlikely(skb_headroom(skb) < sizeof(msg_header))) {
-		pr_err("VPKT [%d]: Insufficient headroom, head[%p], data[%p], req[%zu]",
+		pr_err("VPKT [%d]: Insufficient headroom, head[%pK], data[%pK], req[%zu]",
 			__LINE__, skb->head, skb->data, sizeof(msg_header));
 		return -EIO;
 	}

@@ -3516,10 +3516,11 @@ limSendAuthMgmtFrame(tpAniSirGlobal pMac,
                      * transaction number, status code and 128 bytes
                      * for challenge text.
                      */
-
+                    bodyLen = SIR_MAC_AUTH_FRAME_INFO_LEN +
+                              SIR_MAC_SAP_AUTH_CHALLENGE_LENGTH +
+                              SIR_MAC_CHALLENGE_ID_LEN;
                     frameLen = sizeof(tSirMacMgmtHdr) +
-                               sizeof(tSirMacAuthFrame);
-                    bodyLen  = sizeof(tSirMacAuthFrameBody);
+                               bodyLen;
                 }
 
                 break;
@@ -3789,7 +3790,7 @@ eHalStatus limSendDeauthCnf(tpAniSirGlobal pMac)
 #endif
                  (psessionEntry->is11Rconnection ))) {
             PELOGE(limLog(pMac, LOGE,
-                   FL("FT Preauth Session (%p,%d) Cleanup"
+                   FL("FT Preauth Session (%pK,%d) Cleanup"
                       " Deauth reason %d Trigger = %d"),
                    psessionEntry, psessionEntry->peSessionId,
                    pMlmDeauthReq->reasonCode,
@@ -3889,7 +3890,7 @@ eHalStatus limSendDisassocCnf(tpAniSirGlobal pMac)
                  eSIR_MAC_DISASSOC_DUE_TO_FTHANDOFF_REASON))
         {
             PELOGE(limLog(pMac, LOG1,
-                   FL("FT Preauth Session (%p,%d) Clean up"
+                   FL("FT Preauth Session (%pK,%d) Clean up"
 
 #ifdef FEATURE_WLAN_ESE
                    " isESE %d"

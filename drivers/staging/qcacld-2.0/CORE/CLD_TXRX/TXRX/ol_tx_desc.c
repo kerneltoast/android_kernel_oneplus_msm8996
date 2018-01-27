@@ -75,7 +75,7 @@ ol_tx_desc_alloc(struct ol_txrx_pdev_t *pdev, struct ol_txrx_vdev_t *vdev)
 #endif
            ) {
             TXRX_PRINT(TXRX_PRINT_LEVEL_ERR,
-                       "%s Potential tx_desc corruption pkt_type:0x%x pdev:0x%p",
+                       "%s Potential tx_desc corruption pkt_type:0x%x pdev:0x%pK",
                          __func__, tx_desc->pkt_type, pdev);
 #ifdef QCA_COMPUTE_TX_DELAY
             TXRX_PRINT(TXRX_PRINT_LEVEL_ERR, "%s Timestamp:0x%x\n",

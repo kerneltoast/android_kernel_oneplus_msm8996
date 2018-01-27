@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2018 The Linux Foundation. All rights reserved.
  *
  * Previously licensed under the ISC license by Qualcomm Atheros, Inc.
  *
@@ -759,7 +759,7 @@ void hdd_hostapd_inactivity_timer_cb(v_PVOID_t usrDataForCallback)
         if ((NULL == pHostapdAdapter) ||
             (WLAN_HDD_ADAPTER_MAGIC != pHostapdAdapter->magic))
         {
-            hddLog(LOGE, FL("invalid adapter: %p"), pHostapdAdapter);
+            hddLog(LOGE, FL("invalid adapter: %pK"), pHostapdAdapter);
             return;
         }
         pHddApCtx = WLAN_HDD_GET_AP_CTX_PTR(pHostapdAdapter);
@@ -1528,7 +1528,7 @@ VOS_STATUS hdd_hostapd_SAPEventCB( tpSap_Event pSapEvent, v_PVOID_t usrDataForCa
             }
 
             VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_INFO_MED,
-                      "The value of dfs_cac_block_tx[%d] for ApCtx[%p]",
+                      "The value of dfs_cac_block_tx[%d] for ApCtx[%pK]",
                       pHddApCtx->dfs_cac_block_tx, pHddApCtx);
 
             if ((NV_CHANNEL_DFS ==
@@ -2534,40 +2534,52 @@ static __iw_softap_set_ini_cfg(struct net_device *dev,
                           union iwreq_data *wrqu, char *extra)
 {
     VOS_STATUS vstatus;
-    int ret = 0; /* success */
-    hdd_adapter_t *pAdapter = (netdev_priv(dev));
-    hdd_context_t *pHddCtx;
+    int errno;
+    hdd_adapter_t *adapter;
+    hdd_context_t *hdd_ctx;
+    char *value;
+    size_t len;
 
-    if (pAdapter == NULL)
+    ENTER();
+
+    adapter = netdev_priv(dev);
+    if (adapter == NULL)
     {
         VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
-                                        "%s: pAdapter is NULL!", __func__);
+                                        "%s: adapter is NULL!", __func__);
         return -EINVAL;
     }
 
-    pHddCtx = WLAN_HDD_GET_CTX(pAdapter);
-    ret = wlan_hdd_validate_context(pHddCtx);
-    if (ret != 0)
-        return ret;
+    hdd_ctx = WLAN_HDD_GET_CTX(adapter);
+    errno = wlan_hdd_validate_context(hdd_ctx);
+    if (errno != 0)
+        return errno;
 
+    /* ensure null termination */
+    len = min_t(size_t, wrqu->data.length, QCSAP_IOCTL_MAX_STR_LEN);
+    value = vos_mem_malloc(len + 1);
+    if (!value)
+        return -ENOMEM;
+
+    vos_mem_copy(value, extra, len);
+    value[len] = '\0';
     VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_INFO,
-              "%s: Received data %s", __func__, extra);
+              "%s: Received data %s", __func__, value);
 
-    vstatus = hdd_execute_global_config_command(pHddCtx, extra);
+    vstatus = hdd_execute_global_config_command(hdd_ctx, value);
 #ifdef WLAN_FEATURE_MBSSID
     if (vstatus == VOS_STATUS_E_PERM) {
-        vstatus = hdd_execute_sap_dyn_config_command(pAdapter, extra);
+        vstatus = hdd_execute_sap_dyn_config_command(adapter, value);
         if (vstatus == VOS_STATUS_SUCCESS)
             VOS_TRACE( VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_INFO,
                    "%s: Stored in Dynamic SAP ini config", __func__);
     }
 #endif
-    if (VOS_STATUS_SUCCESS != vstatus)
-    {
-        ret = -EINVAL;
-    }
+    vos_mem_free(value);
 
-    return ret;
+    EXIT();
+
+    return vos_status_to_os_return(vstatus);
 }
 
 int
@@ -4824,7 +4836,7 @@ static int __iw_set_ap_encodeext(struct net_device *dev,
          /*Convert from 1-based to 0-based keying*/
         key_index--;
     }
-    if(!ext->key_len) {
+    if(!ext->key_len || ext->key_len > CSR_MAX_KEY_LEN) {
 #if 0
       /*Set the encryption type to NONE*/
 #if 0
@@ -4875,7 +4887,7 @@ static int __iw_set_ap_encodeext(struct net_device *dev,
              retval = -EINVAL;
          }
 #endif
-         return ret;
+         return -EINVAL;
 
     }
 
@@ -4884,9 +4896,7 @@ static int __iw_set_ap_encodeext(struct net_device *dev,
     setKey.keyId = key_index;
     setKey.keyLength = ext->key_len;
 
-    if(ext->key_len <= CSR_MAX_KEY_LEN) {
-       vos_mem_copy(&setKey.Key[0],ext->key,ext->key_len);
-    }
+    vos_mem_copy(&setKey.Key[0],ext->key,ext->key_len);
 
     if(ext->ext_flags & IW_ENCODE_EXT_GROUP_KEY) {
       /*Key direction for group is RX only*/
@@ -5794,7 +5804,7 @@ void hdd_get_rssi_cb(struct sir_rssi_resp *sta_rssi, void *context)
 	if ((NULL == sta_rssi) || (NULL == context)) {
 
 		hddLog(VOS_TRACE_LEVEL_ERROR,
-			"%s: Bad param, sta_rssi [%p] context [%p]",
+			"%s: Bad param, sta_rssi [%pK] context [%pK]",
 			__func__, sta_rssi, context);
 		return;
 	}
@@ -6804,8 +6814,8 @@ hdd_adapter_t* hdd_wlan_create_ap_dev(hdd_context_t *pHddCtx,
         pHostapdAdapter->pHddCtx = pHddCtx;
         pHostapdAdapter->magic = WLAN_HDD_ADAPTER_MAGIC;
 
-        hddLog(VOS_TRACE_LEVEL_DEBUG, "%s: pWlanHostapdDev = %p, "
-                                      "pHostapdAdapter = %p, "
+        hddLog(VOS_TRACE_LEVEL_DEBUG, "%s: pWlanHostapdDev = %pK, "
+                                      "pHostapdAdapter = %pK, "
                                       "concurrency_mode=0x%x", __func__,
                                       pWlanHostapdDev,
                                       pHostapdAdapter,
@@ -6948,7 +6958,7 @@ void hdd_sap_indicate_disconnect_for_sta(hdd_adapter_t *adapter)
 
 	for (staId = 0; staId < WLAN_MAX_STA_COUNT; staId++) {
 		if (adapter->aStaInfo[staId].isUsed) {
-			hddLog(LOG1, FL("staId: %d isUsed: %d %p"),
+			hddLog(LOG1, FL("staId: %d isUsed: %d %pK"),
 				staId, adapter->aStaInfo[staId].isUsed,
 				sap_ctx);
 

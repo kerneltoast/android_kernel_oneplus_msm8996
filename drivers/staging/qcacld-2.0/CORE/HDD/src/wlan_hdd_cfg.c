@@ -6386,7 +6386,7 @@ VOS_STATUS hdd_hex_string_to_u16_array(char *str,
 		return VOS_STATUS_E_INVAL;
 
 	hddLog(VOS_TRACE_LEVEL_ERROR,
-		FL("str %p intArray %p intArrayMaxLen %d"),
+		FL("str %pK intArray %pK intArrayMaxLen %d"),
 		s, int_array, int_array_max_len);
 
 	*len = 0;
@@ -6399,7 +6399,7 @@ VOS_STATUS hdd_hex_string_to_u16_array(char *str,
 		if (sscanf(s, "%x", &val) == 1) {
 			int_array[*len] = (uint16_t) val;
 			hddLog(VOS_TRACE_LEVEL_DEBUG,
-				FL("s %p val %x intArray[%d]=0x%x"),
+				FL("s %pK val %x intArray[%d]=0x%x"),
 				s, val, *len, int_array[*len]);
 			*len += 1;
 		}

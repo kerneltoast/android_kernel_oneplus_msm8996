@@ -1287,7 +1287,7 @@ void ol_ramdump_handler(struct ol_softc *scn)
 			fw_ram_seg_addr[i] = (scn->ramdump[i])->mem;
 			pr_err("FW %s start addr = %#08x\n",
 				fw_ram_seg_name[i], *reg);
-			pr_err("Memory addr for %s = %p\n",
+			pr_err("Memory addr for %s = %pK\n",
 				fw_ram_seg_name[i],
 				(scn->ramdump[i])->mem);
 			(scn->ramdump[i])->start_addr = *reg;
@@ -1401,7 +1401,7 @@ static int __ol_target_failure(struct ol_softc *scn, void *wma_hdl)
 					dbglog_buf.length) != A_OK)
 			pr_err("%s FW dbglog_data failed\n", __func__);
 		else {
-			pr_info("%s dbglog_hdr.dbuf=%u, dbglog_data=%p,"
+			pr_info("%s dbglog_hdr.dbuf=%u, dbglog_data=%pK,"
 				"dbglog_buf.buffer=%u, dbglog_buf.length=%u\n",
 				__func__, dbglog_hdr.dbuf, dbglog_data,
 				dbglog_buf.buffer, dbglog_buf.length);
