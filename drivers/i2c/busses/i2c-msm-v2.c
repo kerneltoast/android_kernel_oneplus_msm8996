@@ -2185,18 +2185,7 @@ static int i2c_msm_pm_clk_prepare_enable(struct i2c_msm_ctrl *ctrl)
 static int i2c_msm_pm_xfer_start(struct i2c_msm_ctrl *ctrl)
 {
 	int ret;
-	struct i2c_msm_xfer *xfer = &ctrl->xfer;
 	mutex_lock(&ctrl->xfer.mtx);
-
-	/* if system is suspended just bail out */
-	if (ctrl->pwr_state == I2C_MSM_PM_SYS_SUSPENDED) {
-		struct i2c_msg *msgs = xfer->msgs + xfer->cur_buf.msg_idx;
-		dev_err(ctrl->dev,
-				"slave:0x%x is calling xfer when system is suspended\n",
-				msgs->addr);
-		mutex_unlock(&ctrl->xfer.mtx);
-		return -EIO;
-	}
 
 	pm_runtime_get_sync(ctrl->dev);
 	/*
@@ -2204,8 +2193,8 @@ static int i2c_msm_pm_xfer_start(struct i2c_msm_ctrl *ctrl)
 	 * and systme-pm are in transition concurrently)
 	 */
 	if (ctrl->pwr_state != I2C_MSM_PM_RT_ACTIVE) {
-		dev_info(ctrl->dev, "Runtime PM-callback was not invoked.\n");
 		i2c_msm_pm_resume(ctrl->dev);
+		msleep(20);
 	}
 
 	ret = i2c_msm_pm_clk_prepare_enable(ctrl);
@@ -2275,15 +2264,32 @@ i2c_msm_frmwrk_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 	int ret = 0;
 	struct i2c_msm_ctrl      *ctrl = i2c_get_adapdata(adap);
 	struct i2c_msm_xfer      *xfer = &ctrl->xfer;
+	bool release_wakeup = false;
 
 	if (IS_ERR_OR_NULL(msgs)) {
 		dev_err(ctrl->dev, " error on msgs Accessing invalid  pointer location\n");
 		return PTR_ERR(msgs);
 	}
 
+	/* if system is suspended then make it resume */
+	if (ctrl->pwr_state == I2C_MSM_PM_SYS_SUSPENDED) {
+		release_wakeup = true;
+		pm_stay_awake(ctrl->dev);
+		ret = wait_event_timeout(ctrl->pm_waitq,
+			ctrl->pwr_state != I2C_MSM_PM_SYS_SUSPENDED,
+			msecs_to_jiffies(I2C_MSM_TIMEOUT_PM_RESUME_MSEC));
+		if (!ret) {
+			ret = -EIO;
+			dev_err(ctrl->dev,
+				"slave:0x%x is calling xfer when system is suspended\n",
+				msgs->addr);
+			goto end;
+		}
+	}
+
 	ret = i2c_msm_pm_xfer_start(ctrl);
 	if (ret)
-		return ret;
+		goto end;
 
 	/* init xfer */
 	xfer->msgs         = msgs;
@@ -2340,6 +2346,9 @@ i2c_msm_frmwrk_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 		i2c_msm_prof_evnt_dump(ctrl);
 
 	i2c_msm_pm_xfer_end(ctrl);
+end:
+	if (release_wakeup)
+		pm_relax(ctrl->dev);
 	return ret;
 }
 
@@ -2740,6 +2749,7 @@ static int i2c_msm_pm_sys_resume_noirq(struct device *dev)
 	mutex_lock(&ctrl->xfer.mtx);
 	ctrl->pwr_state = I2C_MSM_PM_RT_SUSPENDED;
 	mutex_unlock(&ctrl->xfer.mtx);
+	wake_up_all(&ctrl->pm_waitq);
 	return  0;
 }
 #endif
@@ -2817,6 +2827,7 @@ static int i2c_msm_frmwrk_reg(struct platform_device *pdev,
 	ctrl->adapter.nr = pdev->id;
 	ctrl->adapter.dev.parent = &pdev->dev;
 	ctrl->adapter.dev.of_node = pdev->dev.of_node;
+	init_waitqueue_head(&ctrl->pm_waitq);
 	ret = i2c_add_numbered_adapter(&ctrl->adapter);
 	if (ret) {
 		dev_err(ctrl->dev, "error i2c_add_adapter failed\n");

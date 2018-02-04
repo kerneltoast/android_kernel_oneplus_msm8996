@@ -201,6 +201,7 @@ enum i2c_msm_power_state {
 #define I2C_MSM_MAX_POLL_MSEC           (100)
 #define I2C_MSM_TIMEOUT_SAFTY_COEF      (10)
 #define I2C_MSM_TIMEOUT_MIN_USEC        (500000)
+#define I2C_MSM_TIMEOUT_PM_RESUME_MSEC  (5000)
 #define I2C_QUP_MAX_BUS_RECOVERY_RETRY  (10)
 
 /* QUP v2 tags */
@@ -589,6 +590,7 @@ struct i2c_msm_ctrl {
 	struct i2c_msm_resources   rsrcs;
 	u32                        mstr_clk_ctl;
 	enum i2c_msm_power_state   pwr_state;
+	wait_queue_head_t          pm_waitq;
 };
 
 /* Enum for the profiling event types */
