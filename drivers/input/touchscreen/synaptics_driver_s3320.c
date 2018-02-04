@@ -381,11 +381,6 @@ struct synaptics_ts_data {
 
 	struct work_struct pm_work;
 
-	struct wakeup_source syna_isr_ws;
-	spinlock_t isr_lock;
-	bool i2c_awake;
-	struct completion i2c_resume;
-
 	bool touch_active;
 };
 
@@ -1048,24 +1043,6 @@ static irqreturn_t synaptics_irq_thread_fn(int irq, void *dev_id)
 	ktime_t now;
 	int ret;
 
-	if (ts->screen_off) {
-		unsigned long flags;
-		bool i2c_active;
-
-		spin_lock_irqsave(&ts->isr_lock, flags);
-		i2c_active = ts->i2c_awake;
-		spin_unlock_irqrestore(&ts->isr_lock, flags);
-
-		/* I2C bus must be active */
-		if (!i2c_active) {
-			__pm_stay_awake(&ts->syna_isr_ws);
-			/* Wait for I2C to resume before proceeding */
-			reinit_completion(&ts->i2c_resume);
-			wait_for_completion_timeout(&ts->i2c_resume,
-							msecs_to_jiffies(30));
-		}
-	}
-
 	now = ktime_get();
 
 	synaptics_rmi4_i2c_write_byte(ts->client, 0xff, 0x00);
@@ -1073,7 +1050,7 @@ static irqreturn_t synaptics_irq_thread_fn(int irq, void *dev_id)
 	if (ret < 0) {
 		TPDTM_DMESG("Synaptic:ret = %d\n", ret);
 		synaptics_hard_reset(ts);
-		goto exit;
+		return IRQ_HANDLED;
 	}
 
 	if (ret & 0x80) {
@@ -1096,9 +1073,6 @@ static irqreturn_t synaptics_irq_thread_fn(int irq, void *dev_id)
 		}
 	}
 
-exit:
-	if (ts->syna_isr_ws.active)
-		__pm_relax(&ts->syna_isr_ws);
 	return IRQ_HANDLED;
 }
 
@@ -2550,11 +2524,6 @@ static int synaptics_ts_probe(struct i2c_client *client, const struct i2c_device
 	if(ret)
 		TPD_ERR("Unable to register fb_notifier: %d\n", ret);
 
-	init_completion(&ts->i2c_resume);
-	spin_lock_init(&ts->isr_lock);
-	wakeup_source_init(&ts->syna_isr_ws, "synaptics-isr");
-	ts->i2c_awake = true;
-
 	/****************
 	  shoud set the irq GPIO
 	 *******************/
@@ -2607,11 +2576,6 @@ err_alloc_data_failed:
 static int synaptics_i2c_suspend(struct device *dev)
 {
 	struct synaptics_ts_data *ts = dev_get_drvdata(dev);
-	unsigned long flags;
-
-	spin_lock_irqsave(&ts->isr_lock, flags);
-	ts->i2c_awake = false;
-	spin_unlock_irqrestore(&ts->isr_lock, flags);
 
 	if (ts->gesture_enable)
 		enable_irq_wake(ts->irq);
@@ -2622,13 +2586,6 @@ static int synaptics_i2c_suspend(struct device *dev)
 static int synaptics_i2c_resume(struct device *dev)
 {
 	struct synaptics_ts_data *ts = dev_get_drvdata(dev);
-	unsigned long flags;
-
-	spin_lock_irqsave(&ts->isr_lock, flags);
-	ts->i2c_awake = true;
-	spin_unlock_irqrestore(&ts->isr_lock, flags);
-
-	complete(&ts->i2c_resume);
 
 	if (ts->gesture_enable)
 		disable_irq_wake(ts->irq);
