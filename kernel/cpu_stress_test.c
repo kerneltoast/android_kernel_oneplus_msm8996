@@ -16,19 +16,34 @@
 
 #include <linux/cpu.h>
 #include <linux/kernel.h>
-#include <linux/slab.h>
 
 static struct work_struct __percpu *worker;
 static struct workqueue_struct *high_prio_wq;
 
 static void cpu_intensive_func(struct work_struct *work)
 {
-	/*
-	 * kfree(NULL) is just a safe function call that will never be optimized
-	 * away; kfree() safely rejects NULL arguments.
-	 */
+#ifdef CONFIG_ARM64
+	/* Just exchange data between registers and the stack */
 	while (1)
-		kfree(NULL);
+		asm volatile(
+		"stp	x29, x30, [sp, -96]!\n\t"
+		"cmp	x0, 16\n\t"
+		"add	x29, sp, 0\n\t"
+		"stp	x19, x20, [sp,16]\n\t"
+		"stp	x21, x22, [sp,32]\n\t"
+		"stp	x23, x24, [sp,48]\n\t"
+		"stp	x25, x26, [sp,64]\n\t"
+		"str	x27, [sp,80]\n\t"
+		"ldp	x19, x20, [sp,16]\n\t"
+		"ldp	x21, x22, [sp,32]\n\t"
+		"ldp	x23, x24, [sp,48]\n\t"
+		"ldp	x25, x26, [sp,64]\n\t"
+		"ldr	x27, [sp,80]\n\t"
+		"ldp	x29, x30, [sp], 96"
+		);
+#else
+	while (1);
+#endif
 }
 
 static int __init cpu_stress_test_init(void)
