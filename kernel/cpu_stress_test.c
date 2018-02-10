@@ -17,7 +17,9 @@
 #include <linux/cpu.h>
 #include <linux/kernel.h>
 
-static struct work_struct __percpu *worker;
+#define INIT_DELAY_MS (15000)
+
+static struct delayed_work __percpu *worker;
 static struct workqueue_struct *high_prio_wq;
 
 static void cpu_intensive_func(struct work_struct *work)
@@ -65,10 +67,11 @@ static int __init cpu_stress_test_init(void)
 	spin_unlock_irqrestore(&lock, flags);
 
 	for_each_online_cpu(cpu) {
-		struct work_struct *pcpu = per_cpu_ptr(worker, cpu);
+		struct delayed_work *pcpu = per_cpu_ptr(worker, cpu);
 
-		INIT_WORK(pcpu, cpu_intensive_func);
-		queue_work_on(cpu, high_prio_wq, pcpu);
+		INIT_DELAYED_WORK(pcpu, cpu_intensive_func);
+		queue_delayed_work_on(cpu, high_prio_wq, pcpu,
+			msecs_to_jiffies(INIT_DELAY_MS));
 	}
 
 	return 0;
