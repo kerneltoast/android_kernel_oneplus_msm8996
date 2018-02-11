@@ -26,7 +26,8 @@ static void cpu_intensive_func(struct work_struct *work)
 {
 #ifdef CONFIG_ARM64
 	/* Just exchange data between registers and the stack */
-	while (1)
+	while (1) {
+		preempt_disable();
 		asm volatile(
 		"stp	x29, x30, [sp, -96]!\n\t"
 		"cmp	x0, 16\n\t"
@@ -43,6 +44,8 @@ static void cpu_intensive_func(struct work_struct *work)
 		"ldr	x27, [sp,80]\n\t"
 		"ldp	x29, x30, [sp], 96"
 		);
+		preempt_enable();
+	}
 #else
 	while (1);
 #endif
