@@ -126,7 +126,6 @@ struct bq27541_device_info {
 	 */
 	struct  delayed_work		hw_config;
 	struct  delayed_work		battery_soc_work;
-	struct wake_lock update_soc_wake_lock;
 	struct power_supply 	*batt_psy;
 	int saltate_counter;
 	/*  Add for retry when config fail */
@@ -135,9 +134,6 @@ struct bq27541_device_info {
 	int soc_pre;
 	int  batt_vol_pre;
 	int current_pre;
-	unsigned long rtc_resume_time;
-	unsigned long rtc_suspend_time;
-	atomic_t suspended;
 	int temp_pre;
 	int lcd_off_delt_soc;
 	int low_bat_capacity;
@@ -154,13 +150,6 @@ struct bq27541_device_info {
 
 
 #include <linux/workqueue.h>
-
-struct update_pre_capacity_data{
-	struct delayed_work work;
-	struct workqueue_struct *workqueue;
-	int suspend_time;
-};
-static struct update_pre_capacity_data update_pre_capacity_data;
 
 static int coulomb_counter;
 static spinlock_t lock; /* protect access to coulomb_counter */
@@ -186,11 +175,6 @@ static int bq27541_battery_temperature(struct bq27541_device_info *di)
 	int ret;
 	int temp = 0;
 	static int count = 0;
-
-	/* Add for get right soc when sleep long time */
-	if(atomic_read(&di->suspended) == 1) {
-		return di->temp_pre + ZERO_DEGREE_CELSIUS_IN_TENTH_KELVIN;
-	}
 
 	if(di->alow_reading) {
 		ret = bq27541_read(BQ27541_REG_TEMP, &temp, 0, di);
@@ -224,10 +208,6 @@ static int bq27541_battery_voltage(struct bq27541_device_info *di)
 	int ret;
 	int volt = 0;
 
-	/* Add for get right soc when sleep long time */
-	if (atomic_read(&di->suspended) == 1) {
-		return di->batt_vol_pre;
-	}
 	if (di->alow_reading) {
 		ret = bq27541_read(BQ27541_REG_VOLT, &volt, 0, di);
 		if (ret) {
@@ -679,11 +659,7 @@ static int bq27541_battery_soc(struct bq27541_device_info *di, int suspend_time_
 	int soc_delt = 0;
 	static int soc_pre;
 	bool fg_soc_changed=false;
-	/* Add for get right soc when sleep long time */
-	if(atomic_read(&di->suspended) == 1) {
-		dev_dbg(di->dev, "di->suspended di->soc_pre=%d\n", di->soc_pre);
-		return di->soc_pre;
-	}
+
 	if(di->alow_reading) {
 		ret = bq27541_read(BQ27541_REG_SOC, &soc, 0, di);
 		if (ret) {
@@ -743,9 +719,6 @@ static int bq27541_average_current(struct bq27541_device_info *di)
 	int ret;
 	int curr = 0;
 
-	/* Add for get right soc when sleep long time */
-	if(atomic_read(&di->suspended) == 1)
-		return -di->current_pre;
 	if (di->alow_reading) {
 		ret = bq27541_read(BQ27541_REG_AI, &curr, 0, di);
 		if (ret) {
@@ -883,7 +856,6 @@ static struct external_battery_gauge bq27541_batt_gauge = {
 	.get_4p4v_battery_present	= bq27541_get_4p4v_battery_present,
 };
 #define BATTERY_SOC_UPDATE_MS 6000
-#define RESUME_SCHDULE_SOC_UPDATE_WORK_MS 60000
 
 static int is_usb_pluged(void)
 {
@@ -1161,16 +1133,6 @@ static struct platform_device this_device = {
 };
 #endif
 
-static void update_pre_capacity_func(struct work_struct *w)
-{
-	pr_debug("enter\n");
-	bq27541_set_alow_reading(true);
-	bq27541_battery_soc(bq27541_di, update_pre_capacity_data.suspend_time);
-	bq27541_set_alow_reading(false);
-	wake_unlock(&bq27541_di->update_soc_wake_lock);
-	pr_debug("exit\n");
-}
-
 #define MAX_RETRY_COUNT	5
 #define DEFAULT_INVALID_SOC_PRE  -22
 static int bq27541_parse_dt(struct bq27541_device_info *di)
@@ -1209,21 +1171,15 @@ static int bq27541_battery_probe(struct i2c_client *client,
 		return -ENOMEM;
 	}
 
-	update_pre_capacity_data.workqueue = create_workqueue("update_pre_capacity");
-	INIT_DELAYED_WORK(&(update_pre_capacity_data.work), update_pre_capacity_func);
-
 	i2c_set_clientdata(client, di);
 	di->dev = &client->dev;
 	di->client = client;
 	bq27541_parse_dt(di);
 
-	wake_lock_init(&di->update_soc_wake_lock,
-			WAKE_LOCK_SUSPEND, "bq_delt_soc_wake_lock");
 	di->soc_pre = DEFAULT_INVALID_SOC_PRE;
 	di->alow_reading = true;
 	/* Add for retry when config fail */
 	di->retry_count = MAX_RETRY_COUNT;
-	atomic_set(&di->suspended, 0);
 
 #ifdef CONFIG_BQ27541_TEST_ENABLE
 	platform_set_drvdata(&this_device, di);
@@ -1272,49 +1228,6 @@ static int bq27541_battery_remove(struct i2c_client *client)
 	return 0;
 }
 
-static int bq27541_battery_suspend(struct i2c_client *client, pm_message_t message)
-{
-	int ret=0;
-	struct bq27541_device_info *di = i2c_get_clientdata(client);
-	cancel_delayed_work_sync(&di->battery_soc_work);
-	atomic_set(&di->suspended, 1);
-	ret = get_current_time(&di->rtc_suspend_time);
-	if (ret ) {
-		pr_err("Failed to read RTC time\n");
-		return 0;
-	}
-	return 0;
-}
-
-/*1 minute*/
-#define RESUME_TIME  1*60
-static int bq27541_battery_resume(struct i2c_client *client)
-{
-	int ret=0;
-	int suspend_time;
-	struct bq27541_device_info *di = i2c_get_clientdata(client);
-	atomic_set(&di->suspended, 0);
-	ret = get_current_time(&di->rtc_resume_time);
-	if (ret ) {
-		pr_err("Failed to read RTC time\n");
-		return 0;
-	}
-	suspend_time =  di->rtc_resume_time - di->rtc_suspend_time;
-	pr_debug("suspend_time=%d\n", suspend_time);
-	update_pre_capacity_data.suspend_time = suspend_time;
-
-	if (di->rtc_resume_time - di->lcd_off_time >= TWO_POINT_FIVE_MINUTES) {
-		pr_debug("di->rtc_resume_time - di->lcd_off_time=%ld\n",
-				di->rtc_resume_time - di->lcd_off_time);
-		wake_lock(&di->update_soc_wake_lock);
-		get_current_time(&di->lcd_off_time);
-		queue_delayed_work(update_pre_capacity_data.workqueue,
-				&(update_pre_capacity_data.work), msecs_to_jiffies(1000));
-	}
-	schedule_delayed_work(&bq27541_di->battery_soc_work,
-			msecs_to_jiffies(RESUME_SCHDULE_SOC_UPDATE_WORK_MS));
-	return 0;
-}
 static void bq27541_shutdown(struct i2c_client *client)
 {
 	struct bq27541_device_info *di = i2c_get_clientdata(client);
@@ -1339,8 +1252,6 @@ static struct i2c_driver bq27541_battery_driver = {
 	},
 	.probe		= bq27541_battery_probe,
 	.remove		= bq27541_battery_remove,
-	.suspend	= bq27541_battery_suspend ,
-	.resume		= bq27541_battery_resume,
 	.shutdown	= bq27541_shutdown,
 	.id_table	= bq27541_id,
 };
