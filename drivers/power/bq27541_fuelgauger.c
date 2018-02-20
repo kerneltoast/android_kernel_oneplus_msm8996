@@ -431,35 +431,14 @@ static int fg_soc_calibrate(struct  bq27541_device_info *di, int soc)
 	static bool first_enter = false;
 	static int charging_status, charging_status_pre = 0;
 	bool chg_done;
-	int temp_region, vbat_mv, ibat_ma, soc_load, soc_temp, counter_temp = 0;
+	int temp_region, vbat_mv, ibat_ma, soc_temp, counter_temp = 0;
 
 	if (false == first_enter) {
 		di->batt_psy = power_supply_get_by_name("battery");
 		if(di->batt_psy) {
 			first_enter = true;
-			soc_load = load_soc();
-			pr_info("soc=%d, soc_load=%d\n", soc, soc_load);
-			if (soc_load == -1) {
-				/* get last soc error */
-				di->soc_pre = soc;
-			} else if (soc_load > 0 && soc_load < 100) {
-				if(soc_load > soc)
-					di->soc_pre = soc_load - 1;
-				else
-					di->soc_pre = soc_load;
-			} else if (soc_load == 100
-					&& abs(soc_load - soc) > TEN_PERCENT) {
-				/* decrease soc when gap between soc_load and */
-				/* real_soc is over 10%                       */
-				di->soc_pre = soc_load - 1;
-			} else {
-				di->soc_pre = soc_load;
-			}
+			di->soc_pre = soc;
 
-			if (!di->batt_psy) {
-				pr_err("batt_psy is absent, soc_pre=%d\n", di->soc_pre);
-				return di->soc_pre;
-			}
 			/* store the soc when boot first time */
 			get_current_time(&di->soc_pre_time);
 			clean_backup_soc_ex();
