@@ -171,6 +171,8 @@ static int TP_FW;
 static unsigned int tp_debug = 0;
 static int button_map[3];
 static int tx_rx_num[2];
+static int16_t delta_baseline[16][28];
+static int16_t baseline[8][16];
 static int16_t delta[8][16];
 static int TX_NUM;
 static int RX_NUM;
@@ -265,6 +267,10 @@ static int F51_CUSTOM_CTRL00;
 static int F51_CUSTOM_DATA04;
 static int F51_CUSTOM_DATA11;
 static int version_is_s3508=0;
+static int F54_ANALOG_QUERY_BASE;//0x73
+static int F54_ANALOG_COMMAND_BASE;//0x72
+static int F54_ANALOG_CONTROL_BASE;//0x0d
+static int F54_ANALOG_DATA_BASE;//0x00
 
 /*------------------------------------------Fuction Declare----------------------------------------------*/
 static int synaptics_i2c_suspend(struct device *dev);
@@ -294,7 +300,7 @@ static irqreturn_t synaptics_irq_thread_fn(int irq, void *dev_id);
 static int fb_notifier_callback(struct notifier_block *self, unsigned long event, void *data);
 static int synaptics_soft_reset(struct synaptics_ts_data *ts);
 static void synaptics_hard_reset(struct synaptics_ts_data *ts);
-static void tp_baseline_get(struct synaptics_ts_data *ts);
+static int tp_baseline_get(struct synaptics_ts_data *ts, bool flag);
 
 static const struct i2c_device_id synaptics_ts_id[] = {
 	{ TPD_DEVICE, 0 },
@@ -552,6 +558,22 @@ static int synaptics_read_register_map(struct synaptics_ts_data *ts)
 			F51_CUSTOM_CTRL_BASE    = %x \n\
 			F51_CUSTOM_DATA_BASE    = %x \n\
 			", F51_CUSTOM_QUERY_BASE, F51_CUSTOM_CMD_BASE, F51_CUSTOM_CTRL_BASE, F51_CUSTOM_DATA_BASE);
+
+	ret = synaptics_rmi4_i2c_write_byte(ts->client, 0xff, 0x01);
+	if(ret < 0) {
+		TPD_ERR("synaptics_read_register_map: failed for page select\n");
+		return -1;
+	}
+	ret = synaptics_rmi4_i2c_read_block(ts->client, 0xE9, 4, &(buf[0x0]));
+	F54_ANALOG_QUERY_BASE = buf[0];
+	F54_ANALOG_COMMAND_BASE = buf[1];
+	F54_ANALOG_CONTROL_BASE = buf[2];
+	F54_ANALOG_DATA_BASE = buf[3];
+	TPD_ERR("F54_QUERY_BASE = %x \n\
+			F54_CMD_BASE  = %x \n\
+			F54_CTRL_BASE	= %x \n\
+			F54_DATA_BASE	= %x \n\
+			", F54_ANALOG_QUERY_BASE, F54_ANALOG_COMMAND_BASE , F54_ANALOG_CONTROL_BASE, F54_ANALOG_DATA_BASE);
 
 	ret = synaptics_rmi4_i2c_write_byte(ts->client, 0xff, 0x00);
 	return 0;
@@ -1469,33 +1491,78 @@ static ssize_t synaptics_update_fw_store(struct device *dev,
 static DEVICE_ATTR(tp_fw_update, 0664, synaptics_update_fw_show, synaptics_update_fw_store);
 static int synaptics_dsx_pinctrl_init(struct synaptics_ts_data *ts);
 
-static void tp_baseline_get(struct synaptics_ts_data *ts)
+static void checkCMD(void)
 {
-	if (!ts)
-		return;
+	int ret;
+	int flag_err = 0;
+	struct synaptics_ts_data *ts = ts_g;
+	do {
+		msleep(10); //wait 10ms
+		ret = synaptics_rmi4_i2c_read_byte(ts->client, F54_ANALOG_COMMAND_BASE);
+		flag_err++;
+	}while( (ret > 0x00) && (flag_err < 30) );
+	if( ret > 0x00 || flag_err >= 30)
+		TPD_ERR("checkCMD error ret is %x flag_err is %d\n", ret, flag_err);
+}
 
-	mutex_lock(&ts->mutex);
+#define SUBABS(x,y) ((x)-(y))
+static int tp_baseline_get(struct synaptics_ts_data *ts, bool flag)
+{
+	int ret = 0;
+	int x, y;
+	uint8_t *value;
+	int k = 0;
+
+	if(!ts)
+		return -1;
+
 	touch_disable(ts);
 	TPD_DEBUG("%s start!\n",__func__);
+	value = kzalloc(TX_NUM*RX_NUM*2, GFP_KERNEL);
+	if (!value)
+		return -1;
+	memset(delta_baseline,0,sizeof(delta_baseline));
 
+	mutex_lock(&ts->mutex);
 	if (ts->gesture_enable)
-		synaptics_enable_interrupt_for_gesture(ts, false);
+		synaptics_enable_interrupt_for_gesture(ts,false);
+	ret = synaptics_rmi4_i2c_write_byte(ts->client, 0xff, 0x1);
 
-	synaptics_rmi4_i2c_write_byte(ts->client, 0xff, 0x1);
-	synaptics_rmi4_i2c_write_byte(ts->client, 0xff, 0x0);
-	i2c_smbus_write_byte_data(ts->client, F01_RMI_CMD_BASE, 0x01);//soft reset
-	msleep(50);
+	ret = i2c_smbus_write_byte_data(ts->client, F54_ANALOG_DATA_BASE, 0x03);//select report type 0x03
+	ret = i2c_smbus_write_word_data(ts->client, F54_ANALOG_DATA_BASE+1, 0);//set fifo 00
+	ret = i2c_smbus_write_byte_data(ts->client, F54_ANALOG_COMMAND_BASE, 0x01);//get report
+	checkCMD();
+
+	ret = synaptics_rmi4_i2c_read_block(ts->client,F54_ANALOG_DATA_BASE+3,2*TX_NUM*RX_NUM,value);
+	for( x = 0; x < TX_NUM; x++ ){
+		for( y = 0; y < RX_NUM; y++ ){
+			delta_baseline[x][y] =  (int16_t)(((uint16_t)( value [k])) | ((uint16_t)( value [k+1] << 8)));
+			k = k + 2;
+
+			if (y >= 20){
+				if (flag)
+					delta[y-20][x] = SUBABS(delta_baseline[x][y],baseline[y-20][x]);
+				else
+					baseline[y-20][x] = delta_baseline[x][y];
+			}
+		}
+	}
+	ret = synaptics_rmi4_i2c_write_byte(ts->client, 0xff, 0x0);
+	ret = i2c_smbus_write_byte_data(ts->client, F01_RMI_CMD_BASE, 0x01);//soft reset
+	mutex_unlock(&ts->mutex);
+	msleep(2);
 	touch_enable(ts);
 	synaptics_tpedge_limitfunc();
-	mutex_unlock(&ts->mutex);
 	TPD_DEBUG("%s end! \n",__func__);
+	kfree(value);
+	return 0;
 }
 
 static void tp_baseline_get_work(struct work_struct *work)
 {
 	struct synaptics_ts_data *ts = ts_g;
 
-	tp_baseline_get(ts);
+	tp_baseline_get(ts, true);
 }
 
 static ssize_t touch_press_status_read(struct file *file, char __user *user_buf, size_t count, loff_t *ppos)
