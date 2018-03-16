@@ -1008,7 +1008,7 @@ Left2RightSwip:%d Right2LeftSwip:%d Up2DownSwip:%d Down2UpSwip:%d\n",
     TPD_DEBUG("%s end!\n",__func__);
 }
 #endif
-static bool int_touch(struct synaptics_ts_data *ts, ktime_t timestamp)
+static bool int_touch(struct synaptics_ts_data *ts)
 {
 	uint8_t buf[80];
 	int i, ret;
@@ -1020,11 +1020,6 @@ static bool int_touch(struct synaptics_ts_data *ts, ktime_t timestamp)
 		TPD_ERR("int_touch: i2c_transfer failed\n");
 		return false;
 	}
-
-	input_event(ts->input_dev, EV_SYN, SYN_TIME_SEC,
-			ktime_to_timespec(timestamp).tv_sec);
-	input_event(ts->input_dev, EV_SYN, SYN_TIME_NSEC,
-			ktime_to_timespec(timestamp).tv_nsec);
 
 	for (i = 0; i < 10; i++) {
 		int x, y, raw_x, raw_y;
@@ -1062,10 +1057,7 @@ static bool int_touch(struct synaptics_ts_data *ts, ktime_t timestamp)
 static irqreturn_t synaptics_irq_thread_fn(int irq, void *dev_id)
 {
 	struct synaptics_ts_data *ts = dev_id;
-	ktime_t now;
 	int ret;
-
-	now = ktime_get();
 
 	synaptics_rmi4_i2c_write_byte(ts->client, 0xff, 0x00);
 	ret = synaptics_rmi4_i2c_read_word(ts->client, F01_RMI_DATA_BASE);
@@ -1083,7 +1075,7 @@ static irqreturn_t synaptics_irq_thread_fn(int irq, void *dev_id)
 	}
 
 	if (ret & 0x400) {
-		bool finger_present = int_touch(ts, now);
+		bool finger_present = int_touch(ts);
 
 		ts->touch_active = finger_present;
 
