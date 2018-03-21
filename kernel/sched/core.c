@@ -8377,6 +8377,10 @@ void sched_setnuma(struct task_struct *p, int nid)
 	unsigned long flags;
 	bool queued, running;
 
+	/* Force all unbound kthreads onto CPU0 */
+	if (p->flags & PF_KTHREAD && cpumask_weight(new_mask) > 1)
+		new_mask = get_cpu_mask(0);
+
 	rq = task_rq_lock(p, &flags);
 	queued = task_on_rq_queued(p);
 	running = task_current(rq, p);

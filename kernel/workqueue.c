@@ -1286,7 +1286,6 @@ static void __queue_work(int cpu, struct workqueue_struct *wq,
 	struct worker_pool *last_pool;
 	struct list_head *worklist;
 	unsigned int work_flags;
-	unsigned int req_cpu = cpu;
 
 	/*
 	 * While a work item is PENDING && off queue, a task trying to
@@ -1303,9 +1302,6 @@ static void __queue_work(int cpu, struct workqueue_struct *wq,
 	    WARN_ON_ONCE(!is_chained_work(wq)))
 		return;
 retry:
-	if (req_cpu == WORK_CPU_UNBOUND)
-		cpu = raw_smp_processor_id();
-
 	/* pwq which will be used unless @work is executing elsewhere */
 	if (!(wq->flags & WQ_UNBOUND))
 		pwq = per_cpu_ptr(wq->cpu_pwqs, cpu);
@@ -1356,7 +1352,7 @@ retry:
 	}
 
 	/* pwq determined, queue */
-	trace_workqueue_queue_work(req_cpu, pwq, work);
+	trace_workqueue_queue_work(cpu, pwq, work);
 
 	if (WARN_ON(!list_empty(&work->entry))) {
 		spin_unlock(&pwq->pool->lock);
@@ -1446,10 +1442,7 @@ static void __queue_delayed_work(int cpu, struct workqueue_struct *wq,
 	dwork->cpu = cpu;
 	timer->expires = jiffies + delay;
 
-	if (unlikely(cpu != WORK_CPU_UNBOUND))
-		add_timer_on(timer, cpu);
-	else
-		add_timer(timer);
+	add_timer_on(timer, cpu);
 }
 
 /**
@@ -4280,7 +4273,7 @@ bool current_is_workqueue_rescuer(void)
  * no synchronization around this function and the test result is
  * unreliable and only useful as advisory hints or for debugging.
  *
- * If @cpu is WORK_CPU_UNBOUND, the test is performed on the local CPU.
+ * If @cpu is WORK_CPU_UNBOUND, the test is performed on CPU0.
  * Note that both per-cpu and unbound workqueues may be associated with
  * multiple pool_workqueues which have separate congested states.  A
  * workqueue being congested on one CPU doesn't mean the workqueue is also
@@ -4295,10 +4288,6 @@ bool workqueue_congested(int cpu, struct workqueue_struct *wq)
 	bool ret;
 
 	rcu_read_lock_sched();
-
-	if (cpu == WORK_CPU_UNBOUND)
-		cpu = smp_processor_id();
-
 	if (!(wq->flags & WQ_UNBOUND))
 		pwq = per_cpu_ptr(wq->cpu_pwqs, cpu);
 	else
