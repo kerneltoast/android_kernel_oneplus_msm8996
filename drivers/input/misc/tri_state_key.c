@@ -81,7 +81,7 @@ static void tristate_process_state(struct tristate_data *t)
 	 * corresponds to the top position, bit 1 corresponds to the middle
 	 * position, and bit 2 corresponds to the bottom position.
 	 */
-	i = find_first_zero_bit(&key_state, BITS_PER_LONG);
+	i = ffz(key_state);
 	send_input(t, t->key_codes[i]);
 }
 
