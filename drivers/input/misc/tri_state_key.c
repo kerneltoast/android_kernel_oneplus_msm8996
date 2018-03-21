@@ -24,6 +24,7 @@
 #include <linux/uaccess.h>
 
 #define DRIVER_NAME "tri-state-key"
+#define NR_STATES (3)
 
 enum key_vals {
 	KEYCODE_TOTAL_SILENCE = 600,
@@ -41,9 +42,9 @@ struct tristate_data {
 	struct device *dev;
 	struct input_dev *input;
 	struct mutex irq_lock;
-	enum key_vals key_codes[3];
-	int key_gpios[3];
-	int curr_state;
+	enum key_vals key_codes[NR_STATES];
+	int key_gpios[NR_STATES];
+	uint8_t curr_state;
 };
 
 static struct tristate_data *tdata_g;
@@ -58,10 +59,11 @@ static void send_input(struct tristate_data *t, int keycode)
 
 static void tristate_process_state(struct tristate_data *t)
 {
-	int i, key_state = 0;
+	unsigned long key_state = 0;
+	int i;
 
 	/* Store the GPIO values of the keys as a bitmap */
-	for (i = 0; i < 3; i++)
+	for (i = 0; i < NR_STATES; i++)
 		key_state |= !!gpio_get_value(t->key_gpios[i]) << i;
 
 	/* Spurious interrupt; at least one of the pins should be zero */
@@ -79,11 +81,7 @@ static void tristate_process_state(struct tristate_data *t)
 	 * corresponds to the top position, bit 1 corresponds to the middle
 	 * position, and bit 2 corresponds to the bottom position.
 	 */
-	for (i = 0; i < 3; i++) {
-		if (!(key_state & BIT(i)))
-			break;
-	}
-
+	i = find_first_zero_bit(&key_state, BITS_PER_LONG);
 	send_input(t, t->key_codes[i]);
 }
 
@@ -103,7 +101,7 @@ static int keycode_get_idx(const char *filename)
 {
 	int i;
 
-	for (i = 0; i < 3; i++) {
+	for (i = 0; i < NR_STATES; i++) {
 		if (!strcmp(proc_names[i], filename))
 			break;
 	}
@@ -178,7 +176,7 @@ static int tristate_parse_dt(struct tristate_data *t)
 	if (!np)
 		return -EINVAL;
 
-	for (i = 0; i < 3; i++) {
+	for (i = 0; i < NR_STATES; i++) {
 		sprintf(prop_name, "tristate,gpio_key%d", i + 1);
 
 		t->key_gpios[i] = of_get_named_gpio(np, prop_name, 0);
@@ -194,10 +192,10 @@ static int tristate_parse_dt(struct tristate_data *t)
 static int tristate_register_irqs(struct tristate_data *t)
 {
 	char label[sizeof("tristate_key#-int")];
-	int i, j, key_irqs[3], ret;
+	int i, j, key_irqs[NR_STATES], ret;
 
 	/* Get the IRQ numbers corresponding to the GPIOs */
-	for (i = 0; i < 3; i++) {
+	for (i = 0; i < NR_STATES; i++) {
 		key_irqs[i] = gpio_to_irq(t->key_gpios[i]);
 		if (key_irqs[i] < 0) {
 			dev_err(t->dev, "Invalid IRQ (%d) for GPIO%d\n",
@@ -206,7 +204,7 @@ static int tristate_register_irqs(struct tristate_data *t)
 		}
 	}
 
-	for (i = 0; i < 3; i++) {
+	for (i = 0; i < NR_STATES; i++) {
 		sprintf(label, "tristate_key%d-int", i + 1);
 
 		ret = gpio_request(t->key_gpios[i], label);
@@ -235,7 +233,7 @@ static int tristate_register_irqs(struct tristate_data *t)
 		}
 	}
 
-	for (i = 0; i < 3; i++)
+	for (i = 0; i < NR_STATES; i++)
 		enable_irq_wake(key_irqs[i]);
 
 	return 0;
@@ -243,7 +241,7 @@ static int tristate_register_irqs(struct tristate_data *t)
 free_irqs:
 	for (j = i; j--;)
 		free_irq(key_irqs[j], t);
-	i = 3;
+	i = NR_STATES;
 free_gpios:
 	for (j = i; j--;)
 		gpio_free(t->key_gpios[j]);
@@ -259,7 +257,7 @@ static void tristate_create_procfs(void)
 	if (!proc_dir)
 		return;
 
-	for (i = 0; i < 3; i++)
+	for (i = 0; i < NR_STATES; i++)
 		proc_create_data(proc_names[i], 0644, proc_dir,
 			&tristate_keycode_proc, NULL);
 }
@@ -302,7 +300,7 @@ static int tristate_probe(struct platform_device *pdev)
 		goto free_input;
 
 	/* Initialize with default keycodes */
-	for (i = 0; i < 3; i++)
+	for (i = 0; i < NR_STATES; i++)
 		t->key_codes[i] = KEYCODE_TOTAL_SILENCE + i;
 
 	/* Process initial state */
