@@ -91,7 +91,7 @@ static irqreturn_t tristate_irq_handler(int irq, void *dev_id)
 
 	/* This handler is shared between three interrupt lines */
 	mutex_lock(&t->irq_lock);
-	tristate_process_state(dev_id);
+	tristate_process_state(t);
 	mutex_unlock(&t->irq_lock);
 
 	return IRQ_HANDLED;
