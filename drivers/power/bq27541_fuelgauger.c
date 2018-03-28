@@ -64,6 +64,7 @@
 #define BQ27541_REG_AP			0x24
 #define BQ27541_REG_TTECP		0x26
 #define BQ27541_REG_SOH			0x28
+#define BQ27541_REG_CC			0x2a
 #define BQ27541_REG_SOC			0x2c
 #define BQ27541_REG_NIC			0x2e
 #define BQ27541_REG_ICR			0x30
@@ -730,6 +731,34 @@ static int bq27541_remaining_capacity(struct bq27541_device_info *di)
 	return cap;
 }
 
+/* Full charge capacity in mAh */
+static int bq27541_battery_fcc(struct bq27541_device_info *di)
+{
+	int ret, fcc_mah;
+
+	ret = bq27541_read(BQ27541_REG_FCC, &fcc_mah, 0, di);
+	if (ret) {
+		dev_err(di->dev, "error reading fcc, ret: %d\n", ret);
+		return 0;
+	}
+
+	return fcc_mah;
+}
+
+/* Cycle count */
+static int bq27541_battery_cycles(struct bq27541_device_info *di)
+{
+	int ret, cycle_count;
+
+	ret = bq27541_read(BQ27541_REG_CC, &cycle_count, 0, di);
+	if (ret) {
+		dev_err(di->dev, "error reading cycle count, ret: %d\n", ret);
+		return 0;
+	}
+
+	return cycle_count;
+}
+
 static int bq27541_get_battery_mvolts(void)
 {
 	return bq27541_battery_voltage(bq27541_di);
@@ -818,6 +847,15 @@ static bool bq27541_get_4p4v_battery_present(void)
 	return false;
 }
 
+static int bq27541_get_battery_fcc(void)
+{
+	return bq27541_battery_fcc(bq27541_di);
+}
+
+static int bq27541_get_battery_cycles(void)
+{
+	return bq27541_battery_cycles(bq27541_di);
+}
 
 static struct external_battery_gauge bq27541_batt_gauge = {
 	.get_battery_mvolts     = bq27541_get_battery_mvolts,
@@ -833,6 +871,8 @@ static struct external_battery_gauge bq27541_batt_gauge = {
 	.set_lcd_off_status		= bq27541_set_lcd_off_status,
 	.fast_chg_started_status	= bq27541_get_fastchg_started_status,
 	.get_4p4v_battery_present	= bq27541_get_4p4v_battery_present,
+	.get_battery_fcc		= bq27541_get_battery_fcc,
+	.get_battery_cycles		= bq27541_get_battery_cycles,
 };
 #define BATTERY_SOC_UPDATE_MS 6000
 

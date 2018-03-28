@@ -4544,7 +4544,10 @@ static int fg_power_get_property(struct power_supply *psy,
 		val->intval = get_sram_prop_now(chip, FG_DATA_BATT_ESR_COUNT);
 		break;
 	case POWER_SUPPLY_PROP_CYCLE_COUNT:
-		val->intval = fg_get_cycle_count(chip);
+		if (ext_fg && ext_fg->get_battery_cycles)
+			val->intval = ext_fg->get_battery_cycles();
+		else
+			val->intval = fg_get_cycle_count(chip);
 		break;
 	case POWER_SUPPLY_PROP_CYCLE_COUNT_ID:
 		val->intval = chip->cyc_ctr.id;
@@ -4571,7 +4574,10 @@ static int fg_power_get_property(struct power_supply *psy,
 			val->intval = 1;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN:
-		val->intval = chip->nom_cap_uah;
+		if (ext_fg && ext_fg->get_battery_fcc)
+			val->intval = ext_fg->get_battery_fcc();
+		else
+			val->intval = chip->nom_cap_uah;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_FULL:
 		val->intval = chip->learning_data.learned_cc_uah;
