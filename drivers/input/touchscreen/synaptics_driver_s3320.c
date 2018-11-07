@@ -1860,7 +1860,7 @@ static int synaptics_fw_check(struct synaptics_ts_data *ts )
 		}
 	}
 
-	i2c_smbus_read_i2c_block_data(ts->client, F12_2D_CTRL08, 14, buf);
+	i2c_smbus_read_i2c_block_data(ts->client, F12_2D_CTRL08, 4, buf);
 	max_x_ic = ( (buf[1]<<8)&0xffff ) | (buf[0]&0xffff);
 	max_y_ic = ( (buf[3]<<8)&0xffff ) | (buf[2]&0xffff);
 
